@@ -16,11 +16,9 @@ struct FluttroApp: App {
 
     var body: some Scene {
         WindowGroup {
-            EmptyView()
+            PanelView()
         }
-        Settings {
-            SettingsView()
-        }
+
     }
 }
 
