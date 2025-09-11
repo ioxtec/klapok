@@ -11,6 +11,7 @@ import AppKit
 
 final class SettingsViewModel {
     @Published var showMouseCursor: Bool = false
+    @Published var showDockIcon: Bool = true
 }
 
 #endif
