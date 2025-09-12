@@ -29,9 +29,12 @@ struct EditorView: View {
             
             VStack(spacing: 12) {
                 HStack {
-                    Text("Header Opcje")
+                    Text("Edytor Zrzutu")
+                        .font(.headline)
                     Spacer()
-                    Button("Zamknij") { /* zamknij akcję */ }
+                    Button("Zamknij") { 
+                        viewModel.close()
+                    }
                 }
                .padding()
                .frame(height: 40)
