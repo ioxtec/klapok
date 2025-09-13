@@ -51,6 +51,7 @@ import Foundation
                 }
 
                 Logger.d("FrameCollector: Creating NSImage from CGImage...")
+                // Keep the full physical resolution as the NSImage size for high quality
                 let nsImage = NSImage(
                     cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
                 Logger.s("FrameCollector: NSImage created successfully, size: \(nsImage.size)")
@@ -210,8 +211,11 @@ import Foundation
 
             Logger.d("ScreenshotService: Creating SCStreamConfiguration...")
             let config = SCStreamConfiguration()
-            config.width = Int(rect.width)
-            config.height = Int(rect.height)
+            // Use physical resolution for high quality capture on Retina displays
+            let backingScaleFactor = mainNSScreen.backingScaleFactor
+            config.width = Int(rect.width * backingScaleFactor)
+            config.height = Int(rect.height * backingScaleFactor)
+            // Keep sourceRect in logical coordinates (same area), only output resolution is scaled
             config.sourceRect = CGRect(
                 x: displayRect.minX, y: displayRect.minY, width: displayRect.width,
                 height: displayRect.height)

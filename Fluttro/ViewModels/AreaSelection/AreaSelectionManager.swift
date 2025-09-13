@@ -71,8 +71,11 @@ import SwiftUI
                 return
             }
 
-            let fullScreenRect = NSRect(
-                x: 0, y: 0, width: screen.frame.width, height: screen.frame.height)
+            // Use full screen bounds including menu bar
+            let fullScreenRect = NSScreen.screens.first?.frame ?? screen.frame
+            Logger.d(
+                "AreaSelectionManager: Full screen rect (including menu bar): \(fullScreenRect)")
+            Logger.d("AreaSelectionManager: Screen frame (visible area): \(screen.frame)")
 
             // Create SwiftUI view
             let overlayView = AreaSelectionView(
@@ -99,7 +102,9 @@ import SwiftUI
                 defer: false
             )
 
-            window.level = .screenSaver
+            // Use the highest possible window level to cover menu bar
+            window.level = NSWindow.Level(
+                rawValue: Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
             window.backgroundColor = .clear
             window.isOpaque = false
             window.hasShadow = false
@@ -108,12 +113,15 @@ import SwiftUI
             window.acceptsMouseMovedEvents = true
             window.becomesKeyOnlyIfNeeded = false
 
+            // Try to cover menu bar and receive key events
+            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+
             overlayWindow = window
 
             // Set frame and show
             window.setFrame(fullScreenRect, display: true)
-            window.center()
             window.orderFront(nil)
+            window.makeKeyAndOrderFront(nil)  // Make it key to receive keyboard events
 
             Logger.s("AreaSelectionManager: Overlay window shown successfully")
         }

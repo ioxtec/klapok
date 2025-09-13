@@ -1,78 +1,61 @@
 {
   "images" : [
     {
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "dark"
-        }
-      ],
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
-      "appearances" : [
-        {
-          "appearance" : "luminosity",
-          "value" : "tinted"
-        }
-      ],
-      "idiom" : "universal",
-      "platform" : "ios",
-      "size" : "1024x1024"
-    },
-    {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "16x16"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 1.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "16x16"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 9.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "32x32"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 8.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "32x32"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 7.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "128x128"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 6.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "128x128"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 5.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "256x256"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 4.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "256x256"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 3.png",
       "idiom" : "mac",
       "scale" : "1x",
       "size" : "512x512"
     },
     {
+      "filename" : "298fea45-af0f-4fa5-9686-a12cf69f00fd 2.png",
       "idiom" : "mac",
       "scale" : "2x",
       "size" : "512x512"

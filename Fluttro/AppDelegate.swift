@@ -196,7 +196,9 @@ import SwiftUI
                 defer: false
             )
             panel.isFloatingPanel = true
-            panel.level = .screenSaver + 1
+            // Set panel level higher than overlay to keep it visible above area selection
+            panel.level = NSWindow.Level(
+                rawValue: Int(CGWindowLevelForKey(.assistiveTechHighWindow)) + 1)
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.hidesOnDeactivate = false
             panel.titleVisibility = .hidden
