@@ -120,4 +120,15 @@ import SwiftUI
         }
     }
 
+    #Preview {
+        AreaSelectionView(
+            backgroundImage: NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
+                ?? NSImage(),
+            onSelection: { rect in
+                print("Selected: \(String(describing: rect))")
+            },
+            currentSelection: .constant(.zero)
+        )
+    }
+
 #endif

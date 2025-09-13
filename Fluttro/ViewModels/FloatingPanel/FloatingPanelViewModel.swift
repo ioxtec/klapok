@@ -58,8 +58,6 @@ import SwiftUI
             isCapturing = true
             defer {
                 isCapturing = false
-                // Always show panel again after capture (success or failure)
-                showFloatingPanel()
             }
 
             // Hide floating panel immediately when user clicks capture button
@@ -91,16 +89,19 @@ import SwiftUI
                             isAreaSelectionActive = false
                         } else {
                             Logger.w("FloatingPanelViewModel: No valid selection")
+                            showFloatingPanel()
                             return
                         }
                     } else {
                         Logger.w("FloatingPanelViewModel: Area selection not active")
+                        showFloatingPanel()
                         return
                     }
 
                 case .window:
                     guard let window = selectedWindow else {
                         Logger.w("No window selected")
+                        showFloatingPanel()
                         return
                     }
                     image = try await screenshotService.captureWindow(window)
@@ -109,9 +110,12 @@ import SwiftUI
 
                 editorViewModel.show(image: image)
                 Logger.s("FloatingPanelViewModel: Editor opened successfully")
+                // Panel zostanie ukryty przez AppDelegate gdy edytor się otworzy
 
             } catch {
                 Logger.e("FloatingPanelViewModel: Screenshot error: \(error)")
+                // Pokaż panel z powrotem tylko w przypadku błędu
+                showFloatingPanel()
             }
         }
 

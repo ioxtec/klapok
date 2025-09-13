@@ -24,3 +24,7 @@ struct SettingsView: View {
             maxHeight: 700)
     }
 }
+
+#Preview {
+    SettingsView()
+}

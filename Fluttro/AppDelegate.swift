@@ -22,6 +22,7 @@ import SwiftUI
         private var editorWindow: NSWindow?
         private var panelWindow: NSPanel?
         private var overlayWindow: NSWindow?  // Pre-created overlay window
+        private var statusItem: NSStatusItem?
 
         @Published var isPanelPresented = false
 
@@ -53,12 +54,11 @@ import SwiftUI
         func applicationDidFinishLaunching(_ notification: Notification) {
             registerHotkeys()
             createOverlayWindow()  // Tworzymy overlay window przy starcie
-            showFloatingPanel()
+            setupStatusBarItem()
             setupEditorObservation()
 
             // Debug informacje o aplikacji
             PermissionsManager.debugPermissions()
-
         }
 
         private func setupEditorObservation() {
@@ -72,6 +72,8 @@ import SwiftUI
                             "AppDelegate: EditorViewModel.isPresented = true, pokazuję okno edytora"
                         )
                         self?.openEditor(with: image)
+                        // Ukryj floating panel gdy edytor się pojawia
+                        self?.hideFloatingPanelForEditor()
                     } else if !isPresented {
                         Logger.d(
                             "AppDelegate: EditorViewModel.isPresented = false, ukrywam okno edytora"
@@ -80,7 +82,43 @@ import SwiftUI
                     }
                 }
                 .store(in: &cancellables)
+
+            // Setup panel focus observation
+            setupPanelFocusObservation()
+
             Logger.s("AppDelegate: Editor observation setup completed")
+        }
+
+        private func setupPanelFocusObservation() {
+            // Obserwuj gdy aplikacja straci focus
+            NotificationCenter.default.addObserver(
+                forName: NSApplication.didResignActiveNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.handleAppDidResignActive()
+            }
+        }
+
+        private func handleAppDidResignActive() {
+            // Ukryj floating panel gdy aplikacja straci focus, ale tylko jeśli nie ma aktywnej area selection
+            guard let viewModel = floatingPanelViewModel else { return }
+
+            // Nie ukrywaj panelu jeśli area selection jest aktywna
+            if !viewModel.isAreaSelectionActive {
+                Logger.d("AppDelegate: App resigned active, hiding floating panel")
+                panelWindow?.orderOut(nil)
+                isPanelPresented = false
+            } else {
+                Logger.d(
+                    "AppDelegate: App resigned active but area selection is active, keeping panel")
+            }
+        }
+
+        private func hideFloatingPanelForEditor() {
+            Logger.d("AppDelegate: Hiding floating panel because editor opened")
+            panelWindow?.orderOut(nil)
+            isPanelPresented = false
         }
 
         private func handleHotkey() {
@@ -143,6 +181,13 @@ import SwiftUI
         }
 
         private func showFloatingPanel() {
+            // Jeśli panel już istnieje, po prostu go pokaż
+            if let existingPanel = panelWindow {
+                existingPanel.orderFront(nil)
+                isPanelPresented = true
+                return
+            }
+
             // Panel: przezroczyste tło + brak toolbara + cienki border
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
@@ -216,9 +261,86 @@ import SwiftUI
             panel.orderFront(nil)
             // Nie robimy panel key window - to tylko floating panel
             panelWindow = panel
+            isPanelPresented = true
 
             // Przekaż referencję do panelu do ViewModel
             panelViewModel.panelWindow = panel
+        }
+
+        private func setupStatusBarItem() {
+            statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+
+            if let button = statusItem?.button {
+                button.image = NSImage(
+                    systemSymbolName: "camera.fill", accessibilityDescription: "Fluttro")
+                button.toolTip = "Fluttro - Screenshot Tool"
+            }
+
+            let menu = NSMenu()
+
+            let takeScreenshotItem = NSMenuItem(
+                title: "Take Screenshot",
+                action: #selector(takeScreenshotFromMenu),
+                keyEquivalent: ""
+            )
+            takeScreenshotItem.target = self
+            menu.addItem(takeScreenshotItem)
+
+            menu.addItem(NSMenuItem.separator())
+
+            let settingsItem = NSMenuItem(
+                title: "Settings...",
+                action: #selector(openSettings),
+                keyEquivalent: ","
+            )
+            settingsItem.target = self
+            menu.addItem(settingsItem)
+
+            menu.addItem(NSMenuItem.separator())
+
+            let quitItem = NSMenuItem(
+                title: "Quit Fluttro",
+                action: #selector(NSApplication.terminate(_:)),
+                keyEquivalent: "q"
+            )
+            menu.addItem(quitItem)
+
+            statusItem?.menu = menu
+        }
+
+        @objc private func takeScreenshotFromMenu() {
+            showFloatingPanel()
+        }
+
+        @objc private func openSettings() {
+            openSettingsWindow()
+        }
+
+        private func openSettingsWindow() {
+            // Jeśli okno ustawień już istnieje, po prostu je pokaż
+            if let existingWindow = NSApp.windows.first(where: { $0.title == "Fluttro Settings" }) {
+                existingWindow.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+
+            // Utwórz nowe okno ustawień
+            let settingsView = SettingsView()
+            let hostingController = NSHostingController(rootView: settingsView)
+
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+
+            window.contentViewController = hostingController
+            window.title = "Fluttro Settings"
+            window.center()
+            window.isReleasedWhenClosed = false
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
         }
     }
 
