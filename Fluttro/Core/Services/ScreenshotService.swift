@@ -23,7 +23,12 @@ import Foundation
 
         private final class FrameCollector: NSObject, SCStreamOutput {
             var continuation: CheckedContinuation<NSImage, Error>?
-            private let ciContext = CIContext()
+            // Use high-quality CIContext for better image processing
+            private let ciContext = CIContext(options: [
+                .workingColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                .outputColorSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                .useSoftwareRenderer: false,
+            ])
 
             nonisolated func stream(
                 _ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
@@ -99,6 +104,7 @@ import Foundation
             config.height = Int(display.height)
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.capturesAudio = false
+            config.captureResolution = .best
             config.showsCursor = false
             config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
 
@@ -222,6 +228,10 @@ import Foundation
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.capturesAudio = false
             config.showsCursor = false
+            // Add quality settings for sharper capture
+            config.scalesToFit = false
+            config.preservesAspectRatio = true
+            config.minimumFrameInterval = CMTime(value: 1, timescale: 60)
             Logger.d("ScreenshotService: Config - width: \(config.width), height: \(config.height)")
             Logger.d("ScreenshotService: Config - sourceRect: \(config.sourceRect)")
 

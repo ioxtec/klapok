@@ -94,6 +94,7 @@ import SwiftUI
 
                                     Image(nsImage: image)
                                         .resizable()
+                                        .interpolation(.none)  // Disable interpolation for sharper pixels
                                         .frame(width: finalWidth, height: finalHeight)
                                         .background(Color.white)
                                         .cornerRadius(8)
