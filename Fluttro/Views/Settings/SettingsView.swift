@@ -5,8 +5,8 @@
 //  Created by Marcin Ryzko on 09/09/2025.
 //
 
-import SwiftUICore
 import SwiftUI
+import SwiftUICore
 
 struct SettingsView: View {
     var body: some View {
@@ -19,6 +19,8 @@ struct SettingsView: View {
             }
         }
         .scenePadding()
-        .frame(maxWidth: 350, minHeight: 100)
+        .frame(
+            minWidth: 500, idealWidth: 600, maxWidth: 800, minHeight: 400, idealHeight: 500,
+            maxHeight: 700)
     }
 }

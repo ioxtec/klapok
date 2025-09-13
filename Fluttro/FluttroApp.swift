@@ -6,18 +6,23 @@
 //
 
 import SwiftUI
+
 #if os(macOS)
-import AppKit
-import Carbon.HIToolbox
+    import AppKit
+    import Carbon.HIToolbox
 
-@main
-struct FluttroApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @main
+    struct FluttroApp: App {
+        @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
-    var body: some Scene {
-        Settings { SettingsView() } 
+        var body: some Scene {
+            Settings {
+                SettingsView()
+            }
+            .windowResizability(.contentSize)
+            .windowToolbarStyle(.unified)
 
+        }
     }
-}
 
 #endif

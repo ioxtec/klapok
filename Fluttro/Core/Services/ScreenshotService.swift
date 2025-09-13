@@ -14,13 +14,7 @@ import Foundation
     import CoreMedia
     import CoreVideo
 
-    enum ScreenshotError: Error {
-        case unavailable
-        case noDisplays
-        case frameConversionFailed
-        case userCancelled
-        case noWindowSelected
-    }
+    // ScreenshotError is now defined in Core/Models/ScreenshotModels.swift
 
     /// Provides APIs to capture screenshots.
     final class ScreenshotService {
@@ -35,40 +29,40 @@ import Foundation
                 _ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
                 of outputType: SCStreamOutputType
             ) {
-                print("FrameCollector: Received sample buffer, outputType: \(outputType)")
+                Logger.d("FrameCollector: Received sample buffer, outputType: \(outputType)")
 
                 guard outputType == SCStreamOutputType.screen else {
-                    print("FrameCollector: Wrong output type, ignoring")
+                    Logger.d("FrameCollector: Wrong output type, ignoring")
                     return
                 }
 
                 guard let pb = CMSampleBufferGetImageBuffer(sampleBuffer) else {
-                    print("FrameCollector: Failed to get image buffer from sample")
+                    Logger.e("FrameCollector: Failed to get image buffer from sample")
                     return
                 }
 
-                print("FrameCollector: Creating CIImage from buffer...")
+                Logger.d("FrameCollector: Creating CIImage from buffer...")
                 let ciImage = CIImage(cvImageBuffer: pb)
 
-                print("FrameCollector: Creating CGImage from CIImage...")
+                Logger.d("FrameCollector: Creating CGImage from CIImage...")
                 guard let cgImage = ciContext.createCGImage(ciImage, from: ciImage.extent) else {
-                    print("FrameCollector: Failed to create CGImage")
+                    Logger.e("FrameCollector: Failed to create CGImage")
                     return
                 }
 
-                print("FrameCollector: Creating NSImage from CGImage...")
+                Logger.d("FrameCollector: Creating NSImage from CGImage...")
                 let nsImage = NSImage(
                     cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
-                print("FrameCollector: NSImage created successfully, size: \(nsImage.size)")
+                Logger.s("FrameCollector: NSImage created successfully, size: \(nsImage.size)")
 
                 // Use MainActor for UI operations
                 Task { @MainActor in
                     if let continuation = self.continuation {
-                        print("FrameCollector: Resuming continuation with image")
+                        Logger.d("FrameCollector: Resuming continuation with image")
                         self.continuation = nil
                         continuation.resume(returning: nsImage)
                     } else {
-                        print("FrameCollector: WARNING - No continuation available!")
+                        Logger.w("FrameCollector: WARNING - No continuation available!")
                     }
                 }
             }
@@ -121,7 +115,7 @@ import Foundation
             do {
                 try await stream.stopCapture()
             } catch {
-                print("Błąd podczas zatrzymywania streamu (można zignorować): \(error)")
+                Logger.w("Błąd podczas zatrzymywania streamu (można zignorować): \(error)")
             }
 
             return image
@@ -154,14 +148,7 @@ import Foundation
 
         // MARK: - Public Area Capture
 
-        /// Captures a specific area of the screen
-        @MainActor
-        func captureArea(rect: NSRect) async throws -> NSImage {
-            print("ScreenshotService.captureArea() rozpoczęte z rect: \(rect)")
-            let result = try await captureAreaInternal(rect: rect)
-            print("ScreenshotService.captureArea() zakończone pomyślnie")
-            return result
-        }
+        // captureArea method is now implemented below (was captureAreaInternal)
 
         // MARK: - Public Window Capture
 
@@ -172,82 +159,38 @@ import Foundation
         }
 
         // MARK: - Area Selection Capture
-
-        /// Captures a user-selected area of the screen using interactive selection
-        @MainActor
-        func captureSelectedArea() async throws -> NSImage {
-            guard #available(macOS 13.0, *) else { throw ScreenshotError.unavailable }
-
-            print("ScreenshotService: captureSelectedArea started")
-
-            // First capture the full screen for overlay
-            let fullScreenImage = try await captureMainDisplay()
-            print("ScreenshotService: full screen captured")
-
-            // Create selection overlay window
-            let selectionResult = try await showAreaSelectionOverlay(
-                backgroundImage: fullScreenImage)
-            print(
-                "ScreenshotService: overlay returned result: \(String(describing: selectionResult))"
-            )
-
-            guard let selectedRect = selectionResult else {
-                print("ScreenshotService: user cancelled")
-                throw ScreenshotError.userCancelled
-            }
-
-            print("ScreenshotService: capturing area: \(selectedRect)")
-            // Capture the selected area
-            let result = try await captureAreaInternal(rect: selectedRect)
-            print("ScreenshotService: area captured successfully")
-            return result
-        }
+        // Note: Area selection is now handled by AreaSelectionManager in the UI layer
 
         @MainActor
-        private func showAreaSelectionOverlay(backgroundImage: NSImage) async throws -> NSRect? {
-            print("ScreenshotService: showAreaSelectionOverlay started")
-            return try await withCheckedThrowingContinuation { continuation in
-                let overlay = AreaSelectionOverlay(backgroundImage: backgroundImage) { rect in
-                    print(
-                        "ScreenshotService: overlay completion called with rect: \(String(describing: rect))"
-                    )
-                    continuation.resume(returning: rect)
-                }
-                overlay.show()
-                print("ScreenshotService: overlay.show() called")
-            }
-        }
-
-        @MainActor
-        private func captureAreaInternal(rect: NSRect) async throws -> NSImage {
-            print("ScreenshotService: captureAreaInternal started with rect: \(rect)")
+        func captureArea(rect: NSRect) async throws -> NSImage {
+            Logger.d("ScreenshotService: captureAreaInternal started with rect: \(rect)")
 
             guard #available(macOS 13.0, *) else {
-                print("ScreenshotService: ERROR - macOS 13.0+ required")
+                Logger.e("ScreenshotService: ERROR - macOS 13.0+ required")
                 throw ScreenshotError.unavailable
             }
 
-            print("ScreenshotService: Getting SCShareableContent...")
+            Logger.d("ScreenshotService: Getting SCShareableContent...")
             let content = try await SCShareableContent.current
-            print("ScreenshotService: SCShareableContent obtained successfully")
+            Logger.s("ScreenshotService: SCShareableContent obtained successfully")
 
             guard let mainNSScreen = NSScreen.main else {
-                print("ScreenshotService: ERROR - No main screen found")
+                Logger.e("ScreenshotService: ERROR - No main screen found")
                 throw ScreenshotError.noDisplays
             }
-            print("ScreenshotService: Main screen found: \(mainNSScreen.frame)")
+            Logger.d("ScreenshotService: Main screen found: \(mainNSScreen.frame)")
 
             let displays = content.displays
-            print("ScreenshotService: Found \(displays.count) displays")
+            Logger.d("ScreenshotService: Found \(displays.count) displays")
 
             guard
                 let display = displays.first(where: { $0.displayID == mainNSScreen.displayID })
                     ?? displays.first
             else {
-                print("ScreenshotService: ERROR - No matching display found")
+                Logger.e("ScreenshotService: ERROR - No matching display found")
                 throw ScreenshotError.noDisplays
             }
-            print("ScreenshotService: Using display: \(display.displayID)")
+            Logger.d("ScreenshotService: Using display: \(display.displayID)")
 
             // Convert screen coordinates to display coordinates
             let screenFrame = mainNSScreen.frame
@@ -257,15 +200,15 @@ import Foundation
                 width: rect.width,
                 height: rect.height
             )
-            print("ScreenshotService: Original rect: \(rect)")
-            print("ScreenshotService: Screen frame: \(screenFrame)")
-            print("ScreenshotService: Converted displayRect: \(displayRect)")
+            Logger.d("ScreenshotService: Original rect: \(rect)")
+            Logger.d("ScreenshotService: Screen frame: \(screenFrame)")
+            Logger.d("ScreenshotService: Converted displayRect: \(displayRect)")
 
-            print("ScreenshotService: Creating SCContentFilter...")
+            Logger.d("ScreenshotService: Creating SCContentFilter...")
             let filter = SCContentFilter(
                 display: display, excludingApplications: [], exceptingWindows: [])
 
-            print("ScreenshotService: Creating SCStreamConfiguration...")
+            Logger.d("ScreenshotService: Creating SCStreamConfiguration...")
             let config = SCStreamConfiguration()
             config.width = Int(rect.width)
             config.height = Int(rect.height)
@@ -275,41 +218,41 @@ import Foundation
             config.pixelFormat = kCVPixelFormatType_32BGRA
             config.capturesAudio = false
             config.showsCursor = false
-            print("ScreenshotService: Config - width: \(config.width), height: \(config.height)")
-            print("ScreenshotService: Config - sourceRect: \(config.sourceRect)")
+            Logger.d("ScreenshotService: Config - width: \(config.width), height: \(config.height)")
+            Logger.d("ScreenshotService: Config - sourceRect: \(config.sourceRect)")
 
-            print("ScreenshotService: Creating SCStream...")
+            Logger.d("ScreenshotService: Creating SCStream...")
             let stream = SCStream(filter: filter, configuration: config, delegate: nil)
 
-            print("ScreenshotService: Creating FrameCollector...")
+            Logger.d("ScreenshotService: Creating FrameCollector...")
             let output = FrameCollector()
 
-            print("ScreenshotService: Adding stream output...")
+            Logger.d("ScreenshotService: Adding stream output...")
             try stream.addStreamOutput(
                 output, type: SCStreamOutputType.screen, sampleHandlerQueue: DispatchQueue.main)
 
-            print("ScreenshotService: Starting stream capture...")
+            Logger.d("ScreenshotService: Starting stream capture...")
             try await stream.startCapture()
-            print("ScreenshotService: Stream capture started successfully")
+            Logger.s("ScreenshotService: Stream capture started successfully")
 
-            print("ScreenshotService: Waiting for frame in continuation...")
+            Logger.d("ScreenshotService: Waiting for frame in continuation...")
             let image: NSImage = try await withTimeout(seconds: 10) {
                 try await withCheckedThrowingContinuation { continuation in
                     output.continuation = continuation
-                    print("ScreenshotService: Continuation set, waiting for frame...")
+                    Logger.d("ScreenshotService: Continuation set, waiting for frame...")
                 }
             }
-            print("ScreenshotService: Frame received successfully!")
+            Logger.s("ScreenshotService: Frame received successfully!")
 
-            print("ScreenshotService: Stopping stream capture...")
+            Logger.d("ScreenshotService: Stopping stream capture...")
             do {
                 try await stream.stopCapture()
-                print("ScreenshotService: Stream stopped successfully")
+                Logger.s("ScreenshotService: Stream stopped successfully")
             } catch {
-                print("ScreenshotService: Error stopping stream (can ignore): \(error)")
+                Logger.w("ScreenshotService: Error stopping stream (can ignore): \(error)")
             }
 
-            print("ScreenshotService: captureAreaInternal completed successfully")
+            Logger.s("ScreenshotService: captureAreaInternal completed successfully")
             return image
         }
 
@@ -375,7 +318,7 @@ import Foundation
             do {
                 try await stream.stopCapture()
             } catch {
-                print("Błąd podczas zatrzymywania streamu window (można zignorować): \(error)")
+                Logger.w("Błąd podczas zatrzymywania streamu window (można zignorować): \(error)")
             }
             return image
         }

@@ -2,7 +2,7 @@
 //  FloatingPanelView.swift
 //  Fluttro
 //
-//  Created by Marcin Ryzko on 11/09/2025.
+//  SwiftUI view for floating screenshot panel
 //
 
 import SwiftUI
@@ -23,22 +23,12 @@ import SwiftUI
 
         var body: some View {
             HStack(spacing: 20) {
-                // 1. Przełącznik obraz/video (po lewej)
                 captureModeToggle
-
-                // 2. Grupa przełączników rodzaju zrzutu
                 screenshotTypeSelector
-
-                // 3. Duży przycisk migawki (po prawej)
                 captureButton
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 25)
-                    .fill(.ultraThinMaterial)
-                    .shadow(color: .black.opacity(0.1), radius: 10, x: 0, y: 5)
-            )
             .frame(height: 80)
             .onKeyPress(.space) {
                 Task {
@@ -62,7 +52,6 @@ import SwiftUI
                 viewModel.captureMode = viewModel.captureMode == .image ? .video : .image
                 return .handled
             }
-            // Overlay będzie pokazany jako osobne okno
         }
 
         // MARK: - Capture Mode Toggle
@@ -86,11 +75,7 @@ import SwiftUI
                         )
                 }
                 .buttonStyle(PlainButtonStyle())
-                .help("Przełącz między trybem zdjęć i video (V)")
-
-                Text(viewModel.captureMode.title)
-                    .font(.caption2)
-                    .foregroundColor(.secondary)
+                .help("Switch between photo and video mode (V)")
             }
         }
 
@@ -118,14 +103,10 @@ import SwiftUI
                                                 ? Color.accentColor : Color.clear)
                                 )
 
-                            Text(type.title)
-                                .font(.caption2)
-                                .foregroundColor(
-                                    viewModel.screenshotType == type ? .accentColor : .secondary)
                         }
                     }
                     .buttonStyle(PlainButtonStyle())
-                    .help("\(type.title) (\(ScreenshotType.allCases.firstIndex(of: type)! + 1))")
+                    .help(tooltipForType(type))
                 }
             }
             .padding(.horizontal, 12)
@@ -171,7 +152,18 @@ import SwiftUI
             .disabled(viewModel.isCapturing)
             .scaleEffect(viewModel.isCapturing ? 0.95 : 1.0)
             .animation(.easeInOut(duration: 0.1), value: viewModel.isCapturing)
-            .help("Zrób \(viewModel.screenshotType.title.lowercased()) (Spacja)")
+            .help("Take \(viewModel.screenshotType.title.lowercased()) (Space)")
+        }
+
+        // MARK: - Helper Methods
+
+        private func tooltipForType(_ type: ScreenshotType) -> String {
+            let keyNumber = ScreenshotType.allCases.firstIndex(of: type)! + 1
+            switch type {
+            case .fullScreen: return "Full Screen (\(keyNumber))"
+            case .area: return "Area Selection (\(keyNumber))"
+            case .window: return "Window Capture (\(keyNumber))"
+            }
         }
     }
 

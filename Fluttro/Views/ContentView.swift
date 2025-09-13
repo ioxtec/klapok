@@ -25,18 +25,16 @@ struct ContentView: View {
                 .disabled(editorViewModel.isCapturing)
 
                 Button("Zrzut wybranego obszaru") {
-                    Task {
-                        await editorViewModel.captureSelectedArea()
-                    }
+                    // Area selection is now handled by FloatingPanelView
+                    print("Use FloatingPanelView for area selection")
                 }
-                .disabled(editorViewModel.isCapturing)
+                .disabled(true)
 
                 Button("Zrzut okna aplikacji") {
-                    Task {
-                        await editorViewModel.captureSelectedWindow()
-                    }
+                    // Window selection is now handled by FloatingPanelView
+                    print("Use FloatingPanelView for window selection")
                 }
-                .disabled(editorViewModel.isCapturing)
+                .disabled(true)
             }
             .buttonStyle(.borderedProminent)
 

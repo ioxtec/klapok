@@ -28,7 +28,7 @@ import SwiftUI
         private func createOverlayWindow() {
             guard let screen = NSScreen.main else { return }
 
-            print("AppDelegate: Creating overlay window at startup...")
+            Logger.d("AppDelegate: Creating overlay window at startup...")
             let window = NSWindow(
                 contentRect: screen.frame,
                 styleMask: [.borderless],
@@ -47,7 +47,7 @@ import SwiftUI
             window.orderOut(nil)
 
             overlayWindow = window
-            print("AppDelegate: Overlay window created and hidden")
+            Logger.s("AppDelegate: Overlay window created and hidden")
         }
 
         func applicationDidFinishLaunching(_ notification: Notification) {
@@ -58,21 +58,29 @@ import SwiftUI
 
             // Debug informacje o aplikacji
             PermissionsManager.debugPermissions()
+
         }
 
         private func setupEditorObservation() {
+            Logger.d("AppDelegate: Setting up editor observation")
             // Obserwuj zmiany w editorViewModel.isPresented
             editorViewModel.$isPresented
                 .sink { [weak self] isPresented in
+                    Logger.d("AppDelegate: EditorViewModel.isPresented changed to: \(isPresented)")
                     if isPresented, let image = self?.editorViewModel.image {
-                        print("EditorViewModel.isPresented = true, pokazuję okno edytora")
+                        Logger.s(
+                            "AppDelegate: EditorViewModel.isPresented = true, pokazuję okno edytora"
+                        )
                         self?.openEditor(with: image)
                     } else if !isPresented {
-                        print("EditorViewModel.isPresented = false, ukrywam okno edytora")
+                        Logger.d(
+                            "AppDelegate: EditorViewModel.isPresented = false, ukrywam okno edytora"
+                        )
                         self?.editorWindow?.orderOut(nil)
                     }
                 }
                 .store(in: &cancellables)
+            Logger.s("AppDelegate: Editor observation setup completed")
         }
 
         private func handleHotkey() {
@@ -87,42 +95,44 @@ import SwiftUI
         }
 
         private func openEditor(with image: NSImage) {
-            print("AppDelegate: openEditor() called with image size: \(image.size)")
-
-            // NIE wywołujemy editorViewModel.show() tutaj - to już zostało zrobione
-            // Ta metoda tylko pokazuje okno edytora
+            Logger.d("AppDelegate: openEditor() called with image size: \(image.size)")
 
             if editorWindow == nil {
-                print("AppDelegate: Creating new editor window...")
+                Logger.d("AppDelegate: Creating new editor window...")
 
-                print("AppDelegate: Creating EditorView...")
                 let editorView = EditorView(viewModel: editorViewModel)
-
-                print("AppDelegate: Creating NSHostingController...")
                 let hosting = NSHostingController(rootView: editorView)
 
-                print("AppDelegate: Creating NSWindow...")
-                let window = NSWindow(contentViewController: hosting)
+                // Okno bez widocznego tytułu ale z przyciskami
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
+                    styleMask: [
+                        .titled, .closable, .miniaturizable, .resizable, .fullSizeContentView,
+                    ],
+                    backing: .buffered,
+                    defer: false
+                )
+
+                window.contentViewController = hosting
                 window.title = "Fluttro Editor"
-                window.setContentSize(NSSize(width: 900, height: 600))
+                window.titleVisibility = .hidden
+                window.titlebarAppearsTransparent = true
                 window.center()
                 window.isReleasedWhenClosed = false
-                editorWindow = window
 
-                print("AppDelegate: Editor window created successfully")
-            } else {
-                print("AppDelegate: Using existing editor window")
+                editorWindow = window
+                Logger.s("AppDelegate: Editor window created successfully")
             }
 
-            print("AppDelegate: Showing editor window...")
+            Logger.d("AppDelegate: Showing editor window...")
             editorWindow?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
-            print("AppDelegate: Editor window shown successfully")
+            Logger.s("AppDelegate: Editor window shown successfully")
         }
 
         private func registerHotkeys() {
             let registered = hotkeyManager.register(
-                keyCode: 0x1A,
+                keyCode: 0x1a,
                 modifiers: 0x0100 | 0x0200
             ) { [weak self] in
                 self?.isPanelPresented.toggle()
@@ -133,9 +143,9 @@ import SwiftUI
         }
 
         private func showFloatingPanel() {
-            // Panel: przezroczyste tło + brak toolbara
+            // Panel: przezroczyste tło + brak toolbara + cienki border
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 600, height: 130),
+                contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
                 styleMask: [.nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -162,17 +172,23 @@ import SwiftUI
 
             // Utwórz ViewModel
             let panelViewModel = FloatingPanelViewModel(editorViewModel: editorViewModel)
-            self.floatingPanelViewModel = panelViewModel
+            floatingPanelViewModel = panelViewModel
+
+            Logger.s("AppDelegate: FloatingPanelViewModel created and connected to editorViewModel")
 
             // Zawartość (SwiftUI)
             let content = NSHostingView(rootView: FloatingPanelView(viewModel: panelViewModel))
 
-            // Kontener z zaokrągleniami
+            // Kontener z zaokrągleniami i borderem
             let container = NSView(frame: panel.contentView?.bounds ?? .zero)
             container.autoresizingMask = [.width, .height]
             container.wantsLayer = true
-            container.layer?.cornerRadius = 12
+            container.layer?.cornerRadius = 10
             container.layer?.masksToBounds = true
+
+            // Dodaj cienki border
+            container.layer?.borderWidth = 0.5
+            container.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.2).cgColor
 
             blur.frame = container.bounds
             blur.autoresizingMask = [.width, .height]
@@ -183,7 +199,7 @@ import SwiftUI
             container.addSubview(content)
             panel.contentView = container
 
-            //setting panel start position
+            // setting panel start position
             let screen = NSScreen.main?.visibleFrame ?? .zero
             let w = panel.frame.width
             let h = panel.frame.height
@@ -199,9 +215,11 @@ import SwiftUI
 
             panel.orderFront(nil)
             // Nie robimy panel key window - to tylko floating panel
-            self.panelWindow = panel
-        }
+            panelWindow = panel
 
+            // Przekaż referencję do panelu do ViewModel
+            panelViewModel.panelWindow = panel
+        }
     }
 
 #endif
