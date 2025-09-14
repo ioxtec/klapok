@@ -83,10 +83,18 @@ import SwiftUI
                         if !currentSelection.isEmpty && currentSelection.width > 10
                             && currentSelection.height > 10
                         {
-                            image = try await screenshotService.captureArea(rect: currentSelection)
-                            // Hide area selection overlay
+                            // Hide area selection overlay BEFORE taking screenshot
+                            Logger.d(
+                                "FloatingPanelViewModel: Hiding area selection overlay before screenshot"
+                            )
                             areaSelectionManager.hide(with: nil)
                             isAreaSelectionActive = false
+
+                            // Wait a bit for the overlay to disappear
+                            try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
+
+                            // Now take the screenshot
+                            image = try await screenshotService.captureArea(rect: currentSelection)
                         } else {
                             Logger.w("FloatingPanelViewModel: No valid selection")
                             showFloatingPanel()
@@ -204,9 +212,17 @@ import SwiftUI
         private func captureSelectedArea(rect: NSRect) async {
             Logger.d("FloatingPanelViewModel: Capturing selected area: \(rect)")
 
-            // Hide area selection overlay
+            // Hide area selection overlay BEFORE taking screenshot
+            Logger.d("FloatingPanelViewModel: Hiding area selection overlay before screenshot")
             areaSelectionManager.hide(with: nil)
             isAreaSelectionActive = false
+
+            // Wait a bit for the overlay to disappear
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
+            } catch {
+                Logger.w("FloatingPanelViewModel: Sleep interrupted: \(error)")
+            }
 
             do {
                 let image = try await screenshotService.captureArea(rect: rect)
