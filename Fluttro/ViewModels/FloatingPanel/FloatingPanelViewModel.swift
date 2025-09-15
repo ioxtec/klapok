@@ -28,6 +28,7 @@ import SwiftUI
         private let screenshotService = ScreenshotService()
         private let editorViewModel: EditorViewModel
         private let areaSelectionManager = AreaSelectionManager()
+        @MainActor private lazy var windowSelectionManager = WindowSelectionManager()
 
         // MARK: - Panel Visibility
 
@@ -109,19 +110,35 @@ import SwiftUI
                 case .window:
                     guard let window = selectedWindow else {
                         Logger.w("No window selected")
+                        // Pokaż komunikat o błędzie
+                        showNoWindowSelectedMessage()
                         showFloatingPanel()
                         return
                     }
                     image = try await screenshotService.captureWindow(window)
-                    hideWindowSelection()
                 }
 
                 editorViewModel.show(image: image)
                 Logger.s("FloatingPanelViewModel: Editor opened successfully")
+
+                // Ukryj window selection po udanym zrzucie
+                if screenshotType == .window {
+                    hideWindowSelection()
+                }
+
                 // Panel zostanie ukryty przez AppDelegate gdy edytor się otworzy
 
             } catch {
                 Logger.e("FloatingPanelViewModel: Screenshot error: \(error)")
+
+                // Ukryj overlay również w przypadku błędu
+                if screenshotType == .window {
+                    hideWindowSelection()
+                }
+                if screenshotType == .area {
+                    hideAreaSelection()
+                }
+
                 // Pokaż panel z powrotem tylko w przypadku błędu
                 showFloatingPanel()
             }
@@ -136,7 +153,7 @@ import SwiftUI
             Logger.d(
                 "FloatingPanelViewModel: Screenshot type changing from \(oldType) to \(newType)")
 
-            // Clean up old mode
+            // Clean up old mode with delay to prevent race conditions
             switch oldType {
             case .area:
                 hideAreaSelection()
@@ -146,14 +163,19 @@ import SwiftUI
                 break
             }
 
-            // Activate new mode
-            switch newType {
-            case .fullScreen:
-                break
-            case .area:
-                showAreaSelection()
-            case .window:
-                showWindowSelection()
+            // Add delay before activating new mode to ensure cleanup is complete
+            Task {
+                try? await Task.sleep(nanoseconds: 100_000_000)  // 100ms delay
+
+                // Activate new mode
+                switch newType {
+                case .fullScreen:
+                    break
+                case .area:
+                    showAreaSelection()
+                case .window:
+                    showWindowSelection()
+                }
             }
         }
 
@@ -179,12 +201,12 @@ import SwiftUI
                                     await self.captureSelectedArea(rect: rect)
                                 }
                             } else {
-                                // User cancelled (pressed Esc) - change back to fullScreen mode
+                                // User cancelled (pressed Esc) - just hide area selection
                                 Logger.d(
-                                    "FloatingPanelViewModel: Area selection cancelled, switching to fullScreen"
+                                    "FloatingPanelViewModel: Area selection cancelled"
                                 )
                                 self.hideAreaSelection()
-                                self.screenshotType = .fullScreen
+                                // Don't automatically switch to fullScreen - let user choose
                             }
                         }
 
@@ -233,14 +255,68 @@ import SwiftUI
             }
         }
 
+        @MainActor
         private func showWindowSelection() {
+            Logger.d("FloatingPanelViewModel: Showing window selection")
+
+            hideWindowSelection()
+
+            windowSelectionManager.show { [weak self] selectedWindow in
+                Logger.d(
+                    "FloatingPanelViewModel: Window selection completed: \(String(describing: selectedWindow?.title))"
+                )
+
+                // Zawsze ustaw selectedWindow (może być nil jeśli odznaczono)
+                self?.selectedWindow = selectedWindow
+
+                if let window = selectedWindow {
+                    Logger.d(
+                        "FloatingPanelViewModel: Window selected: \(window.title ?? "Unknown")")
+                } else {
+                    Logger.d("FloatingPanelViewModel: Window deselected")
+                }
+
+                // NIE zamykamy overlay - zostaje otwarty dla dalszego wyboru
+            }
+
             isWindowSelectionActive = true
-            Logger.d("Window selection mode active")
+            Logger.s("FloatingPanelViewModel: Window selection active")
         }
 
+        @MainActor
         private func hideWindowSelection() {
+            Logger.d("FloatingPanelViewModel: Hiding window selection")
+
+            windowSelectionManager.hide()
             isWindowSelectionActive = false
             selectedWindow = nil
+
+            Logger.d("FloatingPanelViewModel: Window selection hidden")
+        }
+
+        @MainActor
+        private func captureSelectedWindow(window: SCWindow) async {
+            Logger.d(
+                "FloatingPanelViewModel: Capturing selected window: \(window.title ?? "Unknown")")
+
+            // Hide window selection overlay
+            hideWindowSelection()
+
+            // Small delay to ensure overlay is hidden
+            do {
+                try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
+            } catch {
+                Logger.w("FloatingPanelViewModel: Sleep interrupted: \(error)")
+            }
+
+            do {
+                let image = try await screenshotService.captureWindow(window)
+                editorViewModel.show(image: image)
+                Logger.s("FloatingPanelViewModel: Window screenshot completed")
+            } catch {
+                Logger.e("FloatingPanelViewModel: Window capture error: \(error)")
+                showFloatingPanel()  // Show panel back on error
+            }
         }
 
         // MARK: - Panel Visibility Control
@@ -255,6 +331,37 @@ import SwiftUI
         private func showFloatingPanel() {
             Logger.d("FloatingPanelViewModel: Showing floating panel after screenshot")
             panelWindow?.orderFront(nil)
+        }
+
+        @MainActor
+        func initializeCurrentMode() {
+            Logger.d("FloatingPanelViewModel: Initializing current mode: \(screenshotType)")
+            // Aktywuj aktualny tryb jeśli nie jest fullScreen
+            switch screenshotType {
+            case .area:
+                if !isAreaSelectionActive {
+                    showAreaSelection()
+                }
+            case .window:
+                if !isWindowSelectionActive {
+                    showWindowSelection()
+                }
+            case .fullScreen:
+                break
+            }
+        }
+
+        @MainActor
+        private func showNoWindowSelectedMessage() {
+            // Pokaż alert lub notification o braku zaznaczonego okna
+            let alert = NSAlert()
+            alert.messageText = "No Window Selected"
+            alert.informativeText = "Please select a window first by clicking on it in the overlay."
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "OK")
+
+            // Pokaż alert przez 3 sekundy i automatycznie zamknij
+            alert.runModal()
         }
     }
 

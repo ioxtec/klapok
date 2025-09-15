@@ -185,6 +185,10 @@ import SwiftUI
             if let existingPanel = panelWindow {
                 existingPanel.orderFront(nil)
                 isPanelPresented = true
+                // Zainicjuj aktualny tryb dla istniejącego panelu
+                Task { @MainActor in
+                    floatingPanelViewModel?.initializeCurrentMode()
+                }
                 return
             }
 
@@ -196,9 +200,9 @@ import SwiftUI
                 defer: false
             )
             panel.isFloatingPanel = true
-            // Set panel level higher than overlay to keep it visible above area selection
+            // Set panel level higher than overlay to keep it visible above everything
             panel.level = NSWindow.Level(
-                rawValue: Int(CGWindowLevelForKey(.assistiveTechHighWindow)) + 1)
+                rawValue: Int(CGWindowLevelForKey(.screenSaverWindow)) + 10)
             panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
             panel.hidesOnDeactivate = false
             panel.titleVisibility = .hidden
@@ -267,6 +271,11 @@ import SwiftUI
 
             // Przekaż referencję do panelu do ViewModel
             panelViewModel.panelWindow = panel
+
+            // Zainicjuj aktualny tryb (jeśli nie fullScreen)
+            Task { @MainActor in
+                panelViewModel.initializeCurrentMode()
+            }
         }
 
         private func setupStatusBarItem() {

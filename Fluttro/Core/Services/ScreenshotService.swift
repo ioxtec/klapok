@@ -162,6 +162,7 @@ import Foundation
         /// Captures a specific window
         @MainActor
         func captureWindow(_ window: SCWindow) async throws -> NSImage {
+            Logger.d("ScreenshotService: captureWindow called for: \(window.title ?? "Unknown")")
             return try await captureWindowInternal(window)
         }
 
@@ -310,6 +311,16 @@ import Foundation
 
         @MainActor
         private func captureWindowInternal(_ window: SCWindow) async throws -> NSImage {
+            Logger.d("ScreenshotService: Capturing window: \(window.title ?? "Unknown")")
+
+            // Check if window is likely capturable
+            guard window.owningApplication != nil else {
+                Logger.e("ScreenshotService: Window has no owning application")
+                throw ScreenshotError.unavailable
+            }
+
+            // Use desktopIndependentWindow for capturing just the window content
+            Logger.d("ScreenshotService: Creating filter for window-only capture")
             let filter = SCContentFilter(desktopIndependentWindow: window)
             let config = SCStreamConfiguration()
             config.width = Int(window.frame.width)
@@ -325,15 +336,20 @@ import Foundation
 
             try await stream.startCapture()
 
-            let image: NSImage = try await withCheckedThrowingContinuation { continuation in
-                output.continuation = continuation
+            // Add timeout for problematic windows
+            let image: NSImage = try await withTimeout(seconds: 5) {
+                try await withCheckedThrowingContinuation { continuation in
+                    output.continuation = continuation
+                }
             }
 
             do {
                 try await stream.stopCapture()
             } catch {
-                Logger.w("Błąd podczas zatrzymywania streamu window (można zignorować): \(error)")
+                Logger.w("ScreenshotService: Error stopping window stream (can ignore): \(error)")
             }
+
+            Logger.s("ScreenshotService: Window capture completed successfully")
             return image
         }
     }
