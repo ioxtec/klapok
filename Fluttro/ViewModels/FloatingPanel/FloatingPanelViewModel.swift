@@ -34,6 +34,22 @@ import SwiftUI
 
         weak var panelWindow: NSPanel?
 
+        @MainActor
+        func hideFloatingPanel() {
+            Logger.d("FloatingPanelViewModel: Hiding floating panel")
+            panelWindow?.orderOut(nil)
+        }
+
+        @MainActor
+        func showFloatingPanel() {
+            Logger.d("FloatingPanelViewModel: Showing floating panel")
+            panelWindow?.orderFront(nil)
+            // Ensure floating panel is always on top
+            if let panel = panelWindow {
+                WindowDepthManager.shared.ensureFloatingPanelOnTop(panel)
+            }
+        }
+
         // MARK: - Initialization
 
         init(editorViewModel: EditorViewModel) {
@@ -182,6 +198,7 @@ import SwiftUI
         @MainActor
         private func showAreaSelection() {
             Logger.d("FloatingPanelViewModel: Showing area selection")
+            WindowDepthManager.shared.logCurrentLevels()
 
             hideAreaSelection()
 
@@ -320,18 +337,6 @@ import SwiftUI
         }
 
         // MARK: - Panel Visibility Control
-
-        @MainActor
-        private func hideFloatingPanel() {
-            Logger.d("FloatingPanelViewModel: Hiding floating panel for screenshot")
-            panelWindow?.orderOut(nil)
-        }
-
-        @MainActor
-        private func showFloatingPanel() {
-            Logger.d("FloatingPanelViewModel: Showing floating panel after screenshot")
-            panelWindow?.orderFront(nil)
-        }
 
         @MainActor
         func initializeCurrentMode() {

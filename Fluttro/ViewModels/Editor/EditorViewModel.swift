@@ -7,6 +7,7 @@
 
 import Combine
 import Foundation
+import SwiftUI
 import UniformTypeIdentifiers
 
 #if os(macOS)
@@ -18,6 +19,11 @@ import UniformTypeIdentifiers
         @Published var image: NSImage?
         @Published var isPresented: Bool = false
         @Published var isCapturing: Bool = false
+
+        // Editor properties
+        @Published var enableRoundedCorners: Bool = false
+        @Published var cornerRadius: Double = 12.0
+        @Published var selectedBackgroundColor: Color = .clear
 
         // MARK: - Dependencies
 

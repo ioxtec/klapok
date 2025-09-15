@@ -102,9 +102,8 @@ import SwiftUI
                 defer: false
             )
 
-            // Use the highest possible window level to cover menu bar
-            window.level = NSWindow.Level(
-                rawValue: Int(CGWindowLevelForKey(.assistiveTechHighWindow)))
+            // Set window level using WindowDepthManager
+            WindowDepthManager.shared.setLevel(for: window, type: .areaSelectionOverlay)
             window.backgroundColor = .clear
             window.isOpaque = false
             window.hasShadow = false

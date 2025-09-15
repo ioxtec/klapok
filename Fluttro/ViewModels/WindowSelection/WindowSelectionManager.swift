@@ -91,8 +91,8 @@ import SwiftUI
 
             guard let window = overlayWindow else { return }
 
-            // Configure window
-            window.level = .screenSaver  // High level to appear above other windows
+            // Configure window using WindowDepthManager
+            WindowDepthManager.shared.setLevel(for: window, type: .windowSelectionOverlay)
             window.backgroundColor = NSColor.clear
             window.isOpaque = false
             window.hasShadow = false

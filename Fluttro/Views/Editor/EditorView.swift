@@ -96,8 +96,13 @@ import SwiftUI
                                         .resizable()
                                         .interpolation(.none)  // Disable interpolation for sharper pixels
                                         .frame(width: finalWidth, height: finalHeight)
-                                        .background(Color.white)
-                                        .cornerRadius(8)
+                                        .background(viewModel.selectedBackgroundColor)
+                                        .clipShape(
+                                            RoundedRectangle(
+                                                cornerRadius: viewModel.enableRoundedCorners
+                                                    ? viewModel.cornerRadius : 0
+                                            )
+                                        )
                                         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
 
                                     Spacer()
@@ -177,6 +182,38 @@ import SwiftUI
                         .padding(.bottom, 8)
                     }
 
+                    // Corner Radius Section
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Corner Radius")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+
+                        Toggle("Rounded Corners", isOn: $viewModel.enableRoundedCorners)
+                            .toggleStyle(.switch)
+
+                        if viewModel.enableRoundedCorners {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack {
+                                    Text("Radius:")
+                                    Spacer()
+                                    Text("\(Int(viewModel.cornerRadius)) px")
+                                        .foregroundColor(.secondary)
+                                        .font(.system(size: 12, design: .monospaced))
+                                }
+
+                                Slider(
+                                    value: $viewModel.cornerRadius,
+                                    in: 0...50,
+                                    step: 1
+                                )
+                            }
+                            .padding(.leading, 8)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.enableRoundedCorners)
+                    .padding(.bottom, 16)
+
                     // Background options
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Background")
@@ -194,8 +231,17 @@ import SwiftUI
                                     .cornerRadius(6)
                                     .overlay(
                                         RoundedRectangle(cornerRadius: 6)
-                                            .stroke(Color.primary.opacity(0.2), lineWidth: 1)
+                                            .stroke(
+                                                viewModel.selectedBackgroundColor == color
+                                                    ? Color.accentColor
+                                                    : Color.primary.opacity(0.2),
+                                                lineWidth: viewModel.selectedBackgroundColor
+                                                    == color ? 2 : 1
+                                            )
                                     )
+                                    .onTapGesture {
+                                        viewModel.selectedBackgroundColor = color
+                                    }
                             }
                         }
                     }
