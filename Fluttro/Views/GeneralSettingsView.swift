@@ -12,18 +12,44 @@ import SwiftUI
 struct GeneralSettingsView: View {
         @StateObject private var viewModel = SettingsViewModel()
         @StateObject private var permissionsManager = PermissionsManager.shared
+        @StateObject private var languageManager = LanguageManager.shared
 
         var body: some View {
             ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                // Language Selection Section
+                GroupBox(LocalizationKeys.languageTitle.localized) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SettingsPickerOption(
+                            title: LocalizationKeys.languageTitle.localized,
+                            description: LocalizationKeys.languageDescription.localized,
+                            isLast: true,
+                            selection: Binding(
+                                get: { languageManager.selectedLanguage.rawValue },
+                                set: { 
+                                    if let newLanguage = AppLanguage(rawValue: $0) {
+                                        languageManager.selectedLanguage = newLanguage
+                                    }
+                                }
+                            ),
+                            options: [
+                                (AppLanguage.system.rawValue, LocalizationKeys.languageOptionSystem.localized),
+                                (AppLanguage.english.rawValue, LocalizationKeys.languageOptionEnglish.localized),
+                                (AppLanguage.polish.rawValue, LocalizationKeys.languageOptionPolish.localized),
+                                (AppLanguage.german.rawValue, LocalizationKeys.languageOptionGerman.localized)
+                            ]
+                        )
+                    }
+                }
+                
                 // Permissions Section - Only show if permissions are missing
                     if !permissionsManager.hasScreenCapturePermission || 
                        !permissionsManager.hasFileAccessPermission || 
                        !permissionsManager.hasAccessibilityPermission {
                         
-                        GroupBox("Uprawnienia") {
+                        GroupBox(LocalizationKeys.permissionsTitle.localized) {
                             VStack(alignment: .leading, spacing: 0) {
-                                Text("Aplikacja wymaga następujących uprawnień:")
+                                Text(LocalizationKeys.permissionsDescription.localized)
                                     .font(.subheadline)
                                     .foregroundColor(.secondary)
                                     .padding(.horizontal, 16)
@@ -38,10 +64,10 @@ struct GeneralSettingsView: View {
                                 SettingsOptionView {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text("Nagrywanie ekranu")
+                                            Text(LocalizationKeys.permissionScreenRecordingTitle.localized)
                                                 .font(.body)
                                                 .foregroundColor(.primary)
-                                            Text("Potrzebne do robienia zrzutów ekranu i nagrywania")
+                                            Text(LocalizationKeys.permissionScreenRecordingDescription.localized)
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
@@ -53,7 +79,7 @@ struct GeneralSettingsView: View {
                                                 .foregroundColor(.green)
                                                 .font(.title2)
                                         } else {
-                                            Button("Otwórz ustawienia") {
+                                            Button(LocalizationKeys.openSettingsButton.localized) {
                                                 permissionsManager.openScreenRecordingSettings()
                                             }
                                             .buttonStyle(.borderedProminent)
@@ -65,10 +91,10 @@ struct GeneralSettingsView: View {
                                 SettingsOptionView {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text("Dostęp do plików")
+                                            Text(LocalizationKeys.permissionFileAccessTitle.localized)
                                                 .font(.body)
                                                 .foregroundColor(.primary)
-                                            Text("Potrzebny do zapisywania zrzutów ekranu")
+                                            Text(LocalizationKeys.permissionFileAccessDescription.localized)
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
@@ -92,10 +118,10 @@ struct GeneralSettingsView: View {
                                 SettingsOptionView(isLast: true) {
                                     HStack {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            Text("Dostępność")
+                                            Text(LocalizationKeys.permissionAccessibilityTitle.localized)
                                                 .font(.body)
                                                 .foregroundColor(.primary)
-                                            Text("Potrzebny do globalnych skrótów klawiszowych")
+                                            Text(LocalizationKeys.permissionAccessibilityDescription.localized)
                                                 .font(.caption)
                                                 .foregroundColor(.secondary)
                                         }
@@ -119,12 +145,12 @@ struct GeneralSettingsView: View {
                     }
 
                     // Save Directory Section
-                    GroupBox("Folder zapisywania") {
+                    GroupBox(LocalizationKeys.saveDirectoryTitle.localized) {
                         VStack(alignment: .leading, spacing: 0) {
                             SettingsPathOption(
-                                title: "Folder zapisywania",
+                                title: LocalizationKeys.saveDirectoryOptionTitle.localized,
                                 path: viewModel.saveDirectory.path,
-                                description: "Folder gdzie zapisywane są zrzuty ekranu",
+                                description: LocalizationKeys.saveDirectoryDescription.localized,
                                 infoText: "Możesz wybrać dowolny folder na swoim dysku. Aplikacja automatycznie utworzy folder 'Fluttro Screenshots' jeśli nie istnieje.",
                                 isLast: true,
                                 action: {
@@ -135,10 +161,10 @@ struct GeneralSettingsView: View {
                     }
 
                     // File Name Template Section
-                    GroupBox("Nazwa pliku") {
+                    GroupBox(LocalizationKeys.filenameTemplateTitle.localized) {
                         VStack(alignment: .leading, spacing: 0) {
                             SettingsTextOption(
-                                title: "Szablon nazwy",
+                                title: LocalizationKeys.filenameTemplateOptionTitle.localized,
                                 description: "Podgląd: \(viewModel.previewFileName)",
                                 infoText: "Użyj zmiennych {datetime} dla pełnej daty i czasu, {date} dla samej daty. Nazwy plików są automatycznie generowane na podstawie tego szablonu.",
                                 text: $viewModel.fileNameTemplate,
@@ -155,23 +181,23 @@ struct GeneralSettingsView: View {
                     }
 
                     // App Behavior Section
-                    GroupBox("Zachowanie aplikacji") {
+                    GroupBox(LocalizationKeys.appBehaviorTitle.localized) {
                         VStack(alignment: .leading, spacing: 0) {
                             SettingsToggleOption(
-                                title: "Pokaż ikonę w Docku",
-                                description: "Wyświetl ikonę aplikacji w Docku",
+                                title: LocalizationKeys.showInDockTitle.localized,
+                                description: LocalizationKeys.showInDockDescription.localized,
                                 isOn: $viewModel.showInDock
                             )
                             
                             SettingsToggleOption(
-                                title: "Uruchom przy logowaniu",
-                                description: "Automatycznie uruchom aplikację po zalogowaniu",
+                                title: LocalizationKeys.launchAtLoginTitle.localized,
+                                description: LocalizationKeys.launchAtLoginDescription.localized,
                                 isOn: $viewModel.launchAtLogin
                             )
                             
                             SettingsToggleOption(
-                                title: "Pokaż kursor myszy w zrzutach",
-                                description: "Dołącz kursor myszy do zrzutów ekranu",
+                                title: LocalizationKeys.showMouseCursorTitle.localized,
+                                description: LocalizationKeys.showMouseCursorDescription.localized,
                                 isLast: true,
                                 isOn: $viewModel.showMouseCursor
                             )
@@ -181,7 +207,7 @@ struct GeneralSettingsView: View {
                     // Reset Button
                     HStack {
                         Spacer()
-                        Button("Przywróć domyślne") {
+                        Button(LocalizationKeys.resetDefaultsButton.localized) {
                             viewModel.resetToDefaults()
                         }
                         .foregroundColor(.red)
@@ -189,6 +215,7 @@ struct GeneralSettingsView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
+                .padding(.bottom, 24) // Add bottom spacing
             }
             .frame(minWidth: 600, maxWidth: .infinity, minHeight: 350, maxHeight: .infinity)
         }

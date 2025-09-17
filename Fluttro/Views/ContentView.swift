@@ -12,7 +12,7 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Text("Fluttro - Zrzuty Ekranu")
+            Text(LocalizationKeys.appName.localized)
                 .font(.title)
                 .padding()
 

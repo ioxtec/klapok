@@ -17,25 +17,25 @@ struct VideoSettingsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 
                 // Video Quality Section
-                GroupBox("Jakość nagrywania") {
+                GroupBox(LocalizationKeys.videoQualityTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsPickerOption(
-                            title: "Rozdzielczość",
-                            description: "Rozdzielczość nagrywania",
+                            title: LocalizationKeys.resolutionTitle.localized,
+                            description: LocalizationKeys.resolutionDescription.localized,
                             selection: .constant("Source"),
                             options: [("Source", "Źródło"), ("1080p", "1080p"), ("720p", "720p"), ("480p", "480p")]
                         )
                         
                         SettingsPickerOption(
-                            title: "FPS",
-                            description: "Liczba klatek na sekundę",
+                            title: LocalizationKeys.fpsTitle.localized,
+                            description: LocalizationKeys.fpsDescription.localized,
                             selection: .constant("30"),
                             options: [("60", "60 FPS"), ("30", "30 FPS"), ("24", "24 FPS")]
                         )
                         
                         SettingsPickerOption(
-                            title: "Bitrate",
-                            description: "Jakość kompresji wideo",
+                            title: LocalizationKeys.bitrateTitle.localized,
+                            description: LocalizationKeys.bitrateDescription.localized,
                             isLast: true,
                             selection: .constant("Auto"),
                             options: [("Auto", "Auto"), ("High", "Wysoki"), ("Medium", "Średni"), ("Low", "Niski")]
@@ -44,23 +44,23 @@ struct VideoSettingsView: View {
                 }
                 
                 // Audio Settings Section
-                GroupBox("Audio") {
+                GroupBox(LocalizationKeys.audioTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsToggleOption(
-                            title: "Nagrywaj audio systemu",
-                            description: "Dołącz dźwięk z systemu do nagrań",
+                            title: LocalizationKeys.recordSystemAudioTitle.localized,
+                            description: LocalizationKeys.recordSystemAudioDescription.localized,
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: "Nagrywaj mikrofon",
-                            description: "Dołącz dźwięk z mikrofonu do nagrań",
+                            title: LocalizationKeys.recordMicrophoneTitle.localized,
+                            description: LocalizationKeys.recordMicrophoneDescription.localized,
                             isOn: .constant(false)
                         )
                         
                         SettingsPickerOption(
-                            title: "Jakość audio",
-                            description: "Jakość nagrywania dźwięku",
+                            title: LocalizationKeys.audioQualityTitle.localized,
+                            description: LocalizationKeys.audioQualityDescription.localized,
                             isLast: true,
                             selection: .constant("High"),
                             options: [("High", "Wysoka"), ("Medium", "Średnia"), ("Low", "Niska")]
@@ -69,29 +69,29 @@ struct VideoSettingsView: View {
                 }
                 
                 // Recording Behavior Section
-                GroupBox("Zachowanie podczas nagrywania") {
+                GroupBox(LocalizationKeys.recordingBehaviorTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsToggleOption(
-                            title: "Pokaż timer nagrywania",
-                            description: "Wyświetl licznik czasu podczas nagrywania",
+                            title: LocalizationKeys.showRecordingTimerTitle.localized,
+                            description: LocalizationKeys.showRecordingTimerDescription.localized,
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: "Pokaż kursor myszy",
-                            description: "Dołącz kursor myszy do nagrań",
+                            title: LocalizationKeys.showMouseCursorVideoTitle.localized,
+                            description: LocalizationKeys.showMouseCursorVideoDescription.localized,
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: "Automatycznie zatrzymaj po czasie",
-                            description: "Zatrzymaj nagrywanie po określonym czasie",
+                            title: LocalizationKeys.autoStopAfterTimeTitle.localized,
+                            description: LocalizationKeys.autoStopAfterTimeDescription.localized,
                             isOn: .constant(false)
                         )
                         
                         SettingsPickerOption(
-                            title: "Maksymalny czas",
-                            description: "Limit czasu nagrywania",
+                            title: LocalizationKeys.maxTimeTitle.localized,
+                            description: LocalizationKeys.maxTimeDescription.localized,
                             isLast: true,
                             selection: .constant("10min"),
                             options: [("5min", "5 min"), ("10min", "10 min"), ("30min", "30 min"), ("unlimited", "Bez limitu")]
@@ -100,12 +100,12 @@ struct VideoSettingsView: View {
                 }
                 
                 // File Settings Section
-                GroupBox("Pliki") {
+                GroupBox(LocalizationKeys.filesTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsOptionView(isLast: false) {
                             VStack(alignment: .leading, spacing: 8) {
                                 HStack {
-                                    Text("Format")
+                                    Text(LocalizationKeys.formatTitle.localized)
                                         .font(.body)
                                         .foregroundColor(.primary)
                                     
@@ -123,14 +123,14 @@ struct VideoSettingsView: View {
                         }
                         
                         SettingsToggleOption(
-                            title: "Kompresuj po nagraniu",
-                            description: "Automatycznie kompresuj pliki wideo",
+                            title: LocalizationKeys.compressAfterRecordingTitle.localized,
+                            description: LocalizationKeys.compressAfterRecordingDescription.localized,
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: "Usuń po nagraniu (jeśli nie zapisano)",
-                            description: "Usuń pliki tymczasowe po nagraniu",
+                            title: LocalizationKeys.deleteAfterRecordingTitle.localized,
+                            description: LocalizationKeys.deleteAfterRecordingDescription.localized,
                             isLast: true,
                             isOn: .constant(false)
                         )
@@ -139,6 +139,7 @@ struct VideoSettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
+            .padding(.bottom, 24) // Add bottom spacing
         }
         .frame(minWidth: 600, maxWidth: .infinity, minHeight: 400, maxHeight: .infinity)
     }

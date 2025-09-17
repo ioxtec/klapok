@@ -377,7 +377,7 @@ struct SettingsPathOption: View {
                     
                     Spacer()
                     
-                    Button("Wybierz folder...") {
+                             Button(LocalizationKeys.chooseFolderButton.localized) {
                         action()
                     }
                     .buttonStyle(.bordered)

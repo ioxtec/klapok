@@ -17,18 +17,18 @@ struct ImageSettingsView: View {
             VStack(alignment: .leading, spacing: 24) {
                 
                 // Image Quality Section
-                GroupBox("Jakość obrazu") {
+                GroupBox(LocalizationKeys.imageQualityTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsPickerOption(
-                            title: "Format",
-                            description: "Format pliku dla nowych zrzutów",
+                            title: LocalizationKeys.formatTitle.localized,
+                            description: LocalizationKeys.formatDescription.localized,
                             selection: .constant("PNG"),
                             options: [("PNG", "PNG"), ("JPEG", "JPEG")]
                         )
                         
                         SettingsSliderOption(
-                            title: "Jakość",
-                            description: "Jakość obrazu dla formatu JPEG",
+                            title: LocalizationKeys.qualityTitle.localized,
+                            description: LocalizationKeys.qualityDescription.localized,
                             isLast: true,
                             value: .constant(0.9),
                             in: 0.1...1.0,
@@ -39,18 +39,18 @@ struct ImageSettingsView: View {
                 }
                 
                 // Editor Settings Section
-                GroupBox("Edytor") {
+                GroupBox(LocalizationKeys.editorTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsPickerOption(
-                            title: "Domyślny gradient",
-                            description: "Gradient tła dla nowych zrzutów",
+                            title: LocalizationKeys.defaultGradientTitle.localized,
+                            description: LocalizationKeys.defaultGradientDescription.localized,
                             selection: .constant("Cool"),
                             options: [("Cool", "Cool"), ("Warm", "Warm"), ("Violet", "Violet"), ("None", "None")]
                         )
                         
                         SettingsSliderOption(
-                            title: "Domyślny padding",
-                            description: "Odstęp wokół zrzutu na tle",
+                            title: LocalizationKeys.defaultPaddingTitle.localized,
+                            description: LocalizationKeys.defaultPaddingDescription.localized,
                             isLast: false,
                             value: .constant(30.0),
                             in: 10...100,
@@ -69,7 +69,7 @@ struct ImageSettingsView: View {
                 }
                 
                 // Capture Behavior Section
-                GroupBox("Zachowanie podczas przechwytywania") {
+                GroupBox(LocalizationKeys.captureBehaviorTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsToggleOption(
                             title: "Pokaż kursor myszy",
@@ -100,6 +100,7 @@ struct ImageSettingsView: View {
             }
             .padding(.horizontal, 20)
             .padding(.top, 16)
+            .padding(.bottom, 24) // Add bottom spacing
         }
         .frame(minWidth: 600, maxWidth: .infinity, minHeight: 400, maxHeight: .infinity)
     }
