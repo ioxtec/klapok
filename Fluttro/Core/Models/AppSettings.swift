@@ -128,10 +128,12 @@ import Foundation
         }
 
         func saveScreenshot(_ image: NSImage) -> URL? {
+            print("AppSettings: Current saveDirectory: \(saveDirectory.path)")
             createSaveDirectoryIfNeeded()
 
             let fileName = formattedFileName + ".png"
             let fileURL = saveDirectory.appendingPathComponent(fileName)
+            print("AppSettings: Trying to save to: \(fileURL.path)")
 
             guard let tiffData = image.tiffRepresentation,
                 let bitmapRep = NSBitmapImageRep(data: tiffData),
@@ -154,14 +156,18 @@ import Foundation
         // MARK: - Private Methods
 
         private func createSaveDirectoryIfNeeded() {
+            print("AppSettings: Checking if directory exists: \(saveDirectory.path)")
             if !FileManager.default.fileExists(atPath: saveDirectory.path) {
+                print("AppSettings: Directory does not exist, creating...")
                 do {
                     try FileManager.default.createDirectory(
                         at: saveDirectory, withIntermediateDirectories: true)
-                    print("AppSettings: Created save directory: \(saveDirectory.path)")
+                    print("AppSettings: Successfully created save directory: \(saveDirectory.path)")
                 } catch {
                     print("AppSettings: Failed to create save directory: \(error)")
                 }
+            } else {
+                print("AppSettings: Directory already exists: \(saveDirectory.path)")
             }
         }
 

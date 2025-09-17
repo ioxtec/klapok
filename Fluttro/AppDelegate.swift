@@ -14,7 +14,7 @@ import SwiftUI
 
     final class AppDelegate: NSObject, NSApplicationDelegate {
         private let hotkeyManager = HotkeyManager()
-        private let screenshotService = ScreenshotService()
+        @MainActor private let captureManager = CaptureManager.shared
         private let editorViewModel = EditorViewModel()
         private var floatingPanelViewModel: FloatingPanelViewModel?
         private var cancellables = Set<AnyCancellable>()
@@ -124,7 +124,7 @@ import SwiftUI
         private func handleHotkey() {
             Task { @MainActor in
                 do {
-                    let image = try await screenshotService.captureMainDisplay()
+                    let image = try await captureManager.captureFullScreen()
                     editorViewModel.show(image: image)  // To wywoła setupEditorObservation
                 } catch {
                     NSLog("Screenshot failed: \(error.localizedDescription)")

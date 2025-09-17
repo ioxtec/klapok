@@ -23,10 +23,23 @@ import SwiftUI
         // MARK: - Lifecycle
 
         deinit {
-            // Clean up synchronously in deinit
+            // Avoid calling @MainActor APIs from deinit. Only invalidate timer here.
+            highlightTimer?.invalidate()
+            highlightTimer = nil
+            
+            // If a highlight window is still present, it means shutdown() was not called.
+            // We cannot safely call NSWindow.close() from deinit since it's @MainActor.
+            // This is a no-op here to avoid main-actor violations.
+        }
+
+        /// Explicit shutdown to clean up main-actor resources safely.
+        @MainActor
+        func shutdown() {
+            // Invalidate timer first
             highlightTimer?.invalidate()
             highlightTimer = nil
 
+            // Safely close and clear highlight window on the main actor
             if let window = highlightWindow {
                 window.close()
                 highlightWindow = nil
@@ -47,17 +60,7 @@ import SwiftUI
         }
 
         func stopHighlighting() {
-            // Invalidate timer first to prevent new animations
-            highlightTimer?.invalidate()
-            highlightTimer = nil
-
-            // Safely close and clear highlight window
-            if let window = highlightWindow {
-                window.close()
-                highlightWindow = nil
-            }
-
-            currentWindow = nil
+            shutdown()
         }
 
         // MARK: - Private Methods
