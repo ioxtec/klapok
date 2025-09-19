@@ -9,7 +9,7 @@ import Foundation
 
 #if os(macOS)
 import AppKit
-import ScreenCaptureKit
+@preconcurrency import ScreenCaptureKit
 import CoreMedia
 import CoreVideo
 
@@ -272,7 +272,7 @@ final class WindowCaptureService: ImageCaptureService {
     private func showWindowSelectionDialog(windows: [SCWindow]) async throws -> SCWindow? {
         return try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.main.async {
-                let dialog = WindowSelectionDialog(windows: windows) { window in
+                let dialog = WindowSelectionDialog(windows: windows) { @Sendable window in
                     continuation.resume(returning: window)
                 }
                 dialog.show()

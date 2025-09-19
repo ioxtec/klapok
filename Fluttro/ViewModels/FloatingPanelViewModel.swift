@@ -22,6 +22,14 @@ import SwiftUI
         @Published var isWindowSelectionActive: Bool = false
         @Published var selectedArea: NSRect = .zero
         @Published var selectedWindow: SCWindow?
+        
+        // Video recording state
+        @Published var videoRecordingState: VideoRecordingState = .idle
+        @Published var recordingDuration: TimeInterval = 0.0
+        private var recordingTimer: Timer?
+        
+        // Video editor window reference - simplified approach
+        private var videoEditorWindow: NSWindow?
 
         // MARK: - Dependencies
 
@@ -29,6 +37,7 @@ import SwiftUI
         private let editorViewModel: EditorViewModel
         private let areaSelectionManager = AreaSelectionManager()
         @MainActor private lazy var windowSelectionManager = WindowSelectionManager()
+        private let videoRecordingService = VideoRecordingService()
 
         // MARK: - Panel Visibility
 
@@ -54,6 +63,16 @@ import SwiftUI
 
         init(editorViewModel: EditorViewModel) {
             self.editorViewModel = editorViewModel
+        }
+        
+        deinit {
+            // Clean up video editor window if it exists
+            if let window = videoEditorWindow {
+                Task { @MainActor in
+                    window.close()
+                }
+            }
+            videoEditorWindow = nil
         }
 
         // MARK: - Public Methods
@@ -368,6 +387,220 @@ import SwiftUI
             // Show me alert for 3s and close it.
             alert.runModal()
         }
+        
+        // MARK: - Video Recording Methods
+        
+        @MainActor
+        func startVideoRecording() {
+            guard videoRecordingState == .idle else { return }
+            
+            Task {
+                do {
+                    // Pass floating panel window to exclude from recording
+                    let windowsToExclude: [NSWindow] = (panelWindow != nil) ? [panelWindow!] : []
+                    try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                    videoRecordingState = .recording
+                    startRecordingTimer()
+                    Logger.d("Video recording started")
+                } catch {
+                    Logger.e("Failed to start video recording: \(error)")
+                    // TODO: Show error to user
+                }
+            }
+        }
+        
+        @MainActor
+        func pauseVideoRecording() {
+            guard videoRecordingState == .recording else { return }
+            
+            Task {
+                do {
+                    try await videoRecordingService.pauseRecording()
+                    videoRecordingState = .paused
+                    stopRecordingTimer()
+                    Logger.d("Video recording paused")
+                } catch {
+                    Logger.e("Failed to pause video recording: \(error)")
+                }
+            }
+        }
+        
+        @MainActor
+        func resumeVideoRecording() {
+            guard videoRecordingState == .paused else { return }
+            
+            Task {
+                do {
+                    try await videoRecordingService.resumeRecording()
+                    videoRecordingState = .recording
+                    startRecordingTimer()
+                    Logger.d("Video recording resumed")
+                } catch {
+                    Logger.e("Failed to resume video recording: \(error)")
+                }
+            }
+        }
+        
+        @MainActor
+        func stopVideoRecording() {
+            guard videoRecordingState != .idle else { return }
+            
+            Task {
+                do {
+                    let recording = try await videoRecordingService.stopRecording()
+                    videoRecordingState = .idle
+                    stopRecordingTimer()
+                    recordingDuration = 0.0
+                    Logger.d("Video recording stopped: \(recording.duration)s")
+                    
+                    // Save video to user's chosen directory
+                    await saveVideoAndOpenEditor(recording)
+                } catch {
+                    Logger.e("Failed to stop video recording: \(error)")
+                }
+            }
+        }
+        
+        @MainActor
+        private func saveVideoAndOpenEditor(_ recording: VideoRecording) async {
+            let settings = AppSettings.shared
+            let originalDirectory = settings.videoSaveDirectory
+            
+            // Save video to user's chosen directory
+            if let savedURL = settings.saveVideo(recording.url) {
+                Logger.d("Video saved to: \(savedURL.path)")
+                
+                // Check if directory changed (fallback to default)
+                if settings.videoSaveDirectory != originalDirectory {
+                    showDirectoryChangedAlert(for: "video")
+                }
+                
+                // Create new VideoRecording with saved URL
+                let savedRecording = VideoRecording(
+                    url: savedURL,
+                    duration: recording.duration,
+                    size: recording.size,
+                    frameRate: recording.frameRate
+                )
+                
+                // Open video in editor
+                await openVideoInEditor(savedRecording)
+            } else {
+                Logger.e("Failed to save video")
+                showSaveErrorAlert()
+            }
+        }
+        
+        @MainActor
+        private func showDirectoryChangedAlert(for type: String) {
+            let alert = NSAlert()
+            alert.messageText = "Directory Changed"
+            alert.informativeText = "Could not save \(type) to the selected directory due to permissions. Saved to default directory instead."
+            alert.addButton(withTitle: "OK")
+            alert.alertStyle = .informational
+            alert.runModal()
+        }
+        
+        @MainActor
+        private func showSaveErrorAlert() {
+            let alert = NSAlert()
+            alert.messageText = "Save Failed"
+            alert.informativeText = "Could not save the video file. Please check your directory permissions."
+            alert.addButton(withTitle: "OK")
+            alert.alertStyle = .warning
+            alert.runModal()
+        }
+        
+        @MainActor
+        private func openVideoInEditor(_ recording: VideoRecording) async {
+            Logger.d("🔍 openVideoInEditor called - TESTING WITH SIMPLE WINDOW + DELEGATE")
+            Logger.d("🔍 Video file: \(recording.url.path)")
+            Logger.d("🔍 Video duration: \(recording.duration)")
+            Logger.d("🔍 Video size: \(recording.size)")
+            Logger.d("🔍 Video frame rate: \(recording.frameRate)")
+            
+            // Check if video file still exists
+            let fileExists = FileManager.default.fileExists(atPath: recording.url.path)
+            Logger.d("🔍 Video file exists: \(fileExists)")
+            
+            if fileExists {
+                let fileSize = (try? FileManager.default.attributesOfItem(atPath: recording.url.path)[.size] as? Int64) ?? 0
+                Logger.d("🔍 Video file size: \(fileSize) bytes")
+            }
+            
+            // Create video editor view model
+            let videoEditorViewModel = VideoEditorViewModel(video: recording)
+            
+            // Create video editor view
+            let videoEditorView = VideoEditorView(viewModel: videoEditorViewModel)
+            
+            // Create hosting view
+            let hostingView = NSHostingView(rootView: videoEditorView)
+            hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+            
+            // Create window delegate
+            let windowDelegate = VideoEditorWindowDelegate()
+            
+            // Create video editor window
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                backing: .buffered,
+                defer: false
+            )
+            
+            window.title = "Video Editor - \(recording.url.lastPathComponent)"
+            window.contentView = hostingView
+            window.delegate = windowDelegate
+            window.isReleasedWhenClosed = false
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+            
+            Logger.d("🔍 Video editor window created and shown")
+        }
+        
+        private func startRecordingTimer() {
+            stopRecordingTimer() // Stop any existing timer
+            
+            recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+                DispatchQueue.main.async {
+                    self?.recordingDuration = self?.videoRecordingService.currentRecordingDuration ?? 0.0
+                }
+            }
+        }
+        
+        private func stopRecordingTimer() {
+            recordingTimer?.invalidate()
+            recordingTimer = nil
+        }
+        
+        func formattedRecordingDuration() -> String {
+            let minutes = Int(recordingDuration) / 60
+            let seconds = Int(recordingDuration) % 60
+            return String(format: "%02d:%02d", minutes, seconds)
+        }
     }
+
+// MARK: - Video Editor Window Delegate
+@MainActor
+class VideoEditorWindowDelegate: NSObject, NSWindowDelegate {
+    override init() {
+        super.init()
+        print("🔍 VideoEditorWindowDelegate: init called")
+    }
+    
+    func windowWillClose(_ notification: Notification) {
+        print("🔍 VideoEditorWindowDelegate: windowWillClose called")
+    }
+    
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        print("🔍 VideoEditorWindowDelegate: windowShouldClose called")
+        return true
+    }
+    
+    deinit {
+        print("🔍 VideoEditorWindowDelegate: deinit called")
+    }
+}
 
 #endif

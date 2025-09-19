@@ -72,7 +72,7 @@ import SwiftUI
 
             // For now, just store the window frame for potential future use
             // The actual highlighting will be handled differently
-            let windowFrame = window.frame
+            _ = window.frame
             // TODO: Implement highlighting via SwiftUI overlay instead of separate NSWindow
         }
 
@@ -102,7 +102,7 @@ import SwiftUI
         }
 
         private func animateFlash() {
-            guard let overlay = highlightWindow else { return }
+            guard highlightWindow != nil else { return }
 
             // Animate opacity for flash effect
             NSAnimationContext.runAnimationGroup { [weak self] context in
@@ -111,10 +111,12 @@ import SwiftUI
                 overlay.animator().alphaValue = 0.8
             } completionHandler: { [weak self] in
                 guard let self = self else { return }
-                guard let overlay = self.highlightWindow else { return }
-                NSAnimationContext.runAnimationGroup { context in
-                    context.duration = 0.2
-                    overlay.animator().alphaValue = 0.3
+                Task { @MainActor in
+                    guard let overlay = self.highlightWindow else { return }
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.2
+                        overlay.animator().alphaValue = 0.3
+                    }
                 }
             }
         }

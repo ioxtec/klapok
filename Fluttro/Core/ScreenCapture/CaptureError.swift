@@ -27,6 +27,10 @@ enum CaptureError: Error, LocalizedError {
     case streamCreationFailed
     case streamStartFailed
     case streamStopFailed
+    case notImplemented(String)
+    case alreadyRecording
+    case notRecording
+    case invalidRequest(String)
     case unknown(Error)
     
     var errorDescription: String? {
@@ -55,6 +59,14 @@ enum CaptureError: Error, LocalizedError {
             return "Failed to start capture stream"
         case .streamStopFailed:
             return "Failed to stop capture stream"
+        case .notImplemented(let feature):
+            return "Feature not implemented: \(feature)"
+        case .alreadyRecording:
+            return "Video recording is already in progress"
+        case .notRecording:
+            return "No video recording is currently active"
+        case .invalidRequest(let reason):
+            return "Invalid request: \(reason)"
         case .unknown(let error):
             return "Unknown error occurred: \(error.localizedDescription)"
         }
@@ -86,6 +98,14 @@ enum CaptureError: Error, LocalizedError {
             return "Check permissions and system resources"
         case .streamStopFailed:
             return "This error can usually be ignored"
+        case .notImplemented:
+            return "This feature will be available in a future update"
+        case .alreadyRecording:
+            return "Stop the current recording before starting a new one"
+        case .notRecording:
+            return "Start a recording first"
+        case .invalidRequest:
+            return "Check your request parameters"
         case .unknown:
             return "Check the console for more details"
         }
@@ -109,13 +129,13 @@ enum CaptureErrorCategory {
             self = .system
         case .permissionDenied:
             self = .permission
-        case .invalidConfiguration:
+        case .invalidConfiguration, .invalidRequest:
             self = .configuration
         case .timeout:
             self = .network
-        case .userCancelled, .noWindowSelected:
+        case .userCancelled, .noWindowSelected, .alreadyRecording, .notRecording:
             self = .user
-        case .frameConversionFailed, .unknown:
+        case .frameConversionFailed, .unknown, .notImplemented:
             self = .unknown
         }
     }
@@ -151,7 +171,7 @@ struct CaptureErrorHandler {
         switch error {
         case .unavailable, .permissionDenied:
             return false
-        case .noDisplays, .noWindows, .noWindowSelected, .userCancelled, .timeout, .invalidConfiguration, .frameConversionFailed, .streamCreationFailed, .streamStartFailed, .streamStopFailed, .unknown:
+        case .noDisplays, .noWindows, .noWindowSelected, .userCancelled, .timeout, .invalidConfiguration, .frameConversionFailed, .streamCreationFailed, .streamStartFailed, .streamStopFailed, .notImplemented, .alreadyRecording, .notRecording, .invalidRequest, .unknown:
             return true
         }
     }

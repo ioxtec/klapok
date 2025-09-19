@@ -73,6 +73,25 @@ enum CaptureType: CaseIterable {
         case .window: return "Okno"
         }
     }
+    
+    /// Get the appropriate icon name based on the capture mode
+    func iconName(for mode: CaptureMode) -> String {
+        switch mode {
+        case .image:
+            // For image capture, use the standard icons
+            return iconName
+        case .video:
+            // For video capture, use specific control icons for each type
+            switch self {
+            case .fullScreen:
+                return "play.circle"
+            case .area:
+                return "pause.circle"
+            case .window:
+                return "stop.circle"
+            }
+        }
+    }
 }
 
 // MARK: - Capture Mode Enum

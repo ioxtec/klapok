@@ -25,7 +25,9 @@ import SwiftUI
         deinit {
             // Clean up synchronously in deinit - avoid close() to prevent deadlock
             if let window = overlayWindow {
-                window.orderOut(nil)
+                Task { @MainActor in
+                    window.orderOut(nil)
+                }
             }
         }
 

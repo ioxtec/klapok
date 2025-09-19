@@ -12,6 +12,26 @@ import AppKit
 import ScreenCaptureKit
 import CoreMedia
 
+// MARK: - Video Recording State
+
+/// States for video recording operations
+enum VideoRecordingState {
+    case idle
+    case recording
+    case paused
+    
+    var displayName: String {
+        switch self {
+        case .idle:
+            return "Idle"
+        case .recording:
+            return "Recording"
+        case .paused:
+            return "Paused"
+        }
+    }
+}
+
 // MARK: - Base Capture Request
 
 /// Base capture request containing common parameters
