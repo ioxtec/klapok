@@ -24,8 +24,10 @@ import SwiftUI
         @Published var selectedWindow: SCWindow?
         
         // Video recording state
-        @Published var videoRecordingState: VideoRecordingState = .idle
-        @Published var recordingDuration: TimeInterval = 0.0
+    @Published var videoRecordingState: VideoRecordingState = .idle
+    @Published var recordingDuration: TimeInterval = 0.0
+    @Published var isAlwaysOnTop: Bool = false
+    @Published var isVideoWindowSelectionPending: Bool = false
         private var recordingTimer: Timer?
         
         // Video editor window reference - simplified approach
@@ -54,9 +56,25 @@ import SwiftUI
             Logger.d("FloatingPanelViewModel: Showing floating panel")
             panelWindow?.orderFront(nil)
             // Ensure floating panel is always on top
-            if let panel = panelWindow {
-                WindowDepthManager.shared.ensureFloatingPanelOnTop(panel)
+            if panelWindow != nil {
+                ensurePanelOnTop()
             }
+        }
+        
+        @MainActor
+        func ensurePanelOnTop() {
+            guard let panel = panelWindow else { return }
+            
+            if isAlwaysOnTop {
+                // Use the highest possible level
+                panel.level = .screenSaver
+            } else {
+                // Use the standard floating panel level (which is now very high)
+                WindowDepthManager.shared.setLevel(for: panel, type: .floatingPanel)
+            }
+            
+            // Bring to front
+            panel.orderFrontRegardless()
         }
 
         // MARK: - Initialization
@@ -248,6 +266,9 @@ import SwiftUI
 
                         isAreaSelectionActive = true
                         Logger.s("FloatingPanelViewModel: Area selection active")
+                        
+                        // Upewnij się że panel jest na wierzchu nad overlay
+                        ensurePanelOnTop()
                     }
                 } catch {
                     Logger.e("FloatingPanelViewModel: Error creating overlay: \(error)")
@@ -292,6 +313,12 @@ import SwiftUI
         }
 
         @MainActor
+        func showWindowSelectionForVideo() {
+            isVideoWindowSelectionPending = true
+            showWindowSelection()
+        }
+        
+        @MainActor
         private func showWindowSelection() {
             Logger.d("FloatingPanelViewModel: Showing window selection")
 
@@ -308,12 +335,27 @@ import SwiftUI
                 if let window = selectedWindow {
                     Logger.d(
                         "FloatingPanelViewModel: Window selected: \(window.title ?? "Unknown")")
+                    
+                    // If this was video window selection, start recording automatically
+                    if self?.isVideoWindowSelectionPending == true {
+                        self?.isVideoWindowSelectionPending = false
+                        // Hide overlay and start recording
+                        self?.hideWindowSelection()
+                        Task {
+                            self?.startVideoRecording()
+                        }
+                    }
                 } else {
                     Logger.d("FloatingPanelViewModel: Window deselected")
+                    // Reset the pending flag if window was deselected
+                    self?.isVideoWindowSelectionPending = false
                 }
 
-                // NIE zamykamy overlay - zostaje otwarty dla dalszego wyboru
+                // NIE zamykamy overlay - zostaje otwarty dla dalszego wyboru (unless it's video mode)
             }
+            
+            // Upewnij się że panel jest na wierzchu nad overlay
+            ensurePanelOnTop()
 
             isWindowSelectionActive = true
             Logger.s("FloatingPanelViewModel: Window selection active")
@@ -373,6 +415,9 @@ import SwiftUI
             case .fullScreen:
                 break
             }
+            
+            // Upewnij się że panel jest na wierzchu
+            ensurePanelOnTop()
         }
 
         @MainActor
@@ -394,14 +439,54 @@ import SwiftUI
         func startVideoRecording() {
             guard videoRecordingState == .idle else { return }
             
+            // Store selected window and area before hiding overlays
+            let windowToRecord = selectedWindow
+            let areaToRecord = isAreaSelectionActive ? areaSelectionManager.getCurrentSelection() : nil
+            
+            // Hide any active overlays before starting recording
+            if isWindowSelectionActive {
+                hideWindowSelection()
+            }
+            if isAreaSelectionActive {
+                hideAreaSelection()
+            }
+            
             Task {
                 do {
                     // Pass floating panel window to exclude from recording
                     let windowsToExclude: [NSWindow] = (panelWindow != nil) ? [panelWindow!] : []
-                    try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                    
+                    // Start recording based on current capture type
+                    switch screenshotType {
+                    case .fullScreen:
+                        try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                    case .area:
+                        // For area recording, check if an area is selected
+                        if let area = areaToRecord, !area.isEmpty && area.width > 10 && area.height > 10 {
+                            Logger.d("Starting area recording for: \(area)")
+                            try await videoRecordingService.startRecordingArea(area, excludingWindows: windowsToExclude)
+                        } else {
+                            Logger.w("No valid area selected for area recording, falling back to full screen")
+                            try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                        }
+                    case .window:
+                        // For window recording, check if a window is selected
+                        if let window = windowToRecord {
+                            Logger.d("Starting window recording for: \(window.title ?? "Unknown")")
+                            
+                            // Bring the selected window to the front before recording
+                            videoRecordingService.bringWindowToFront(window)
+                            
+                            try await videoRecordingService.startRecordingWindow(window, excludingWindows: windowsToExclude)
+                        } else {
+                            Logger.w("No window selected for window recording, falling back to full screen")
+                            try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                        }
+                    }
+                    
                     videoRecordingState = .recording
                     startRecordingTimer()
-                    Logger.d("Video recording started")
+                    Logger.d("Video recording started for type: \(screenshotType)")
                 } catch {
                     Logger.e("Failed to start video recording: \(error)")
                     // TODO: Show error to user
@@ -409,37 +494,6 @@ import SwiftUI
             }
         }
         
-        @MainActor
-        func pauseVideoRecording() {
-            guard videoRecordingState == .recording else { return }
-            
-            Task {
-                do {
-                    try await videoRecordingService.pauseRecording()
-                    videoRecordingState = .paused
-                    stopRecordingTimer()
-                    Logger.d("Video recording paused")
-                } catch {
-                    Logger.e("Failed to pause video recording: \(error)")
-                }
-            }
-        }
-        
-        @MainActor
-        func resumeVideoRecording() {
-            guard videoRecordingState == .paused else { return }
-            
-            Task {
-                do {
-                    try await videoRecordingService.resumeRecording()
-                    videoRecordingState = .recording
-                    startRecordingTimer()
-                    Logger.d("Video recording resumed")
-                } catch {
-                    Logger.e("Failed to resume video recording: \(error)")
-                }
-            }
-        }
         
         @MainActor
         func stopVideoRecording() {
@@ -453,10 +507,26 @@ import SwiftUI
                     recordingDuration = 0.0
                     Logger.d("Video recording stopped: \(recording.duration)s")
                     
+                    // Hide any active overlays after recording stops
+                    if isWindowSelectionActive {
+                        hideWindowSelection()
+                    }
+                    if isAreaSelectionActive {
+                        hideAreaSelection()
+                    }
+                    
                     // Save video to user's chosen directory
                     await saveVideoAndOpenEditor(recording)
                 } catch {
                     Logger.e("Failed to stop video recording: \(error)")
+                    
+                    // Hide overlays even if there was an error
+                    if isWindowSelectionActive {
+                        hideWindowSelection()
+                    }
+                    if isAreaSelectionActive {
+                        hideAreaSelection()
+                    }
                 }
             }
         }
@@ -557,6 +627,34 @@ import SwiftUI
             window.makeKeyAndOrderFront(nil)
             
             Logger.d("🔍 Video editor window created and shown")
+        }
+        
+        // MARK: - Panel Management
+        
+        @MainActor
+        func closeFloatingPanel() {
+            // Stop any active recording
+            if videoRecordingState != .idle {
+                Task {
+                     stopVideoRecording()
+                }
+            }
+            
+            // Hide overlays and clear selections
+            isAreaSelectionActive = false
+            isWindowSelectionActive = false
+            selectedArea = .zero
+            selectedWindow = nil
+            
+            // Close the panel window
+            panelWindow?.close()
+            panelWindow = nil
+        }
+        
+        @MainActor
+        func toggleAlwaysOnTop() {
+            isAlwaysOnTop.toggle()
+            ensurePanelOnTop()
         }
         
         private func startRecordingTimer() {

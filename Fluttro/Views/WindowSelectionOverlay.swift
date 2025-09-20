@@ -190,7 +190,7 @@ import SwiftUI
         private func loadAvailableWindows() {
             Task {
                 do {
-                    let content = try await SCShareableContent.current
+                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
 
                     Logger.d("WindowSelection: Found \(content.windows.count) total windows")
 

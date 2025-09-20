@@ -81,15 +81,9 @@ enum CaptureType: CaseIterable {
             // For image capture, use the standard icons
             return iconName
         case .video:
-            // For video capture, use specific control icons for each type
-            switch self {
-            case .fullScreen:
-                return "play.circle"
-            case .area:
-                return "pause.circle"
-            case .window:
-                return "stop.circle"
-            }
+            // For video capture, use the same icons as image mode
+            // The behavior will be different based on recording state
+            return iconName
         }
     }
 }

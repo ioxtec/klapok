@@ -270,9 +270,10 @@ import SwiftUI
 
             // Przekaż referencję do panelu do ViewModel
             panelViewModel.panelWindow = panel
-
-            // Zainicjuj aktualny tryb (jeśli nie fullScreen)
+            
+            // Upewnij się że panel jest na wierzchu
             Task { @MainActor in
+                panelViewModel.ensurePanelOnTop()
                 panelViewModel.initializeCurrentMode()
             }
         }

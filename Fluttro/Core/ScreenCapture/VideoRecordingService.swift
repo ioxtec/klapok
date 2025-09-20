@@ -98,6 +98,52 @@ class VideoRecordingService: VideoCaptureService {
         print("🎥 Recording to: \(recordingURL?.path ?? "unknown")")
     }
     
+    func startRecordingWindow(_ window: SCWindow, excludingWindows: [NSWindow] = []) async throws {
+        guard !isRecording else {
+            print("❌ Already recording, cannot start again")
+            throw CaptureError.alreadyRecording
+        }
+        
+        // Create temporary file URL for recording
+        let tempDir = FileManager.default.temporaryDirectory
+        let settings = AppSettings.shared
+        let fileExtension = settings.videoFormat.lowercased()
+        recordingURL = tempDir.appendingPathComponent("fluttro_recording_\(Date().timeIntervalSince1970).\(fileExtension)")
+        
+        // Setup window capture stream
+        try await setupWindowCapture(window: window, excludingWindows: excludingWindows)
+        
+        isRecording = true
+        recordingStartTime = Date()
+        
+        print("🎥 Started window video recording at \(recordingStartTime!)")
+        print("🎥 Recording window: \(window.title ?? "Unknown")")
+        print("🎥 Recording to: \(recordingURL?.path ?? "unknown")")
+    }
+    
+    func startRecordingArea(_ areaRect: NSRect, excludingWindows: [NSWindow] = []) async throws {
+        guard !isRecording else {
+            print("❌ Already recording, cannot start again")
+            throw CaptureError.alreadyRecording
+        }
+        
+        // Create temporary file URL for recording
+        let tempDir = FileManager.default.temporaryDirectory
+        let settings = AppSettings.shared
+        let fileExtension = settings.videoFormat.lowercased()
+        recordingURL = tempDir.appendingPathComponent("fluttro_recording_\(Date().timeIntervalSince1970).\(fileExtension)")
+        
+        // Setup area capture stream
+        try await setupAreaCapture(areaRect: areaRect, excludingWindows: excludingWindows)
+        
+        isRecording = true
+        recordingStartTime = Date()
+        
+        print("🎥 Started area video recording at \(recordingStartTime!)")
+        print("🎥 Recording area: \(areaRect)")
+        print("🎥 Recording to: \(recordingURL?.path ?? "unknown")")
+    }
+    
     func pauseRecording() async throws {
         guard isRecording else {
             print("❌ Not recording, cannot pause")
@@ -228,7 +274,7 @@ class VideoRecordingService: VideoCaptureService {
         
         // Use proven AVAssetWriter approach (SCRecordingOutput has issues)
         print("🎥 Using proven VideoStreamOutput approach with improved settings")
-        streamOutput = VideoStreamOutput(recordingURL: recordingURL)
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: nil) // Full screen
         stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
         
@@ -236,6 +282,230 @@ class VideoRecordingService: VideoCaptureService {
         try await stream?.startCapture()
         
         print("🎥 Screen capture setup complete")
+    }
+    
+    private func setupWindowCapture(window: SCWindow, excludingWindows: [NSWindow] = []) async throws {
+        guard let recordingURL = recordingURL else {
+            throw CaptureError.invalidRequest("No recording URL set")
+        }
+        
+        // Get screen content to find the window
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        
+        // Convert NSWindow objects to SCWindow objects for exclusion
+        let windowsToExclude = await MainActor.run {
+            content.windows.filter { scWindow in
+                // Don't exclude the window we're recording
+                if scWindow.windowID == window.windowID {
+                    return false
+                }
+                return excludingWindows.contains { nsWindow in
+                    return nsWindow.windowNumber == scWindow.windowID ||
+                           (nsWindow.title == scWindow.title && nsWindow.title.count > 0)
+                }
+            }
+        }
+        
+        print("🎥 Recording window: \(window.title ?? "Unknown") (ID: \(window.windowID))")
+        print("🎥 Window frame: \(window.frame)")
+        print("🎥 Window size: \(window.frame.width)x\(window.frame.height)")
+        print("🎥 Excluding \(windowsToExclude.count) other windows from recording")
+        for excludeWindow in windowsToExclude {
+            print("🎥   - Excluding window: \(excludeWindow.title ?? "Unknown") (ID: \(excludeWindow.windowID))")
+        }
+        
+        // Create stream configuration
+        let streamConfig = SCStreamConfiguration()
+        
+        // Get settings from AppSettings
+        let settings = AppSettings.shared
+        
+        // Set resolution based on window size or user preference
+        if settings.videoResolution == "Source" {
+            // Use window's actual size multiplied by 2 (as per Apple documentation)
+            // This is crucial for proper window recording with SCContentFilter(desktopIndependentWindow:)
+            streamConfig.width = Int(window.frame.width) * 2
+            streamConfig.height = Int(window.frame.height) * 2
+        } else {
+            // Parse resolution (e.g., "1080p" -> 1920x1080)
+            let (width, height) = parseResolution(settings.videoResolution)
+            streamConfig.width = width
+            streamConfig.height = height
+        }
+        
+        // Set frame rate
+        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
+        streamConfig.queueDepth = 5
+        streamConfig.showsCursor = settings.showMouseCursor
+        streamConfig.capturesAudio = settings.recordSystemAudio || settings.recordMicrophone
+        
+        print("🎥 Stream resolution configured: \(streamConfig.width)x\(streamConfig.height)")
+        
+        // Create filter for specific window
+        // Try using desktopIndependentWindow first
+        let filter: SCContentFilter
+        if #available(macOS 12.3, *) {
+            // Use the newer API for window-specific recording
+            filter = SCContentFilter(desktopIndependentWindow: window)
+        } else {
+            // Fallback to display filter (will record whole screen)
+            guard let display = content.displays.first else {
+                throw CaptureError.unavailable
+            }
+            filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
+        }
+        
+        // Use proven AVAssetWriter approach
+        print("🎥 Using VideoStreamOutput for window recording")
+        // Use window size multiplied by 2 to match SCStreamConfiguration
+        let windowSize = CGSize(width: window.frame.width * 2, height: window.frame.height * 2)
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: windowSize)
+        stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
+        try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
+        
+        // Start capture
+        try await stream?.startCapture()
+        
+        print("🎥 Window capture setup complete")
+    }
+    
+    private func setupAreaCapture(areaRect: NSRect, excludingWindows: [NSWindow] = []) async throws {
+        guard let recordingURL = recordingURL else {
+            throw CaptureError.invalidRequest("No recording URL set")
+        }
+        
+        // Get screen content to find the display
+        let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        
+        // Convert NSWindow objects to SCWindow objects for exclusion
+        let windowsToExclude = await MainActor.run {
+            content.windows.filter { scWindow in
+                return excludingWindows.contains { nsWindow in
+                    return nsWindow.windowNumber == scWindow.windowID ||
+                           (nsWindow.title == scWindow.title && nsWindow.title.count > 0)
+                }
+            }
+        }
+        
+        print("🎥 Recording area: \(areaRect)")
+        print("🎥 Excluding \(windowsToExclude.count) other windows from recording")
+        for excludeWindow in windowsToExclude {
+            print("🎥   - Excluding window: \(excludeWindow.title ?? "Unknown") (ID: \(excludeWindow.windowID))")
+        }
+        
+        // Create stream configuration
+        let streamConfig = SCStreamConfiguration()
+        
+        // Get settings from AppSettings
+        let settings = AppSettings.shared
+        
+        // Set resolution based on area size or user preference
+        if settings.videoResolution == "Source" {
+            // Use area's actual size
+            streamConfig.width = Int(areaRect.width)
+            streamConfig.height = Int(areaRect.height)
+        } else {
+            // Parse resolution (e.g., "1080p" -> 1920x1080)
+            let (width, height) = parseResolution(settings.videoResolution)
+            streamConfig.width = width
+            streamConfig.height = height
+        }
+        
+        // Set the source rectangle to record only the selected area
+        streamConfig.sourceRect = areaRect
+        
+        // Set frame rate
+        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
+        streamConfig.queueDepth = 5
+        streamConfig.showsCursor = settings.showMouseCursor
+        streamConfig.capturesAudio = settings.recordSystemAudio || settings.recordMicrophone
+        
+        print("🎥 Stream resolution configured: \(streamConfig.width)x\(streamConfig.height)")
+        print("🎥 Source rectangle: \(streamConfig.sourceRect)")
+        
+        // Create filter for display (full screen, but we'll use sourceRect to limit the area)
+        guard let display = content.displays.first else {
+            throw CaptureError.unavailable
+        }
+        
+        let filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
+        
+        // Use proven AVAssetWriter approach
+        print("🎥 Using VideoStreamOutput for area recording")
+        let areaSize = CGSize(width: areaRect.width, height: areaRect.height)
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: areaSize)
+        stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
+        try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
+        
+        // Start capture
+        try await stream?.startCapture()
+        
+        print("🎥 Area capture setup complete")
+    }
+    
+    // MARK: - Window Activation
+    
+    /// Brings the selected window's application to the front
+    @MainActor
+    func bringWindowToFront(_ window: SCWindow) {
+        guard let owningApp = window.owningApplication else {
+            print("🎥 Cannot bring window to front: no owning application")
+            return
+        }
+        
+        let appName = owningApp.applicationName
+        let bundleId = owningApp.bundleIdentifier
+        let windowTitle = window.title ?? "Untitled Window"
+        
+        print("🎥 Bringing window to front:")
+        print("🎥   App: \(appName)")
+        print("🎥   Bundle ID: \(bundleId)")
+        print("🎥   Window: \(windowTitle)")
+        
+        // Try to activate the application first
+        let workspace = NSWorkspace.shared
+        let runningApps = workspace.runningApplications
+        
+        // Find the running application by bundle identifier
+        if let targetApp = runningApps.first(where: { $0.bundleIdentifier == bundleId }) {
+            print("🎥 Found running app: \(targetApp.localizedName ?? "Unknown")")
+            
+            // Activate the application
+            targetApp.activate(options: [])
+            print("🎥 Activated application: \(appName)")
+            
+            // Small delay to let the app activate
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                // Try to bring the specific window to front using AppleScript
+                self.bringSpecificWindowToFront(appName: appName, windowTitle: windowTitle)
+            }
+        } else {
+            print("🎥 Application not found in running apps: \(bundleId)")
+        }
+    }
+    
+    /// Uses AppleScript to bring a specific window to the front
+    private func bringSpecificWindowToFront(appName: String, windowTitle: String) {
+        let script = """
+        tell application "\(appName)"
+            activate
+            try
+                set index of window "\(windowTitle)" to 1
+            end try
+        end tell
+        """
+        
+        let appleScript = NSAppleScript(source: script)
+        var error: NSDictionary?
+        
+        print("🎥 Executing AppleScript to bring window to front")
+        appleScript?.executeAndReturnError(&error)
+        
+        if let error = error {
+            print("🎥 AppleScript error: \(error)")
+        } else {
+            print("🎥 Successfully brought window to front")
+        }
     }
     
     private func parseResolution(_ resolution: String) -> (Int, Int) {
@@ -339,9 +609,11 @@ class VideoStreamOutput: NSObject, SCStreamOutput {
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private let recordingURL: URL
     private var sessionStarted: Bool = false
+    private let windowSize: CGSize?
     
-    init(recordingURL: URL) {
+    init(recordingURL: URL, windowSize: CGSize? = nil) {
         self.recordingURL = recordingURL
+        self.windowSize = windowSize
         super.init()
         setupAssetWriter()
     }
@@ -372,8 +644,8 @@ class VideoStreamOutput: NSObject, SCStreamOutput {
             print("🎥 File type: \(fileType.rawValue)")
             assetWriter = try AVAssetWriter(outputURL: recordingURL, fileType: fileType)
             
-            // Get screen size
-            let screenSize = NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
+            // Use window size if available, otherwise use screen size
+            let videoSize = windowSize ?? NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
             
             // Determine codec based on settings
             let codec: AVVideoCodecType
@@ -389,8 +661,8 @@ class VideoStreamOutput: NSObject, SCStreamOutput {
             // Video settings with maximum compatibility
             let videoSettings: [String: Any] = [
                 AVVideoCodecKey: codec,
-                AVVideoWidthKey: Int(screenSize.width),
-                AVVideoHeightKey: Int(screenSize.height),
+                AVVideoWidthKey: Int(videoSize.width),
+                AVVideoHeightKey: Int(videoSize.height),
                 AVVideoCompressionPropertiesKey: [
                     AVVideoAverageBitRateKey: settings.videoBitrate,
                     AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel, // Use Baseline for maximum compatibility
@@ -408,16 +680,21 @@ class VideoStreamOutput: NSObject, SCStreamOutput {
             
             print("🎥 Video input created with settings:")
             print("🎥   Codec: \(codec.rawValue)")
-            print("🎥   Width: \(Int(screenSize.width))")
-            print("🎥   Height: \(Int(screenSize.height))")
+            print("🎥   Width: \(Int(videoSize.width))")
+            print("🎥   Height: \(Int(videoSize.height))")
             print("🎥   Bitrate: \(settings.videoBitrate)")
             print("🎥   Profile: Baseline (max compatibility)")
+            if let windowSize = windowSize {
+                print("🎥   Recording specific window size: \(Int(windowSize.width))x\(Int(windowSize.height))")
+            } else {
+                print("🎥   Recording full screen size")
+            }
             
             // Create pixel buffer adaptor
             let pixelBufferAttributes: [String: Any] = [
                 kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                kCVPixelBufferWidthKey as String: Int(screenSize.width),
-                kCVPixelBufferHeightKey as String: Int(screenSize.height),
+                kCVPixelBufferWidthKey as String: Int(videoSize.width),
+                kCVPixelBufferHeightKey as String: Int(videoSize.height),
                 kCVPixelBufferIOSurfacePropertiesKey as String: [:]
             ]
             

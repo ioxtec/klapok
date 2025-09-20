@@ -39,6 +39,27 @@ struct VideoEditorView: View {
                     .buttonStyle(.bordered)
                     .help("Show in Finder")
                     
+                    Button(action: {
+                        Task {
+                            await viewModel.exportTrimmedVideo()
+                        }
+                    }) {
+                        HStack(spacing: 4) {
+                            if viewModel.isExporting {
+                                ProgressView()
+                                    .scaleEffect(0.7)
+                            } else {
+                                Image(systemName: "scissors")
+                                    .font(.system(size: 16))
+                            }
+                            Text("Export Trimmed")
+                                .font(.system(size: 12))
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Export trimmed video")
+                    .disabled(viewModel.isExporting || viewModel.video == nil)
+                    
                     Spacer()
                     
                     Button(action: {
@@ -58,7 +79,7 @@ struct VideoEditorView: View {
                 // Video player area
                 GeometryReader { geometry in
                     if let video = viewModel.video {
-                        VideoPlayerView(videoURL: video.url)
+                        VideoPlayerView(videoURL: video.url, viewModel: viewModel)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
                         VStack(spacing: 16) {
@@ -77,6 +98,15 @@ struct VideoEditorView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(NSColor.controlBackgroundColor))
                     }
+                }
+                
+                // Video timeline for trimming
+                if viewModel.video != nil {
+                    VideoTimelineView(viewModel: viewModel)
+                        .frame(height: 80)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(Color(NSColor.controlBackgroundColor))
                 }
             }
             .frame(minWidth: 400)
@@ -153,6 +183,7 @@ struct VideoEditorView: View {
 
 struct VideoPlayerView: NSViewRepresentable {
     let videoURL: URL
+    let viewModel: VideoEditorViewModel
     
     func makeNSView(context: Context) -> AVPlayerView {
         print("🔍 VideoPlayerView: makeNSView called for URL: \(videoURL)")
@@ -172,6 +203,9 @@ struct VideoPlayerView: NSViewRepresentable {
         print("🔍 VideoPlayerView: AVPlayer created")
         nsView.player = player
         print("🔍 VideoPlayerView: Player set on AVPlayerView")
+        
+        // Pass player to view model for time tracking
+        viewModel.setPlayer(player)
     }
 }
 
@@ -197,13 +231,141 @@ struct DetailRow: View {
 @MainActor
 class VideoEditorViewModel: ObservableObject {
     @Published var video: VideoRecording?
+    @Published var trimStartTime: TimeInterval = 0
+    @Published var trimEndTime: TimeInterval = 0
+    @Published var currentTime: TimeInterval = 0
+    @Published var isExporting: Bool = false
+    
+    private var player: AVPlayer?
+    private var timeObserver: Any?
     
     init(video: VideoRecording? = nil) {
         self.video = video
+        if let video = video {
+            self.trimEndTime = video.duration
+        }
     }
     
     func loadVideo(_ video: VideoRecording) {
         self.video = video
+        self.trimStartTime = 0
+        self.trimEndTime = video.duration
+        self.currentTime = 0
+    }
+    
+    var trimmedDuration: TimeInterval {
+        return trimEndTime - trimStartTime
+    }
+    
+    var trimStartPercentage: Double {
+        guard let video = video, video.duration > 0 else { return 0 }
+        return trimStartTime / video.duration
+    }
+    
+    var trimEndPercentage: Double {
+        guard let video = video, video.duration > 0 else { return 1 }
+        return trimEndTime / video.duration
+    }
+    
+    var currentTimePercentage: Double {
+        guard let video = video, video.duration > 0 else { return 0 }
+        return currentTime / video.duration
+    }
+    
+    func updateTrimStart(from percentage: Double) {
+        guard let video = video else { return }
+        let newStartTime = percentage * video.duration
+        // Ensure minimum 0.1 second gap between start and end
+        let maxStartTime = max(0, trimEndTime - 0.1)
+        if newStartTime >= 0 && newStartTime < maxStartTime {
+            trimStartTime = newStartTime
+        }
+    }
+    
+    func updateTrimEnd(from percentage: Double) {
+        guard let video = video else { return }
+        let newEndTime = percentage * video.duration
+        // Ensure minimum 0.1 second gap between start and end
+        let minEndTime = min(video.duration, trimStartTime + 0.1)
+        if newEndTime > minEndTime && newEndTime <= video.duration {
+            trimEndTime = newEndTime
+        }
+    }
+    
+    func updateCurrentTime(from percentage: Double) {
+        guard let video = video else { return }
+        currentTime = percentage * video.duration
+        seekToCurrentTime()
+    }
+    
+    private func seekToCurrentTime() {
+        guard let player = player else { return }
+        let time = CMTime(seconds: currentTime, preferredTimescale: 1000)
+        player.seek(to: time)
+    }
+    
+    func setPlayer(_ player: AVPlayer) {
+        self.player = player
+        setupTimeObserver()
+    }
+    
+    private func setupTimeObserver() {
+        guard let player = player else { return }
+        
+        let timeScale = CMTimeScale(1000)
+        let time = CMTime(seconds: 0.1, preferredTimescale: timeScale)
+        
+        timeObserver = player.addPeriodicTimeObserver(forInterval: time, queue: .main) { [weak self] time in
+            guard let self = self else { return }
+            let seconds = CMTimeGetSeconds(time)
+            if seconds.isFinite {
+                Task { @MainActor in
+                    self.currentTime = seconds
+                }
+            }
+        }
+    }
+    
+    deinit {
+        if let timeObserver = timeObserver {
+            player?.removeTimeObserver(timeObserver)
+        }
+    }
+    
+    func exportTrimmedVideo() async {
+        guard let video = video else { return }
+        
+        isExporting = true
+        defer { isExporting = false }
+        
+        do {
+            let asset = AVURLAsset(url: video.url)
+            let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality)
+            
+            // Create time range for trimming
+            let startTime = CMTime(seconds: trimStartTime, preferredTimescale: 1000)
+            let endTime = CMTime(seconds: trimEndTime, preferredTimescale: 1000)
+            let timeRange = CMTimeRange(start: startTime, end: endTime)
+            
+            exportSession?.timeRange = timeRange
+            
+            // Create output URL
+            let outputURL = video.url.deletingLastPathComponent()
+                .appendingPathComponent("\(video.url.deletingPathExtension().lastPathComponent)_trimmed")
+                .appendingPathExtension(video.url.pathExtension)
+            
+            exportSession?.outputURL = outputURL
+            exportSession?.outputFileType = .mp4
+            
+            try await exportSession?.export(to: outputURL, as: .mp4)
+            
+            print("✅ Trimmed video exported successfully to: \(outputURL.path)")
+            // Open the exported video
+            NSWorkspace.shared.open(outputURL)
+            
+        } catch {
+            print("❌ Export error: \(error)")
+        }
     }
     
     func shareVideo() {
@@ -238,6 +400,146 @@ class VideoEditorViewModel: ObservableObject {
                 print("Error deleting video: \(error)")
             }
         }
+    }
+}
+
+// MARK: - Video Timeline View
+
+struct VideoTimelineView: View {
+    @ObservedObject var viewModel: VideoEditorViewModel
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Timeline info
+            HStack {
+                Text("Duration: \(formatDuration(viewModel.trimmedDuration))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Spacer()
+                
+                Text("Start: \(formatTime(viewModel.trimStartTime))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                
+                Text("End: \(formatTime(viewModel.trimEndTime))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            // Timeline track
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    // Background track
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.3))
+                        .frame(height: 6)
+                        .cornerRadius(3)
+                    
+                    // Trimmed section
+                    Rectangle()
+                        .fill(Color.blue)
+                        .frame(
+                            width: geometry.size.width * (viewModel.trimEndPercentage - viewModel.trimStartPercentage),
+                            height: 6
+                        )
+                        .offset(x: geometry.size.width * viewModel.trimStartPercentage)
+                        .cornerRadius(3)
+                    
+                    // Current time indicator
+                    Rectangle()
+                        .fill(Color.yellow)
+                        .frame(width: 2, height: 20)
+                        .offset(x: geometry.size.width * viewModel.currentTimePercentage - 1)
+                    
+                    // Start trim handle
+                    TrimHandle(
+                        position: viewModel.trimStartPercentage,
+                        geometry: geometry,
+                        isStartHandle: true
+                    ) { percentage in
+                        viewModel.updateTrimStart(from: percentage)
+                    }
+                    
+                    // End trim handle
+                    TrimHandle(
+                        position: viewModel.trimEndPercentage,
+                        geometry: geometry,
+                        isStartHandle: false
+                    ) { percentage in
+                        viewModel.updateTrimEnd(from: percentage)
+                    }
+                }
+                .onTapGesture { location in
+                    let percentage = location.x / geometry.size.width
+                    viewModel.updateCurrentTime(from: max(0, min(1, percentage)))
+                }
+            }
+        }
+    }
+    
+    private func formatDuration(_ duration: TimeInterval) -> String {
+        let minutes = Int(duration) / 60
+        let seconds = Int(duration) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+    
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+// MARK: - Trim Handle
+
+struct TrimHandle: View {
+    let position: Double
+    let geometry: GeometryProxy
+    let isStartHandle: Bool
+    let onDrag: (Double) -> Void
+    
+    @State private var isDragging = false
+    @State private var dragStartPosition: Double = 0
+    
+    var body: some View {
+        VStack(spacing: 2) {
+            // Handle icon
+            Image(systemName: isStartHandle ? "chevron.left" : "chevron.right")
+                .font(.system(size: 8, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 12, height: 12)
+                .background(Color.blue)
+                .cornerRadius(6)
+            
+            // Handle line
+            Rectangle()
+                .fill(Color.blue)
+                .frame(width: 2, height: 16)
+        }
+        .offset(x: geometry.size.width * position - 6)
+        .scaleEffect(isDragging ? 1.2 : 1.0)
+        .gesture(
+            DragGesture(minimumDistance: 1)
+                .onChanged { value in
+                    if !isDragging {
+                        isDragging = true
+                        dragStartPosition = position
+                    }
+                    
+                    // Calculate new position based on drag distance
+                    let dragDistance = value.translation.width
+                    let dragPercentage = dragDistance / geometry.size.width
+                    let newPosition = dragStartPosition + dragPercentage
+                    
+                    // Clamp to valid range
+                    let clampedPosition = max(0, min(1, newPosition))
+                    onDrag(clampedPosition)
+                }
+                .onEnded { _ in
+                    isDragging = false
+                }
+        )
     }
 }
 

@@ -22,23 +22,40 @@ import SwiftUI
         }
 
         var body: some View {
-            VStack(spacing: 8) {
+            VStack(spacing: 0) {
+                // Header with recording indicator and controls
+                HStack {
+                    // Recording indicator (top-left)
+                    if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
+                        recordingIndicator
+                    }
+                    
+                    Spacer()
+                    
+                    // Top-right controls
+                    HStack(spacing: 8) {
+                        // Always on top toggle
+                        alwaysOnTopToggle
+                        
+                        // Close button
+                        closeButton
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                
+                // Main controls
                 HStack(spacing: 20) {
                     captureModeToggle
                     
-                    if viewModel.captureMode == .image {
-                        // Image mode: show 3 buttons for fullscreen/area/window
-                        animatedTypeSelector
-                    } else {
-                        // Video mode: show recording indicator (red dot + timer + stop)
-                        videoRecordingIndicator
-                    }
+                    // Both modes now show the same 3 buttons (fullscreen/area/window)
+                    animatedTypeSelector
                     
                     captureButton
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
             .frame(minHeight: 80)
             .onKeyPress(.space) {
                 Task {
@@ -123,7 +140,7 @@ import SwiftUI
 
         private var animatedTypeSelector: some View {
             HStack(spacing: 0) {
-                ForEach(Array(CaptureType.allCases.enumerated()), id: \.element) { index, type in
+                ForEach(Array(availableCaptureTypes.enumerated()), id: \.element) { index, type in
                     Button(action: {
                         if viewModel.captureMode == .video {
                             // In video mode, handle recording control
@@ -144,7 +161,7 @@ import SwiftUI
                     .help(tooltipForType(type))
                 }
             }
-            .frame(width: 95) // Fixed width to match videoRecordingIndicator
+            .frame(width: 95) // Fixed width for consistent layout
             .background(
                 RoundedRectangle(cornerRadius: 16)
                     .fill(Color.secondary.opacity(0.1))
@@ -166,12 +183,23 @@ import SwiftUI
         
         // MARK: - Layout Properties
         
+        private var availableCaptureTypes: [CaptureType] {
+            // Now area selection is supported in video mode with sourceRect
+            return CaptureType.allCases
+        }
+        
         private var selectionColor: Color {
             switch viewModel.captureMode {
             case .image:
                 return .blue
             case .video:
-                return .red
+                // In video mode, use different colors based on recording state
+                switch viewModel.videoRecordingState {
+                case .idle:
+                    return .red
+                case .recording:
+                    return .red
+                }
             }
         }
         
@@ -189,32 +217,13 @@ import SwiftUI
         // MARK: - Video Control Actions
         
         private func handleVideoControlAction(for type: CaptureType) {
-            // First, update the selection with animation
+            // Only handle available types in video mode
+            guard availableCaptureTypes.contains(type) else { return }
+            
+            // In video mode, just update the selection - don't start recording
+            // Recording will start only when user clicks the capture button
             withAnimation(.easeInOut(duration: 0.3)) {
                 viewModel.setScreenshotType(type)
-            }
-            
-            // Then, handle the recording control action
-            switch type {
-            case .fullScreen:
-                // Play button - start recording
-                Task {
-                    viewModel.startVideoRecording()
-                }
-            case .area:
-                // Pause button - pause/resume recording
-                Task {
-                    if viewModel.videoRecordingState == .recording {
-                        viewModel.pauseVideoRecording()
-                    } else if viewModel.videoRecordingState == .paused {
-                        viewModel.resumeVideoRecording()
-                    }
-                }
-            case .window:
-                // Stop button - stop recording
-                Task {
-                    viewModel.stopVideoRecording()
-                }
             }
         }
 
@@ -253,45 +262,6 @@ import SwiftUI
         
         // MARK: - Video Recording Indicator
         
-        private var videoRecordingIndicator: some View {
-            HStack(spacing: 12) {
-                // Always visible dot (gray when idle, red when recording)
-                Circle()
-                    .fill(recordingIndicatorColor)
-                    .frame(width: 8, height: 8)
-                    .scaleEffect(viewModel.videoRecordingState == .recording ? 1.2 : 1.0)
-                    .animation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true), 
-                             value: viewModel.videoRecordingState == .recording)
-                
-                // Recording timer with fixed width to prevent layout shifts
-                Text(viewModel.formattedRecordingDuration())
-                    .font(.system(.caption, design: .monospaced))
-                    .foregroundColor(.primary)
-                    .frame(width: 40, alignment: .leading) // Fixed width to prevent layout shifts
-                
-                // Always visible stop button (disabled when idle)
-                Button(action: {
-                    Task {
-                        viewModel.stopVideoRecording()
-                    }
-                }) {
-                    Image(systemName: "stop.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(stopButtonColor)
-                }
-                .buttonStyle(PlainButtonStyle())
-                .disabled(viewModel.videoRecordingState == .idle)
-                .help(stopButtonTooltip)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .frame(width: 95) // Fixed width to prevent layout shifts
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(Color.secondary.opacity(0.1))
-                    .frame(height: 32)
-            )
-        }
         
         // MARK: - Action Handlers
         
@@ -309,11 +279,16 @@ import SwiftUI
         private func handleVideoAction() {
             switch viewModel.videoRecordingState {
             case .idle:
-                viewModel.startVideoRecording()
+                // Check if we need to show window selection first
+                if viewModel.screenshotType == .window && viewModel.selectedWindow == nil {
+                    // Show window selection overlay first (will auto-start recording after selection)
+                    viewModel.showWindowSelectionForVideo()
+                } else {
+                    // Start recording directly
+                    viewModel.startVideoRecording()
+                }
             case .recording:
-                viewModel.pauseVideoRecording()
-            case .paused:
-                viewModel.resumeVideoRecording()
+                viewModel.stopVideoRecording()
             }
         }
         
@@ -322,18 +297,22 @@ import SwiftUI
         private var buttonBackgroundColor: Color {
             if viewModel.isCapturing {
                 return .gray
-            } else if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
-                return .red.opacity(0.8)
             } else {
-                return .white
+                switch viewModel.captureMode {
+                case .image:
+                    return .blue
+                case .video:
+                    return .red
+                }
             }
         }
         
         private var buttonStrokeColor: Color {
-            if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
+            switch viewModel.captureMode {
+            case .image:
+                return .blue
+            case .video:
                 return .red
-            } else {
-                return .primary.opacity(0.3)
             }
         }
         
@@ -342,48 +321,16 @@ import SwiftUI
             case .image:
                 return "camera.fill"
             case .video:
-                // In video mode, show play/pause based on recording state
+                // In video mode, show video camera/stop based on recording state
                 switch viewModel.videoRecordingState {
                 case .idle:
-                    return "play.circle.fill"
+                    return "video.fill"
                 case .recording:
-                    return "pause.circle.fill"
-                case .paused:
-                    return "play.circle.fill"
+                    return "stop.circle.fill"
                 }
             }
         }
         
-        // MARK: - Video Recording Properties
-        
-        private var recordingIndicatorColor: Color {
-            switch viewModel.videoRecordingState {
-            case .idle:
-                return .gray // Dark gray dot when idle
-            case .recording:
-                return .red
-            case .paused:
-                return .orange
-            }
-        }
-        
-        private var stopButtonColor: Color {
-            switch viewModel.videoRecordingState {
-            case .idle:
-                return .gray // Gray when disabled
-            case .recording, .paused:
-                return .red // Red when active
-            }
-        }
-        
-        private var stopButtonTooltip: String {
-            switch viewModel.videoRecordingState {
-            case .idle:
-                return "Start recording to enable stop"
-            case .recording, .paused:
-                return "Stop recording"
-            }
-        }
         
         private var recordingStatusText: String {
             switch viewModel.videoRecordingState {
@@ -391,10 +338,60 @@ import SwiftUI
                 return ""
             case .recording:
                 return "Recording"
-            case .paused:
-                return "Paused"
             }
         }
+
+        // MARK: - Recording Indicator
+        
+        private var recordingIndicator: some View {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 8, height: 8)
+                    .opacity(0.8)
+                
+                Text(viewModel.formattedRecordingDuration())
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.red)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.black.opacity(0.1))
+            )
+        }
+        
+        // MARK: - Always On Top Toggle
+        
+        private var alwaysOnTopToggle: some View {
+            Button(action: {
+                viewModel.toggleAlwaysOnTop()
+            }) {
+                Image(systemName: viewModel.isAlwaysOnTop ? "pin.fill" : "pin")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(viewModel.isAlwaysOnTop ? .blue : .secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help(viewModel.isAlwaysOnTop ? "Disable Always On Top" : "Enable Always On Top")
+        }
+        
+        // MARK: - Close Button
+        
+        private var closeButton: some View {
+            Button(action: {
+                viewModel.closeFloatingPanel()
+            }) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .help("Close Panel")
+        }
+        
 
         // MARK: - Helper Methods
         
@@ -402,11 +399,20 @@ import SwiftUI
             let keyNumber = CaptureType.allCases.firstIndex(of: type)! + 1
             
             if viewModel.captureMode == .video {
-                // Video mode tooltips
-                switch type {
-                case .fullScreen: return "Start Recording (\(keyNumber))"
-                case .area: return "Pause/Resume Recording (\(keyNumber))"
-                case .window: return "Stop Recording (\(keyNumber))"
+                // Video mode tooltips based on recording state
+                switch viewModel.videoRecordingState {
+                case .idle:
+                    switch type {
+                    case .fullScreen: return "Record Full Screen (\(keyNumber))"
+                    case .area: return "Area recording not available in video mode"
+                    case .window: return "Record Selected Window (\(keyNumber))"
+                    }
+                case .recording:
+                    switch type {
+                    case .fullScreen: return "Stop Recording (\(keyNumber))"
+                    case .area: return "Stop Recording (\(keyNumber))"
+                    case .window: return "Stop Recording (\(keyNumber))"
+                    }
                 }
             } else {
                 // Image mode tooltips

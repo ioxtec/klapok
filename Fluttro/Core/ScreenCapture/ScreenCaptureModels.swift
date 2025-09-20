@@ -18,7 +18,6 @@ import CoreMedia
 enum VideoRecordingState {
     case idle
     case recording
-    case paused
     
     var displayName: String {
         switch self {
@@ -26,8 +25,6 @@ enum VideoRecordingState {
             return "Idle"
         case .recording:
             return "Recording"
-        case .paused:
-            return "Paused"
         }
     }
 }

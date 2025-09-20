@@ -35,7 +35,7 @@ import Foundation
                 case .windowSelectionOverlay:
                     return 25  // Above area selection
                 case .floatingPanel:
-                    return 50  // Always on top
+                    return 100  // Always on top, above all overlays
                 }
             }
         }
