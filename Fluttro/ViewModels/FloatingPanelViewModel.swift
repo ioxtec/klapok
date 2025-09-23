@@ -443,13 +443,11 @@ import SwiftUI
             let windowToRecord = selectedWindow
             let areaToRecord = isAreaSelectionActive ? areaSelectionManager.getCurrentSelection() : nil
             
-            // Hide any active overlays before starting recording
+            // Hide window selection overlay before starting recording (area selection stays visible)
             if isWindowSelectionActive {
                 hideWindowSelection()
             }
-            if isAreaSelectionActive {
-                hideAreaSelection()
-            }
+            // Note: We keep area selection overlay visible during video recording so user can see what's being recorded
             
             Task {
                 do {

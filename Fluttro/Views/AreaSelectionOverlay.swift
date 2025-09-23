@@ -40,9 +40,27 @@ import SwiftUI
 
         var body: some View {
             ZStack {
-                // Semi-transparent background
-                Color.black.opacity(0.3)
-                    .ignoresSafeArea(.all)
+                // Semi-transparent background with cut-out selection area
+                if !selectionRect.isEmpty {
+                    // Create a darker overlay with a transparent cutout
+                    ZStack {
+                        // Dark overlay covering everything
+                        Color.black.opacity(0.6)
+                            .ignoresSafeArea(.all)
+                        
+                        // Clear rectangle in the selection area (creates the "hole")
+                        Rectangle()
+                            .fill(Color.white)
+                            .frame(width: selectionRect.width, height: selectionRect.height)
+                            .position(x: selectionRect.midX, y: selectionRect.midY)
+                            .blendMode(.destinationOut)
+                    }
+                    .compositingGroup()
+                } else {
+                    // When no selection, show full semi-transparent background
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea(.all)
+                }
 
                 // Instructions
                 VStack {
@@ -564,7 +582,7 @@ import SwiftUI
 
             return NSRect(
                 x: screenFrame.minX + rect.minX,
-                y: screenFrame.minY + (screenHeight - rect.maxY),
+                y: screenFrame.minY + (screenHeight - rect.minY - rect.height),
                 width: rect.width,
                 height: rect.height
             )
@@ -678,6 +696,7 @@ import SwiftUI
                 .position(position)
         }
     }
+    
 
     #Preview {
         AreaSelectionView(

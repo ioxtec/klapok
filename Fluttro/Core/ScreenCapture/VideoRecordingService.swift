@@ -411,8 +411,25 @@ class VideoRecordingService: VideoCaptureService {
             streamConfig.height = height
         }
         
+        // Convert coordinates from SwiftUI (top-left origin) to ScreenCaptureKit (bottom-left origin)
+        guard let screen = content.displays.first else {
+            throw CaptureError.unavailable
+        }
+        let screenHeight = screen.frame.height
+        
+        let convertedRect = CGRect(
+            x: areaRect.minX,
+            y: screenHeight - areaRect.maxY,  // Convert Y from top-left to bottom-left origin
+            width: areaRect.width,
+            height: areaRect.height
+        )
+        
         // Set the source rectangle to record only the selected area
-        streamConfig.sourceRect = areaRect
+        streamConfig.sourceRect = convertedRect
+        
+        print("🎥 Original area rect: \(areaRect)")
+        print("🎥 Converted source rect: \(convertedRect)")
+        print("🎥 Screen height: \(screenHeight)")
         
         // Set frame rate
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
