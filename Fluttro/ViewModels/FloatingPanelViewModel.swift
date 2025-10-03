@@ -462,6 +462,10 @@ import SwiftUI
                         // For area recording, check if an area is selected
                         if let area = areaToRecord, !area.isEmpty && area.width > 10 && area.height > 10 {
                             Logger.d("Starting area recording for: \(area)")
+                            
+                            // Start recording mode in area selection overlay
+                            areaSelectionManager.startRecording()
+                            
                             try await videoRecordingService.startRecordingArea(area, excludingWindows: windowsToExclude)
                         } else {
                             Logger.w("No valid area selected for area recording, falling back to full screen")
@@ -505,6 +509,9 @@ import SwiftUI
                     recordingDuration = 0.0
                     Logger.d("Video recording stopped: \(recording.duration)s")
                     
+                    // Stop recording mode in area selection overlay
+                    areaSelectionManager.stopRecording()
+                    
                     // Hide any active overlays after recording stops
                     if isWindowSelectionActive {
                         hideWindowSelection()
@@ -517,6 +524,9 @@ import SwiftUI
                     await saveVideoAndOpenEditor(recording)
                 } catch {
                     Logger.e("Failed to stop video recording: \(error)")
+                    
+                    // Stop recording mode in area selection overlay
+                    areaSelectionManager.stopRecording()
                     
                     // Hide overlays even if there was an error
                     if isWindowSelectionActive {

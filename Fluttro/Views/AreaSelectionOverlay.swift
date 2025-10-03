@@ -30,6 +30,7 @@ import SwiftUI
         let backgroundImage: NSImage
         let onSelection: (NSRect?) -> Void
         @Binding var currentSelection: NSRect
+        @Binding var isRecording: Bool
 
         @State private var startPoint: CGPoint = .zero
         @State private var currentPoint: CGPoint = .zero
@@ -98,8 +99,8 @@ import SwiftUI
                 .padding(.top, 10)
                 .padding(.leading, 10)
 
-                // Selection rectangle with dashed border
-                if !selectionRect.isEmpty {
+                // Selection rectangle with dashed border (hidden during recording)
+                if !selectionRect.isEmpty && !isRecording {
                     SelectionRectangleView(
                         rect: selectionRect,
                         mousePosition: mousePosition,
@@ -131,15 +132,17 @@ import SwiftUI
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
-                switch phase {
-                case .active(let location):
-                    mousePosition = location
-                    updateCursor(at: location)
-                case .ended:
-                    break
+                if !isRecording {
+                    switch phase {
+                    case .active(let location):
+                        mousePosition = location
+                        updateCursor(at: location)
+                    case .ended:
+                        break
+                    }
                 }
             }
-            .gesture(mainDragGesture)
+            .gesture(isRecording ? nil : mainDragGesture)
             .onKeyPress(.escape) {
                 onSelection(nil)
                 return .handled
@@ -705,7 +708,8 @@ import SwiftUI
             onSelection: { rect in
                 print("Selected: \(String(describing: rect))")
             },
-            currentSelection: .constant(.zero)
+            currentSelection: .constant(.zero),
+            isRecording: .constant(false)
         )
     }
 

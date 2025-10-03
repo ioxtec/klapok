@@ -14,6 +14,7 @@ import SwiftUI
 
     final class AreaSelectionManager: ObservableObject {
         @Published var isPresented = false
+        @Published var isRecording = false
 
         private var backgroundImage: NSImage?
         private var completion: ((NSRect?) -> Void)?
@@ -55,6 +56,14 @@ import SwiftUI
         func getCurrentSelection() -> NSRect {
             return currentSelection
         }
+        
+        func startRecording() {
+            isRecording = true
+        }
+        
+        func stopRecording() {
+            isRecording = false
+        }
 
         // MARK: - Private Methods
 
@@ -88,6 +97,10 @@ import SwiftUI
                 currentSelection: Binding(
                     get: { self.currentSelection },
                     set: { self.currentSelection = $0 }
+                ),
+                isRecording: Binding(
+                    get: { self.isRecording },
+                    set: { self.isRecording = $0 }
                 )
             )
 
