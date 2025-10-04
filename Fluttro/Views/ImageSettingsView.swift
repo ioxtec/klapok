@@ -11,10 +11,60 @@ import SwiftUI
 
 struct ImageSettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
+    @StateObject private var profileManager = ProfileManager.shared
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                
+                // Image Profiles Section
+                GroupBox("Image Profiles") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Manage your image editing profiles. Profiles save all your editing settings for quick access.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                        
+                        Divider()
+                            .background(Color.gray.opacity(0.08))
+                            .padding(.leading, 16)
+                        
+                        // Profile list
+                        ForEach(profileManager.imageProfiles.profiles, id: \.id) { profile in
+                            ProfileInfoView(profile: profile)
+                                .padding(.horizontal, 16)
+                            
+                            if profile.id != profileManager.imageProfiles.profiles.last?.id {
+                                Divider()
+                                    .background(Color.gray.opacity(0.08))
+                                    .padding(.leading, 16)
+                            }
+                        }
+                        
+                        // Profile management buttons
+                        HStack {
+                            Button("Reset to Defaults") {
+                                profileManager.resetImageProfilesToDefaults()
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Spacer()
+                            
+                            Button("Export Profiles") {
+                                _ = profileManager.exportImageProfiles()
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Import Profiles") {
+                                _ = profileManager.importImageProfiles()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                    }
+                }
                 
                 // Image Quality Section
                 GroupBox(LocalizationKeys.imageQualityTitle.localized) {

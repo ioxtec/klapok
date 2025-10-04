@@ -14,10 +14,101 @@ import AVKit
 struct VideoEditorView: View {
     @ObservedObject var viewModel: VideoEditorViewModel
     @StateObject private var settings = AppSettings.shared
+    @StateObject private var profileManager = ProfileManager.shared
     
     var body: some View {
-        HStack(spacing: 0) {
-            // Left area with video player and controls
+        NavigationSplitView {
+            // Left sidebar with video details
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Profile control
+                    ProfileControlView<VideoEditingProfile>(
+                        profileManager: profileManager,
+                        profiles: profileManager.videoProfiles.profiles,
+                        activeProfile: profileManager.getActiveVideoProfile(),
+                        profileTypeName: "Video",
+                        onProfileSelected: { profile in
+                            profileManager.applyVideoProfile(profile, to: settings)
+                        },
+                        onProfileAdded: { name in
+                            let newProfile = profileManager.createVideoProfileFromCurrentSettings(name: name, from: settings)
+                            profileManager.setActiveVideoProfile(newProfile)
+                        },
+                        onProfileEdited: { profile, newName in
+                            // If newName is the same as current name, it means we're saving changes to the profile
+                            if newName == profile.name {
+                                // Save current video settings to the active profile
+                                let updatedProfile = VideoEditingProfile(
+                                    id: profile.id,
+                                    name: profile.name,
+                                    isDefault: profile.isDefault,
+                                    createdAt: profile.createdAt,
+                                    modifiedAt: Date(),
+                                    resolution: settings.videoResolution,
+                                    frameRate: settings.videoFrameRate,
+                                    bitrate: settings.videoBitrate,
+                                    codec: settings.videoCodec,
+                                    format: settings.videoFormat,
+                                    recordSystemAudio: settings.recordSystemAudio,
+                                    recordMicrophone: settings.recordMicrophone,
+                                    audioQuality: "High", // Default quality
+                                    showMouseCursor: settings.showMouseCursor,
+                                    showRecordingTimer: true, // Default behavior
+                                    autoStopAfterTime: false, // Default behavior
+                                    maxTime: "10min", // Default max time
+                                    compressAfterRecording: true, // Default behavior
+                                    deleteAfterRecording: false // Default behavior
+                                )
+                                profileManager.updateVideoProfile(updatedProfile)
+                            } else {
+                                // Rename the profile
+                                var updatedProfile = profile
+                                updatedProfile.name = newName
+                                updatedProfile.modifiedAt = Date()
+                                profileManager.updateVideoProfile(updatedProfile)
+                            }
+                        },
+                        onProfileDeleted: { profile in
+                            profileManager.removeVideoProfile(withId: profile.id)
+                        },
+                        onImportProfiles: {
+                            _ = profileManager.importVideoProfiles()
+                        },
+                        onExportProfiles: {
+                            _ = profileManager.exportVideoProfiles()
+                        },
+                        onResetProfiles: {
+                            profileManager.resetVideoProfilesToDefaults()
+                        }
+                    )
+                    
+                    Text("Video Details")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    if let video = viewModel.video {
+                        VStack(alignment: .leading, spacing: 12) {
+                            DetailRow(label: "File:", value: video.url.lastPathComponent)
+                            DetailRow(label: "Duration:", value: formatDuration(video.duration))
+                            DetailRow(label: "Size:", value: formatFileSize(video.url))
+                            DetailRow(label: "Created:", value: formatDate(video.url))
+                            DetailRow(label: "Frame Rate:", value: "\(Int(video.frameRate)) FPS")
+                            DetailRow(label: "Resolution:", value: "\(Int(video.size.width)) × \(Int(video.size.height))")
+                        }
+                    } else {
+                        Text("No video selected")
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                .padding()
+            }
+            .frame(minWidth: 300, maxWidth: 400)
+            .background(Color(NSColor.controlBackgroundColor))
+        } detail: {
+            // Right side - video player and controls
             VStack(spacing: 0) {
                 // Top toolbar
                 HStack(spacing: 12) {
@@ -109,38 +200,8 @@ struct VideoEditorView: View {
                         .background(Color(NSColor.controlBackgroundColor))
                 }
             }
-            .frame(minWidth: 400)
-
-            // Right sidebar with video details
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Video Details")
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                
-                if let video = viewModel.video {
-                    VStack(alignment: .leading, spacing: 12) {
-                        DetailRow(label: "File:", value: video.url.lastPathComponent)
-                        DetailRow(label: "Duration:", value: formatDuration(video.duration))
-                        DetailRow(label: "Size:", value: formatFileSize(video.url))
-                        DetailRow(label: "Created:", value: formatDate(video.url))
-                        DetailRow(label: "Frame Rate:", value: "\(Int(video.frameRate)) FPS")
-                        DetailRow(label: "Resolution:", value: "\(Int(video.size.width)) × \(Int(video.size.height))")
-                    }
-                    .padding(.horizontal, 16)
-                } else {
-                    Text("No video selected")
-                        .font(.body)
-                        .foregroundColor(.secondary)
-                        .padding(.horizontal, 16)
-                }
-                
-                Spacer()
-            }
-            .frame(width: 300)
-            .background(Color(NSColor.controlBackgroundColor))
         }
+        .frame(minWidth: 1000, minHeight: 700)
     }
     
     // MARK: - Helper Functions

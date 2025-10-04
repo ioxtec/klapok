@@ -25,12 +25,14 @@ import UniformTypeIdentifiers
         @Published var cornerRadius: Double = 12.0
         @Published var selectedBackgroundColor: Color = .clear
         
-        // Background aspect ratio and padding
+        // Background settings
         @Published var selectedAspectRatio: BackgroundAspectRatio = .auto
         @Published var backgroundPadding: Double = 30.0
-        @Published var backgroundGradient: BackgroundGradient = .cool
         @Published var backgroundCornerRadius: Double = 20.0
         @Published var shadowIntensity: Double = 25.0
+        
+        // Background manager
+        private let backgroundManager = BackgroundManager.shared
 
         // MARK: - Dependencies
 
@@ -62,7 +64,7 @@ import UniformTypeIdentifiers
             }
 
             print("EditorViewModel: Starting saveImage process...")
-            print("EditorViewModel: Current settings - aspect: \(selectedAspectRatio), padding: \(backgroundPadding), gradient: \(backgroundGradient)")
+            print("EditorViewModel: Current settings - aspect: \(selectedAspectRatio), padding: \(backgroundPadding), background type: \(backgroundManager.collections.backgroundType)")
             
             // Render the complete composition (screenshot + background)
             let compositeImage = renderCompositeImage()
@@ -219,7 +221,13 @@ import UniformTypeIdentifiers
             
             let imageSize = originalImage.size
             print("EditorViewModel: Rendering composite image - original size: \(imageSize)")
-            print("EditorViewModel: Settings - aspect ratio: \(selectedAspectRatio), padding: \(backgroundPadding), gradient: \(backgroundGradient)")
+            print("EditorViewModel: Settings - background type: \(backgroundManager.collections.backgroundType), aspect ratio: \(selectedAspectRatio), padding: \(backgroundPadding)")
+            
+            // If background is disabled, return original image
+            if backgroundManager.collections.backgroundType == .none {
+                print("EditorViewModel: Background disabled, returning original image")
+                return originalImage
+            }
             
             // Calculate appropriate export size based on aspect ratio
             let exportSize = calculateExportSize(for: imageSize)
@@ -244,35 +252,49 @@ import UniformTypeIdentifiers
             
             compositeImage.lockFocus()
             
-            // Draw background - always start with a visible background for testing
-            print("EditorViewModel: Drawing background - gradient: \(backgroundGradient), size: \(compositeSize)")
+            // Draw background
+            print("EditorViewModel: Drawing background - type: \(backgroundManager.collections.backgroundType), size: \(compositeSize)")
             
-            // First draw a solid blue background to ensure something is visible
             if let context = NSGraphicsContext.current?.cgContext {
-                print("EditorViewModel: Drawing solid blue background for testing")
-                context.setFillColor(CGColor(red: 0.2, green: 0.5, blue: 1.0, alpha: 1.0)) // Bright blue
-                context.fill(CGRect(origin: .zero, size: compositeSize))
-                
-                if backgroundGradient != .none {
-                    // Then overlay the gradient
-                    print("EditorViewModel: Drawing gradient overlay")
-                    let gradientColors = backgroundGradient.colors.map { $0.cgColor }
-                    print("EditorViewModel: Gradient colors count: \(gradientColors.count)")
-                    
-                    let colorSpace = CGColorSpaceCreateDeviceRGB()
-                    let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors as CFArray, locations: [0.0, 1.0])
-                    
-                    if let gradient = gradient {
-                        print("EditorViewModel: Drawing gradient from (0, \(compositeSize.height)) to (\(compositeSize.width), 0)")
-                        context.drawLinearGradient(
-                            gradient,
-                            start: CGPoint(x: 0, y: compositeSize.height),
-                            end: CGPoint(x: compositeSize.width, y: 0),
-                            options: []
-                        )
+                switch backgroundManager.collections.backgroundType {
+                case .gradient:
+                    if let selectedGradient = backgroundManager.collections.selectedGradient {
+                        print("EditorViewModel: Drawing custom gradient background")
+                        let gradientColors = selectedGradient.colors.map { $0.cgColor }
+                        
+                        let colorSpace = CGColorSpaceCreateDeviceRGB()
+                        let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors as CFArray, locations: [0.0, 1.0])
+                        
+                        if let gradient = gradient {
+                            context.drawLinearGradient(
+                                gradient,
+                                start: CGPoint(x: 0, y: compositeSize.height),
+                                end: CGPoint(x: compositeSize.width, y: 0),
+                                options: []
+                            )
+                        }
                     } else {
-                        print("EditorViewModel: Failed to create gradient")
+                        // Fallback to solid color
+                        context.setFillColor(CGColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0))
+                        context.fill(CGRect(origin: .zero, size: compositeSize))
                     }
+                    
+                case .image:
+                    if let selectedImage = backgroundManager.collections.selectedImage,
+                       let backgroundImage = selectedImage.image {
+                        print("EditorViewModel: Drawing background image")
+                        drawBackgroundImage(backgroundImage, in: context, size: compositeSize, scaleMode: selectedImage.scaleMode, opacity: selectedImage.opacity)
+                    } else {
+                        // Fallback to solid color
+                        context.setFillColor(CGColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0))
+                        context.fill(CGRect(origin: .zero, size: compositeSize))
+                    }
+                    
+                case .none:
+                    // Draw transparent background
+                    print("EditorViewModel: Drawing transparent background")
+                    context.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.0))
+                    context.fill(CGRect(origin: .zero, size: compositeSize))
                 }
             } else {
                 print("EditorViewModel: No graphics context available - this is the problem!")
@@ -310,82 +332,51 @@ import UniformTypeIdentifiers
             print("EditorViewModel: Composite image created with size: \(compositeImage.size)")
             return compositeImage
         }
-    }
-    
-    // MARK: - Supporting Enums
-    
-    enum BackgroundAspectRatio: String, CaseIterable, Identifiable {
-        case auto = "Auto"
-        case ratio16_9 = "16:9"
-        case ratio4_3 = "4:3"
-        case ratio3_2 = "3:2"
-        case ratio1_1 = "1:1"
         
-        var id: String { rawValue }
-        
-        var displayName: String { rawValue }
-        
-        var ratio: CGFloat {
-            switch self {
-            case .auto:
-                return 0 // Special case, will use available space
-            case .ratio16_9:
-                return 16.0 / 9.0
-            case .ratio4_3:
-                return 4.0 / 3.0
-            case .ratio3_2:
-                return 3.0 / 2.0
-            case .ratio1_1:
-                return 1.0
+        /// Draws background image with specified scale mode and opacity
+        private func drawBackgroundImage(_ image: NSImage, in context: CGContext, size: CGSize, scaleMode: BackgroundScaleMode, opacity: Double) {
+            let imageSize = image.size
+            let targetRect = CGRect(origin: .zero, size: size)
+            
+            context.setAlpha(opacity)
+            
+            switch scaleMode {
+            case .fit:
+                // Scale to fit while maintaining aspect ratio
+                let scale = min(size.width / imageSize.width, size.height / imageSize.height)
+                let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+                let x = (size.width - scaledSize.width) / 2
+                let y = (size.height - scaledSize.height) / 2
+                let rect = CGRect(x: x, y: y, width: scaledSize.width, height: scaledSize.height)
+                image.draw(in: rect)
+                
+            case .fill:
+                // Scale to fill while maintaining aspect ratio
+                let scale = max(size.width / imageSize.width, size.height / imageSize.height)
+                let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+                let x = (size.width - scaledSize.width) / 2
+                let y = (size.height - scaledSize.height) / 2
+                let rect = CGRect(x: x, y: y, width: scaledSize.width, height: scaledSize.height)
+                image.draw(in: rect)
+                
+            case .stretch:
+                // Stretch to fill entire area
+                image.draw(in: targetRect)
+                
+            case .tile:
+                // Tile the image
+                let patternRect = CGRect(origin: .zero, size: imageSize)
+                image.draw(in: targetRect, from: patternRect, operation: .sourceOver, fraction: 1.0)
+                
+            case .center:
+                // Center without scaling
+                let x = (size.width - imageSize.width) / 2
+                let y = (size.height - imageSize.height) / 2
+                let rect = CGRect(x: x, y: y, width: imageSize.width, height: imageSize.height)
+                image.draw(in: rect)
             }
-        }
-    }
-    
-    enum BackgroundGradient: String, CaseIterable, Identifiable {
-        case cool = "Cool"
-        case warm = "Warm"
-        case violet = "Violet"
-        case rose = "Rose"
-        case sky = "Sky"
-        case beach = "Beach"
-        case love = "Love"
-        case flower = "Flower"
-        case sunset = "Sunset"
-        case ocean = "Ocean"
-        case forest = "Forest"
-        case none = "None"
-        
-        var id: String { rawValue }
-        
-        var displayName: String { rawValue }
-        
-        var colors: [Color] {
-            switch self {
-            case .cool:
-                return [Color.blue.opacity(0.7), Color.cyan.opacity(0.7)]
-            case .warm:
-                return [Color.orange.opacity(0.7), Color.yellow.opacity(0.7)]
-            case .violet:
-                return [Color.purple.opacity(0.7), Color.pink.opacity(0.7)]
-            case .rose:
-                return [Color.pink.opacity(0.7), Color.red.opacity(0.7)]
-            case .sky:
-                return [Color.blue.opacity(0.6), Color.white.opacity(0.6)]
-            case .beach:
-                return [Color.blue.opacity(0.7), Color.green.opacity(0.7)]
-            case .love:
-                return [Color.pink.opacity(0.7), Color.purple.opacity(0.7)]
-            case .flower:
-                return [Color.pink.opacity(0.7), Color.orange.opacity(0.7)]
-            case .sunset:
-                return [Color.orange.opacity(0.7), Color.red.opacity(0.7)]
-            case .ocean:
-                return [Color.blue.opacity(0.7), Color.teal.opacity(0.7)]
-            case .forest:
-                return [Color.green.opacity(0.7), Color.mint.opacity(0.7)]
-            case .none:
-                return [Color.clear, Color.clear]
-            }
+            
+            context.setAlpha(1.0)
         }
     }
 

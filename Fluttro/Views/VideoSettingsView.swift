@@ -13,10 +13,60 @@ import AppKit
 struct VideoSettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @StateObject private var settings = AppSettings.shared
+    @StateObject private var profileManager = ProfileManager.shared
     
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
+                
+                // Video Profiles Section
+                GroupBox("Video Profiles") {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Manage your video recording profiles. Profiles save all your recording settings for quick access.")
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.top, 12)
+                        
+                        Divider()
+                            .background(Color.gray.opacity(0.08))
+                            .padding(.leading, 16)
+                        
+                        // Profile list
+                        ForEach(profileManager.videoProfiles.profiles, id: \.id) { profile in
+                            ProfileInfoView(profile: profile)
+                                .padding(.horizontal, 16)
+                            
+                            if profile.id != profileManager.videoProfiles.profiles.last?.id {
+                                Divider()
+                                    .background(Color.gray.opacity(0.08))
+                                    .padding(.leading, 16)
+                            }
+                        }
+                        
+                        // Profile management buttons
+                        HStack {
+                            Button("Reset to Defaults") {
+                                profileManager.resetVideoProfilesToDefaults()
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Spacer()
+                            
+                            Button("Export Profiles") {
+                                _ = profileManager.exportVideoProfiles()
+                            }
+                            .buttonStyle(.bordered)
+                            
+                            Button("Import Profiles") {
+                                _ = profileManager.importVideoProfiles()
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                    }
+                }
                 
                 // Video Quality Section
                 GroupBox(LocalizationKeys.videoQualityTitle.localized) {
