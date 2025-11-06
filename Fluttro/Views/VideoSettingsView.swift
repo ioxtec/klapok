@@ -111,7 +111,7 @@ struct VideoSettingsView: View {
                         )
                         
                         SettingsPickerOption(
-                            title: LocalizationKeys.audioQualityTitle.localized,
+                            title: LocalizationKeys.audioQualityTitle.localized + " *",
                             description: LocalizationKeys.audioQualityDescription.localized,
                             isLast: true,
                             selection: .constant("High"),
@@ -124,7 +124,7 @@ struct VideoSettingsView: View {
                 GroupBox(LocalizationKeys.recordingBehaviorTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsToggleOption(
-                            title: LocalizationKeys.showRecordingTimerTitle.localized,
+                            title: LocalizationKeys.showRecordingTimerTitle.localized + " *",
                             description: LocalizationKeys.showRecordingTimerDescription.localized,
                             isOn: .constant(true)
                         )
@@ -136,13 +136,13 @@ struct VideoSettingsView: View {
                         )
                         
                         SettingsToggleOption(
-                            title: LocalizationKeys.autoStopAfterTimeTitle.localized,
+                            title: LocalizationKeys.autoStopAfterTimeTitle.localized + " *",
                             description: LocalizationKeys.autoStopAfterTimeDescription.localized,
                             isOn: .constant(false)
                         )
                         
                         SettingsPickerOption(
-                            title: LocalizationKeys.maxTimeTitle.localized,
+                            title: LocalizationKeys.maxTimeTitle.localized + " *",
                             description: LocalizationKeys.maxTimeDescription.localized,
                             isLast: true,
                             selection: .constant("10min"),
@@ -232,13 +232,13 @@ struct VideoSettingsView: View {
                         }
                         
                         SettingsToggleOption(
-                            title: LocalizationKeys.compressAfterRecordingTitle.localized,
+                            title: LocalizationKeys.compressAfterRecordingTitle.localized + " *",
                             description: LocalizationKeys.compressAfterRecordingDescription.localized,
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: LocalizationKeys.deleteAfterRecordingTitle.localized,
+                            title: LocalizationKeys.deleteAfterRecordingTitle.localized + " *",
                             description: LocalizationKeys.deleteAfterRecordingDescription.localized,
                             isLast: false,
                             isOn: .constant(false)

@@ -31,6 +31,9 @@ import UniformTypeIdentifiers
         @Published var backgroundCornerRadius: Double = 20.0
         @Published var shadowIntensity: Double = 25.0
         
+        // Annotation manager
+        @Published var annotationManager = AnnotationManager()
+        
         // Background manager
         private let backgroundManager = BackgroundManager.shared
 
@@ -327,10 +330,234 @@ import UniformTypeIdentifiers
                 fraction: 1.0
             )
             
+            // Draw annotations on top of the image
+            if !annotationManager.annotations.isEmpty {
+                print("EditorViewModel: Drawing \(annotationManager.annotations.count) annotations")
+                drawAnnotations(in: imageRect, imageSize: imageSize)
+            }
+            
             compositeImage.unlockFocus()
             
             print("EditorViewModel: Composite image created with size: \(compositeImage.size)")
             return compositeImage
+        }
+        
+        /// Draws all annotations on the current graphics context
+        private func drawAnnotations(in imageRect: NSRect, imageSize: CGSize) {
+            guard let context = NSGraphicsContext.current?.cgContext else { return }
+            
+            // Calculate scale factor between canvas size and export size
+            let scaleX = imageRect.width / imageSize.width
+            let scaleY = imageRect.height / imageSize.height
+            
+            for annotation in annotationManager.annotations {
+                // Transform annotation coordinates to export coordinates
+                // NOTE: SwiftUI canvas uses top-left origin (y increases downward),
+                // while CoreGraphics uses bottom-left origin (y increases upward).
+                // Flip Y to match visual placement.
+                let transformedStart = CGPoint(
+                    x: imageRect.minX + annotation.startPoint.x * scaleX,
+                    y: imageRect.minY + (imageSize.height - annotation.startPoint.y) * scaleY
+                )
+                let transformedEnd = CGPoint(
+                    x: imageRect.minX + annotation.endPoint.x * scaleX,
+                    y: imageRect.minY + (imageSize.height - annotation.endPoint.y) * scaleY
+                )
+                
+                let color = annotation.color.toNSColor()
+                
+                switch annotation.type {
+                case .text:
+                    drawTextAnnotation(annotation, atTopLeft: transformedStart, scale: scaleX)
+                    
+                case .arrow:
+                    drawArrowAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
+                    
+                case .rectangle:
+                    drawRectangleAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
+                    
+                case .circle:
+                    drawCircleAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
+                    
+                case .line:
+                    drawLineAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
+                    
+                case .highlight:
+                    drawHighlightAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
+                    
+                case .freeDraw:
+                    drawFreeDrawAnnotation(annotation, color: color, context: context, scale: scaleX, imageRect: imageRect)
+                }
+            }
+        }
+        
+        private func drawTextAnnotation(_ annotation: Annotation, atTopLeft point: CGPoint, scale: CGFloat) {
+            guard let text = annotation.text else { return }
+            
+            let font = NSFont.systemFont(ofSize: annotation.fontSize * scale, weight: annotation.fontWeight.nsWeight)
+            let color = annotation.color.toNSColor()
+            
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: font,
+                .foregroundColor: color
+            ]
+            
+            let attributedString = NSAttributedString(string: text, attributes: attributes)
+            // NSAttributedString draws at text baseline. Our point is top-left.
+            // Adjust Y by font ascender to convert top-left to baseline position.
+            let baselinePoint = CGPoint(x: point.x, y: point.y - font.ascender)
+            attributedString.draw(at: baselinePoint)
+        }
+        
+        private func drawArrowAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
+            context.saveGState()
+            
+            // Draw line
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(annotation.strokeWidth)
+            context.setLineCap(.round)
+            
+            context.move(to: start)
+            context.addLine(to: end)
+            context.strokePath()
+            
+            // Draw arrowhead
+            let angle = atan2(end.y - start.y, end.x - start.x)
+            let arrowLength = annotation.arrowheadSize
+            let arrowAngle: CGFloat = .pi / 6 // 30 degrees
+            
+            let point1 = CGPoint(
+                x: end.x - arrowLength * cos(angle - arrowAngle),
+                y: end.y - arrowLength * sin(angle - arrowAngle)
+            )
+            let point2 = CGPoint(
+                x: end.x - arrowLength * cos(angle + arrowAngle),
+                y: end.y - arrowLength * sin(angle + arrowAngle)
+            )
+            
+            context.move(to: end)
+            context.addLine(to: point1)
+            context.move(to: end)
+            context.addLine(to: point2)
+            context.strokePath()
+            
+            context.restoreGState()
+        }
+        
+        private func drawRectangleAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
+            context.saveGState()
+            
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            
+            // Fill
+            if annotation.fillOpacity > 0 {
+                context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
+                context.fill(rect)
+            }
+            
+            // Stroke
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(annotation.strokeWidth)
+            context.stroke(rect)
+            
+            context.restoreGState()
+        }
+        
+        private func drawCircleAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
+            context.saveGState()
+            
+            let width = abs(end.x - start.x)
+            let height = abs(end.y - start.y)
+            let diameter = max(width, height)
+            let centerX = (start.x + end.x) / 2
+            let centerY = (start.y + end.y) / 2
+            
+            let rect = CGRect(
+                x: centerX - diameter / 2,
+                y: centerY - diameter / 2,
+                width: diameter,
+                height: diameter
+            )
+            
+            // Fill
+            if annotation.fillOpacity > 0 {
+                context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
+                context.fillEllipse(in: rect)
+            }
+            
+            // Stroke
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(annotation.strokeWidth)
+            context.strokeEllipse(in: rect)
+            
+            context.restoreGState()
+        }
+        
+        private func drawLineAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
+            context.saveGState()
+            
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(annotation.strokeWidth)
+            context.setLineCap(.round)
+            
+            context.move(to: start)
+            context.addLine(to: end)
+            context.strokePath()
+            
+            context.restoreGState()
+        }
+        
+        private func drawHighlightAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
+            context.saveGState()
+            
+            let rect = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(end.x - start.x),
+                height: abs(end.y - start.y)
+            )
+            
+            context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
+            context.fill(rect)
+            
+            context.restoreGState()
+        }
+        
+        private func drawFreeDrawAnnotation(_ annotation: Annotation, color: NSColor, context: CGContext, scale: CGFloat, imageRect: NSRect) {
+            guard annotation.pathPoints.count > 1 else { return }
+            
+            context.saveGState()
+            
+            context.setStrokeColor(color.cgColor)
+            context.setLineWidth(annotation.strokeWidth)
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+            
+            // Transform first point
+            let firstPoint = annotation.pathPoints[0]
+            let transformedFirst = CGPoint(
+                x: imageRect.minX + firstPoint.x * scale,
+                y: imageRect.minY + (imageRect.height - firstPoint.y * scale)
+            )
+            
+            context.move(to: transformedFirst)
+            
+            // Draw path through all points
+            for point in annotation.pathPoints.dropFirst() {
+                let transformedPoint = CGPoint(
+                    x: imageRect.minX + point.x * scale,
+                    y: imageRect.minY + (imageRect.height - point.y * scale)
+                )
+                context.addLine(to: transformedPoint)
+            }
+            
+            context.strokePath()
+            context.restoreGState()
         }
         
         /// Draws background image with specified scale mode and opacity

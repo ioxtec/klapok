@@ -70,14 +70,14 @@ struct ImageSettingsView: View {
                 GroupBox(LocalizationKeys.imageQualityTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsPickerOption(
-                            title: LocalizationKeys.formatTitle.localized,
+                            title: LocalizationKeys.formatTitle.localized + " *",
                             description: LocalizationKeys.formatDescription.localized,
                             selection: .constant("PNG"),
                             options: [("PNG", "PNG"), ("JPEG", "JPEG")]
                         )
                         
                         SettingsSliderOption(
-                            title: LocalizationKeys.qualityTitle.localized,
+                            title: LocalizationKeys.qualityTitle.localized + " *",
                             description: LocalizationKeys.qualityDescription.localized,
                             isLast: true,
                             value: .constant(0.9),
@@ -92,14 +92,14 @@ struct ImageSettingsView: View {
                 GroupBox(LocalizationKeys.editorTitle.localized) {
                     VStack(alignment: .leading, spacing: 0) {
                         SettingsPickerOption(
-                            title: LocalizationKeys.defaultGradientTitle.localized,
+                            title: LocalizationKeys.defaultGradientTitle.localized + " *",
                             description: LocalizationKeys.defaultGradientDescription.localized,
                             selection: .constant("Cool"),
                             options: [("Cool", "Cool"), ("Warm", "Warm"), ("Violet", "Violet"), ("None", "None")]
                         )
                         
                         SettingsSliderOption(
-                            title: LocalizationKeys.defaultPaddingTitle.localized,
+                            title: LocalizationKeys.defaultPaddingTitle.localized + " *",
                             description: LocalizationKeys.defaultPaddingDescription.localized,
                             isLast: false,
                             value: .constant(30.0),
@@ -109,7 +109,7 @@ struct ImageSettingsView: View {
                         )
                         
                         SettingsPickerOption(
-                            title: "Domyślny aspect ratio",
+                            title: "Domyślny aspect ratio *",
                             description: "Proporcje tła dla nowych zrzutów",
                             isLast: true,
                             selection: .constant("Auto"),
@@ -128,19 +128,19 @@ struct ImageSettingsView: View {
                         )
                         
                         SettingsToggleOption(
-                            title: "Automatycznie otwórz edytor",
+                            title: "Automatycznie otwórz edytor *",
                             description: "Otwórz edytor po zrobieniu zrzutu",
                             isOn: .constant(true)
                         )
                         
                         SettingsToggleOption(
-                            title: "Kopiuj do schowka po zapisie",
+                            title: "Kopiuj do schowka po zapisie *",
                             description: "Automatycznie kopiuj zrzut do schowka",
                             isOn: .constant(false)
                         )
                         
                         SettingsToggleOption(
-                            title: "Pokaż powiadomienie po zapisie",
+                            title: "Pokaż powiadomienie po zapisie *",
                             description: "Wyświetl powiadomienie po zapisaniu zrzutu",
                             isLast: true,
                             isOn: .constant(true)

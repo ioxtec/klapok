@@ -187,23 +187,38 @@ import Foundation
 
         private init() {
             // Load saved settings or use defaults
+            // Use container's Documents directory for sandboxed apps
             let documentsPath = FileManager.default.urls(
                 for: .documentDirectory, in: .userDomainMask
             ).first!
+            
+            print("AppSettings: Documents path: \(documentsPath.path)")
+            
             let defaultSaveDirectory = documentsPath.appendingPathComponent("Fluttro Screenshots")
             let defaultVideoSaveDirectory = documentsPath.appendingPathComponent("Fluttro Videos")
 
-            // For sandboxed apps, we need to handle URLs differently
-            if let savedSaveDirectory = UserDefaults.standard.string(forKey: "saveDirectory") {
-                self.saveDirectory = URL(fileURLWithPath: savedSaveDirectory)
+            // For sandboxed apps, always use paths within the container
+            // Check if we have a saved path and if it's within the container
+            if let savedPath = UserDefaults.standard.string(forKey: "saveDirectory"),
+               let savedURL = URL(string: savedPath),
+               savedURL.path.contains("/Library/Containers/") {
+                self.saveDirectory = savedURL
             } else {
+                // Use default path within container
                 self.saveDirectory = defaultSaveDirectory
+                // Clear old invalid path
+                UserDefaults.standard.removeObject(forKey: "saveDirectory")
             }
             
-            if let savedVideoSaveDirectory = UserDefaults.standard.string(forKey: "videoSaveDirectory") {
-                self.videoSaveDirectory = URL(fileURLWithPath: savedVideoSaveDirectory)
+            if let savedPath = UserDefaults.standard.string(forKey: "videoSaveDirectory"),
+               let savedURL = URL(string: savedPath),
+               savedURL.path.contains("/Library/Containers/") {
+                self.videoSaveDirectory = savedURL
             } else {
+                // Use default path within container
                 self.videoSaveDirectory = defaultVideoSaveDirectory
+                // Clear old invalid path
+                UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
             }
             
             self.fileNameTemplate =
@@ -240,6 +255,7 @@ import Foundation
         // MARK: - Public Methods
 
         func resetToDefaults() {
+            // Use container's Documents directory for sandboxed apps
             let documentsPath = FileManager.default.urls(
                 for: .documentDirectory, in: .userDomainMask
             ).first!
@@ -250,6 +266,10 @@ import Foundation
             fileNameTemplate = "Screenshot-{datetime}"
             videoSaveDirectory = defaultVideoSaveDirectory
             videoFileNameTemplate = "Video-{datetime}"
+            
+            // Clear any saved paths from UserDefaults
+            UserDefaults.standard.removeObject(forKey: "saveDirectory")
+            UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
             
             // Reset video settings to defaults
             videoResolution = "Source"

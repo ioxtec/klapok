@@ -19,10 +19,7 @@ import SwiftUI
         case idle
     }
 
-    enum ResizeHandle {
-        case topLeft, topRight, bottomLeft, bottomRight
-        case top, bottom, left, right
-    }
+    // Uses global ResizeHandle from Core/Models/AnnotationModels.swift
 
     // MARK: - Area Selection View
 

@@ -82,7 +82,7 @@ import SwiftUI
                             BackgroundEditorView(backgroundManager: backgroundManager)
                         }
                         .padding(.bottom, 8)
-
+                        
                         // Image info section
                         if let image = viewModel.image {
                             VStack(alignment: .leading, spacing: 8) {
@@ -237,54 +237,83 @@ import SwiftUI
                 // Right side - preview area
                 VStack(spacing: 0) {
                     // Top toolbar
-                    HStack(spacing: 12) {
-                        // Navigation arrows
-                        Button(action: {
-                            // TODO: Previous image
-                        }) {
-                            Image(systemName: "chevron.left")
+                    HStack(spacing: 0) {
+                        // Drawing tools on the left
+                        HStack(spacing: 4) {
+                            ToolButton(
+                                tool: .select,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.select) }
+                            )
+                            
+                            ToolButton(
+                                tool: .text,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.text) }
+                            )
+                            
+                            ToolButton(
+                                tool: .arrow,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.arrow) }
+                            )
+                            
+                            ToolButton(
+                                tool: .rectangle,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.rectangle) }
+                            )
+                            
+                            ToolButton(
+                                tool: .circle,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.circle) }
+                            )
+                            
+                            ToolButton(
+                                tool: .line,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.line) }
+                            )
+                            
+                            ToolButton(
+                                tool: .highlight,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.highlight) }
+                            )
+                            
+                            ToolButton(
+                                tool: .freeDraw,
+                                currentTool: viewModel.annotationManager.currentTool,
+                                action: { viewModel.annotationManager.selectTool(.freeDraw) }
+                            )
                         }
-                        .buttonStyle(.bordered)
-                        .help("Previous")
-
-                        Button(action: {
-                            // TODO: Next image
-                        }) {
-                            Image(systemName: "chevron.right")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Next")
-
+                        .padding(.leading, 12)
+                        
+                        Divider()
+                            .frame(height: 24)
+                            .padding(.horizontal, 12)
+                        
+                        // Context-sensitive properties menu
+                        AnnotationToolbarPropertiesView(annotationManager: viewModel.annotationManager)
+                        
                         Spacer()
-
-                        // Text tools
-                        Button(action: {
-                            // TODO: Add text
-                        }) {
-                            Image(systemName: "textformat")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Add Text")
-
-                        Button(action: {
-                            // TODO: Add arrow
-                        }) {
-                            Image(systemName: "arrow.up.right")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Add Arrow")
 
                         // Save button
                         Button(action: {
                             viewModel.saveImage()
                         }) {
-                            Image(systemName: "square.and.arrow.down")
+                            HStack(spacing: 4) {
+                                Image(systemName: "square.and.arrow.down")
+                                Text("Save")
+                                    .font(.system(size: 13))
+                            }
                         }
                         .buttonStyle(.borderedProminent)
                         .help("Save")
+                        .padding(.trailing, 12)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
+                    .frame(height: 48)
                     .background(Color(NSColor.controlBackgroundColor))
 
                     // Preview area
@@ -306,8 +335,14 @@ import SwiftUI
                             let scaleY = imageSize.height > maxImageHeight ? maxImageHeight / imageSize.height : 1.0
                             let scale = min(scaleX, scaleY) // Remove the 1.0 limit - we want to scale down when needed
                             
-                            let finalImageWidth = imageSize.width * scale
-                            let finalImageHeight = imageSize.height * scale
+                            let finalImageWidth = max(1, imageSize.width * scale)
+                            let finalImageHeight = max(1, imageSize.height * scale)
+                            
+                            // Validate dimensions to prevent invalid frames
+                            let validBackgroundSize = CGSize(
+                                width: max(1, backgroundSize.width),
+                                height: max(1, backgroundSize.height)
+                            )
                             
                             ZStack {
                                 // Neutral background for preview area
@@ -327,7 +362,7 @@ import SwiftUI
                                                 ZStack {
                                                     backgroundFill(for: backgroundManager)
                                                 }
-                                                .frame(width: backgroundSize.width, height: backgroundSize.height)
+                                                .frame(width: validBackgroundSize.width, height: validBackgroundSize.height)
                                                 .clipShape(RoundedRectangle(cornerRadius: viewModel.backgroundCornerRadius))
                                                 
                                                 // Image centered within background with shadow
@@ -348,6 +383,12 @@ import SwiftUI
                                                         x: 0, 
                                                         y: viewModel.shadowIntensity / 2
                                                     )
+                                                
+                                                // Drawing canvas overlay for annotations
+                                                DrawingCanvasView(
+                                                    annotationManager: viewModel.annotationManager,
+                                                    canvasSize: CGSize(width: finalImageWidth, height: finalImageHeight)
+                                                )
                                             }
                                             
                                             Spacer()
@@ -362,23 +403,31 @@ import SwiftUI
                                             Spacer()
                                             
                                             // Original image without background
-                                            Image(nsImage: image)
-                                                .resizable()
-                                                .interpolation(.none)
-                                                .frame(width: imageSize.width, height: imageSize.height)
-                                                .background(viewModel.selectedBackgroundColor)
-                                                .clipShape(
-                                                    RoundedRectangle(
-                                                        cornerRadius: viewModel.enableRoundedCorners
-                                                            ? viewModel.cornerRadius : 0
+                                            ZStack {
+                                                Image(nsImage: image)
+                                                    .resizable()
+                                                    .interpolation(.none)
+                                                    .frame(width: imageSize.width, height: imageSize.height)
+                                                    .background(viewModel.selectedBackgroundColor)
+                                                    .clipShape(
+                                                        RoundedRectangle(
+                                                            cornerRadius: viewModel.enableRoundedCorners
+                                                                ? viewModel.cornerRadius : 0
+                                                        )
                                                     )
+                                                    .shadow(
+                                                        color: .black.opacity(viewModel.shadowIntensity / 100.0), 
+                                                        radius: viewModel.shadowIntensity, 
+                                                        x: 0, 
+                                                        y: viewModel.shadowIntensity / 2
+                                                    )
+                                                
+                                                // Drawing canvas overlay for annotations
+                                                DrawingCanvasView(
+                                                    annotationManager: viewModel.annotationManager,
+                                                    canvasSize: imageSize
                                                 )
-                                                .shadow(
-                                                    color: .black.opacity(viewModel.shadowIntensity / 100.0), 
-                                                    radius: viewModel.shadowIntensity, 
-                                                    x: 0, 
-                                                    y: viewModel.shadowIntensity / 2
-                                                )
+                                            }
                                             
                                             Spacer()
                                         }

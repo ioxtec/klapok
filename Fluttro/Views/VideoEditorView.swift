@@ -10,11 +10,15 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 import AVKit
+import AVFoundation
+import ImageIO
+import UniformTypeIdentifiers
 
 struct VideoEditorView: View {
     @ObservedObject var viewModel: VideoEditorViewModel
     @StateObject private var settings = AppSettings.shared
     @StateObject private var profileManager = ProfileManager.shared
+    @StateObject private var exportManager = ExportManager.shared
     
     var body: some View {
         NavigationSplitView {
@@ -101,6 +105,26 @@ struct VideoEditorView: View {
                             .foregroundColor(.secondary)
                     }
                     
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Export Settings Section
+                    Text("Export Settings")
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    ExportTypeSelector(exportManager: exportManager)
+                    
+                    Divider()
+                        .padding(.vertical, 8)
+                    
+                    // Conditional export settings based on type
+                    if exportManager.settings.exportType == .video {
+                        VideoExportSettingsView(exportManager: exportManager)
+                    } else {
+                        GIFExportSettingsView(exportManager: exportManager)
+                    }
+                    
                     Spacer()
                 }
                 .padding()
@@ -132,7 +156,11 @@ struct VideoEditorView: View {
                     
                     Button(action: {
                         Task {
-                            await viewModel.exportTrimmedVideo()
+                            if exportManager.settings.exportType == .video {
+                                await viewModel.exportTrimmedVideo()
+                            } else {
+                                await viewModel.exportAsGIF(settings: exportManager.settings.gifSettings)
+                            }
                         }
                     }) {
                         HStack(spacing: 4) {
@@ -140,15 +168,15 @@ struct VideoEditorView: View {
                                 ProgressView()
                                     .scaleEffect(0.7)
                             } else {
-                                Image(systemName: "scissors")
+                                Image(systemName: exportManager.settings.exportType == .video ? "scissors" : "rectangle.stack.fill")
                                     .font(.system(size: 16))
                             }
-                            Text("Export Trimmed")
+                            Text(exportManager.settings.exportType == .video ? "Export Video" : "Export GIF")
                                 .font(.system(size: 12))
                         }
                     }
                     .buttonStyle(.bordered)
-                    .help("Export trimmed video")
+                    .help("Export as \(exportManager.settings.exportType.displayName)")
                     .disabled(viewModel.isExporting || viewModel.video == nil)
                     
                     Spacer()
@@ -427,6 +455,116 @@ class VideoEditorViewModel: ObservableObject {
         } catch {
             print("❌ Export error: \(error)")
         }
+    }
+    
+    func exportAsGIF(settings: GIFExportSettings) async {
+        guard let video = video else { return }
+        
+        isExporting = true
+        defer { isExporting = false }
+        
+        let asset = AVURLAsset(url: video.url)
+        
+        // Create time range for trimming
+        let startTime = CMTime(seconds: trimStartTime, preferredTimescale: 600)
+        let endTime = CMTime(seconds: trimEndTime, preferredTimescale: 600)
+        let _ = CMTimeRange(start: startTime, end: endTime)
+        
+        // Generate frames
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        
+        // Calculate max size respecting aspect ratio
+        let videoSize = video.size
+        let aspectRatio = videoSize.width / videoSize.height
+        var targetWidth = CGFloat(settings.maxWidth)
+        var targetHeight = CGFloat(settings.maxHeight)
+        
+        if targetWidth / targetHeight > aspectRatio {
+            targetWidth = targetHeight * aspectRatio
+        } else {
+            targetHeight = targetWidth / aspectRatio
+        }
+        
+        generator.maximumSize = CGSize(width: targetWidth, height: targetHeight)
+        
+        // Calculate frame times
+        let duration = trimmedDuration
+        let frameCount = Int(duration * Double(settings.frameRate))
+        let frameDuration = duration / Double(frameCount)
+        
+        var frameTimes: [CMTime] = []
+        for i in 0..<frameCount {
+            let time = CMTimeAdd(startTime, CMTime(seconds: Double(i) * frameDuration, preferredTimescale: 600))
+            if CMTimeCompare(time, endTime) <= 0 {
+                frameTimes.append(time)
+            }
+        }
+        
+        // Create output URL
+        let outputURL = video.url.deletingLastPathComponent()
+            .appendingPathComponent("\(video.url.deletingPathExtension().lastPathComponent)_animated")
+            .appendingPathExtension("gif")
+        
+        // Create GIF file
+        guard let destination = CGImageDestinationCreateWithURL(
+            outputURL as CFURL,
+            UTType.gif.identifier as CFString,
+            frameTimes.count,
+            nil
+        ) else {
+            print("❌ Failed to create GIF destination")
+            return
+        }
+        
+        // Set GIF properties
+        let fileProperties: [String: Any] = [
+            kCGImagePropertyGIFDictionary as String: [
+                kCGImagePropertyGIFLoopCount as String: settings.loopMode == .infinite ? 0 : (settings.loopMode == .once ? 1 : settings.loopCount),
+                kCGImagePropertyGIFHasGlobalColorMap as String: true
+            ]
+        ]
+        CGImageDestinationSetProperties(destination, fileProperties as CFDictionary)
+        
+        let frameDelay = 1.0 / Double(settings.frameRate)
+        let frameProperties: [String: Any] = [
+            kCGImagePropertyGIFDictionary as String: [
+                kCGImagePropertyGIFDelayTime as String: frameDelay,
+                kCGImagePropertyGIFUnclampedDelayTime as String: frameDelay
+            ]
+        ]
+        
+        // Generate and add frames
+        for time in frameTimes {
+            do {
+                let cgImage = try await generator.image(at: time).image
+                
+                // Apply color depth reduction if needed
+                if settings.colorDepth.colorCount < 256 {
+                    // Note: Color quantization would require additional image processing
+                    // For now, we'll use the full image
+                    CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
+                } else {
+                    CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
+                }
+            } catch {
+                print("⚠️ Failed to generate frame at \(time.seconds)s: \(error)")
+            }
+        }
+        
+        // Finalize GIF
+        guard CGImageDestinationFinalize(destination) else {
+            print("❌ Failed to finalize GIF")
+            return
+        }
+        
+        print("✅ GIF exported successfully to: \(outputURL.path)")
+        print("📊 GIF stats: \(frameTimes.count) frames, \(settings.frameRate) fps, \(Int(targetWidth))x\(Int(targetHeight))px")
+        
+        // Open the exported GIF
+        NSWorkspace.shared.open(outputURL)
     }
     
     func shareVideo() {

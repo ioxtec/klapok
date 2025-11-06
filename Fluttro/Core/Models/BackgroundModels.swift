@@ -47,7 +47,7 @@ struct CustomGradient: Codable, Identifiable {
 
 // MARK: - Color Data Model
 
-struct ColorData: Codable {
+struct ColorData: Codable, Equatable {
     let red: Double
     let green: Double
     let blue: Double
@@ -98,6 +98,14 @@ struct ColorData: Codable {
     
     var color: Color {
         return Color(red: red, green: green, blue: blue, opacity: alpha)
+    }
+    
+    func toColor() -> Color {
+        return Color(red: red, green: green, blue: blue, opacity: alpha)
+    }
+    
+    func toNSColor() -> NSColor {
+        return NSColor(red: red, green: green, blue: blue, alpha: alpha)
     }
 }
 
