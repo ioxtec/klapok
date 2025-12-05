@@ -163,7 +163,7 @@ import SwiftUI
                 case .window:
                     guard let window = selectedWindow else {
                         Logger.w("No window selected")
-                        // Pokaż komunikat o błędzie
+                        // Show error message
                         showNoWindowSelectedMessage()
                         showFloatingPanel()
                         return
@@ -174,17 +174,17 @@ import SwiftUI
                 editorViewModel.show(image: image)
                 Logger.s("FloatingPanelViewModel: Editor opened successfully")
 
-                // Ukryj window selection po udanym zrzucie
+                // Hide window selection after successful capture
                 if screenshotType == .window {
                     hideWindowSelection()
                 }
 
-                // Panel zostanie ukryty przez AppDelegate gdy edytor się otworzy
+                // Panel will be hidden by AppDelegate when editor opens
 
             } catch {
                 Logger.e("FloatingPanelViewModel: Screenshot error: \(error)")
 
-                // Ukryj overlay również w przypadku błędu
+                // Hide overlay in case of error as well
                 if screenshotType == .window {
                     hideWindowSelection()
                 }
@@ -192,7 +192,7 @@ import SwiftUI
                     hideAreaSelection()
                 }
 
-                // Pokaż panel z powrotem tylko w przypadku błędu
+                // Show panel again only in case of error
                 showFloatingPanel()
             }
         }
@@ -267,7 +267,7 @@ import SwiftUI
                         isAreaSelectionActive = true
                         Logger.s("FloatingPanelViewModel: Area selection active")
                         
-                        // Upewnij się że panel jest na wierzchu nad overlay
+                        // Ensure panel is on top of overlay
                         ensurePanelOnTop()
                     }
                 } catch {
@@ -329,7 +329,7 @@ import SwiftUI
                     "FloatingPanelViewModel: Window selection completed: \(String(describing: selectedWindow?.title))"
                 )
 
-                // Zawsze ustaw selectedWindow (może być nil jeśli odznaczono)
+                // Always set selectedWindow (may be nil if deselected)
                 self?.selectedWindow = selectedWindow
 
                 if let window = selectedWindow {
@@ -351,10 +351,10 @@ import SwiftUI
                     self?.isVideoWindowSelectionPending = false
                 }
 
-                // NIE zamykamy overlay - zostaje otwarty dla dalszego wyboru (unless it's video mode)
+                // Don't close overlay - it stays open for further selection (unless it's video mode)
             }
             
-            // Upewnij się że panel jest na wierzchu nad overlay
+            // Ensure panel is on top of overlay
             ensurePanelOnTop()
 
             isWindowSelectionActive = true
@@ -402,7 +402,7 @@ import SwiftUI
         @MainActor
         func initializeCurrentMode() {
             Logger.d("FloatingPanelViewModel: Initializing current mode: \(screenshotType)")
-            // Aktywuj aktualny tryb jeśli nie jest fullScreen
+            // Activate current mode if not fullScreen
             switch screenshotType {
             case .area:
                 if !isAreaSelectionActive {
@@ -416,13 +416,13 @@ import SwiftUI
                 break
             }
             
-            // Upewnij się że panel jest na wierzchu
+            // Ensure panel is on top
             ensurePanelOnTop()
         }
 
         @MainActor
         private func showNoWindowSelectedMessage() {
-            // Pokaż alert lub notification o braku zaznaczonego okna
+            // Show alert or notification about no selected window
             let alert = NSAlert()
             alert.messageText = "No Window Selected"
             alert.informativeText = "Please select a window first by clicking on it in the overlay."

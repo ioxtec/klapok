@@ -24,7 +24,7 @@ import SwiftUI
         @StateObject private var windowHighlighter = WindowHighlighter()
         @State private var lastHoverUpdate: Date = Date()
         @State private var isProcessingHover: Bool = false
-        private let hoverThrottleInterval: TimeInterval = 0.5  // 500ms throttle - jeszcze więcej
+        private let hoverThrottleInterval: TimeInterval = 0.5  // 500ms throttle - even more
 
         var body: some View {
             ZStack {
@@ -34,12 +34,12 @@ import SwiftUI
 
                 // Window highlighting overlays
 
-                // Selected window (czerwona ramka)
+                // Selected window (red frame)
                 if let selectedWindow = selectedWindow {
                     WindowFrameHighlight(window: selectedWindow, color: .red, label: "SELECTED")
                 }
 
-                // Hovered window (niebieska ramka) - tylko jeśli różne od selected
+                // Hovered window (blue frame) - only if different from selected
                 if let hoveredWindow = hoveredWindow,
                     hoveredWindow.windowID != selectedWindow?.windowID
                 {
@@ -54,7 +54,7 @@ import SwiftUI
                                 .progressViewStyle(CircularProgressViewStyle(tint: .white))
                                 .scaleEffect(1.2)
 
-                            Text("Ładowanie dostępnych okien...")
+                            Text("Loading available windows...")
                                 .foregroundColor(.white)
                                 .font(.headline)
                         }
@@ -161,13 +161,13 @@ import SwiftUI
             }
             .onTapGesture { location in
                 if let window = hoveredWindow {
-                    // Toggle logic: jeśli kliknięte okno jest już zaznaczone, odznacz je
+                    // Toggle logic: if clicked window is already selected, deselect it
                     if selectedWindow?.windowID == window.windowID {
                         selectedWindow = nil
-                        onSelection(nil)  // Przekaż nil = brak zaznaczenia
+                        onSelection(nil)  // Pass nil = no selection
                     } else {
                         selectedWindow = window
-                        onSelection(window)  // Przekaż nowe zaznaczone okno
+                        onSelection(window)  // Pass newly selected window
                     }
                 }
             }
@@ -324,7 +324,7 @@ import SwiftUI
             } else if let title = window.title, !title.isEmpty {
                 return title
             } else {
-                return "Nieznane okno"
+                return "Unknown window"
             }
         }
 
@@ -411,7 +411,7 @@ import SwiftUI
             } else if let title = window.title, !title.isEmpty {
                 return title
             } else {
-                return "Nieznane okno"
+                return "Unknown window"
             }
         }
     }

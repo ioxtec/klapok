@@ -44,7 +44,7 @@ import SwiftUI
             window.ignoresMouseEvents = false
             window.isReleasedWhenClosed = false
 
-            // Ukryj okno - będziemy je pokazywać na żądanie
+            // Hide window - we'll show it on demand
             window.orderOut(nil)
 
             overlayWindow = window
@@ -53,7 +53,7 @@ import SwiftUI
 
         func applicationDidFinishLaunching(_ notification: Notification) {
             registerHotkeys()
-            createOverlayWindow()  // Tworzymy overlay window przy starcie
+            createOverlayWindow()  // Create overlay window at startup
             setupStatusBarItem()
             setupEditorObservation()
 
@@ -63,20 +63,20 @@ import SwiftUI
 
         private func setupEditorObservation() {
             Logger.d("AppDelegate: Setting up editor observation")
-            // Obserwuj zmiany w editorViewModel.isPresented
+            // Observe changes in editorViewModel.isPresented
             editorViewModel.$isPresented
                 .sink { [weak self] isPresented in
                     Logger.d("AppDelegate: EditorViewModel.isPresented changed to: \(isPresented)")
                     if isPresented, let image = self?.editorViewModel.image {
                         Logger.s(
-                            "AppDelegate: EditorViewModel.isPresented = true, pokazuję okno edytora"
+                            "AppDelegate: EditorViewModel.isPresented = true, showing editor window"
                         )
                         self?.openEditor(with: image)
-                        // Ukryj floating panel gdy edytor się pojawia
+                        // Hide floating panel when editor appears
                         self?.hideFloatingPanelForEditor()
                     } else if !isPresented {
                         Logger.d(
-                            "AppDelegate: EditorViewModel.isPresented = false, ukrywam okno edytora"
+                            "AppDelegate: EditorViewModel.isPresented = false, hiding editor window"
                         )
                         self?.editorWindow?.orderOut(nil)
                     }
@@ -90,7 +90,7 @@ import SwiftUI
         }
 
         private func setupPanelFocusObservation() {
-            // Obserwuj gdy aplikacja straci focus
+            // Observe when application loses focus
             NotificationCenter.default.addObserver(
                 forName: NSApplication.didResignActiveNotification,
                 object: nil,
@@ -101,10 +101,10 @@ import SwiftUI
         }
 
         private func handleAppDidResignActive() {
-            // Ukryj floating panel gdy aplikacja straci focus, ale tylko jeśli nie ma aktywnej area selection
+            // Hide floating panel when application loses focus, but only if there's no active area selection
             guard let viewModel = floatingPanelViewModel else { return }
 
-            // Nie ukrywaj panelu jeśli area selection jest aktywna
+            // Don't hide panel if area selection is active
             if !viewModel.isAreaSelectionActive {
                 Logger.d("AppDelegate: App resigned active, hiding floating panel")
                 panelWindow?.orderOut(nil)
@@ -125,7 +125,7 @@ import SwiftUI
             Task { @MainActor in
                 do {
                     let image = try await captureManager.captureFullScreen()
-                    editorViewModel.show(image: image)  // To wywoła setupEditorObservation
+                    editorViewModel.show(image: image)  // This will trigger setupEditorObservation
                 } catch {
                     NSLog("Screenshot failed: \(error.localizedDescription)")
                 }
@@ -141,7 +141,7 @@ import SwiftUI
                 let editorView = EditorView(viewModel: editorViewModel)
                 let hosting = NSHostingController(rootView: editorView)
 
-                // Okno bez widocznego tytułu ale z przyciskami
+                // Window without visible title but with buttons
                 let window = NSWindow(
                     contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
                     styleMask: [
@@ -181,18 +181,18 @@ import SwiftUI
         }
 
         private func showFloatingPanel() {
-            // Jeśli panel już istnieje, po prostu go pokaż
+            // If panel already exists, just show it
             if let existingPanel = panelWindow {
                 existingPanel.orderFront(nil)
                 isPanelPresented = true
-                // Zainicjuj aktualny tryb dla istniejącego panelu
+                // Initialize current mode for existing panel
                 Task { @MainActor in
                     floatingPanelViewModel?.initializeCurrentMode()
                 }
                 return
             }
 
-            // Panel: przezroczyste tło + brak toolbara + cienki border
+            // Panel: transparent background + no toolbar + thin border
             let panel = NSPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
                 styleMask: [.nonactivatingPanel, .fullSizeContentView],
@@ -214,22 +214,22 @@ import SwiftUI
             panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
             panel.standardWindowButton(.zoomButton)?.isHidden = true
 
-            // Blur tła
+            // Background blur
             let blur = NSVisualEffectView()
-            blur.material = .hudWindow  // lub .underWindowBackground / .sidebar
+            blur.material = .hudWindow  // or .underWindowBackground / .sidebar
             blur.blendingMode = .behindWindow
             blur.state = .active
 
-            // Utwórz ViewModel
+            // Create ViewModel
             let panelViewModel = FloatingPanelViewModel(editorViewModel: editorViewModel)
             floatingPanelViewModel = panelViewModel
 
             Logger.s("AppDelegate: FloatingPanelViewModel created and connected to editorViewModel")
 
-            // Zawartość (SwiftUI)
+            // Content (SwiftUI)
             let content = NSHostingView(rootView: FloatingPanelView(viewModel: panelViewModel))
 
-            // Kontener z zaokrągleniami i borderem
+            // Container with rounded corners and border
             let container = NSView(frame: panel.contentView?.bounds ?? .zero)
             container.autoresizingMask = [.width, .height]
             container.wantsLayer = true
@@ -264,14 +264,14 @@ import SwiftUI
             panel.setFrameOrigin(NSPoint(x: originX, y: clampedY))
 
             panel.orderFront(nil)
-            // Nie robimy panel key window - to tylko floating panel
+            // Don't make panel key window - it's just a floating panel
             panelWindow = panel
             isPanelPresented = true
 
-            // Przekaż referencję do panelu do ViewModel
+            // Pass panel reference to ViewModel
             panelViewModel.panelWindow = panel
             
-            // Upewnij się że panel jest na wierzchu
+            // Ensure panel is on top
             Task { @MainActor in
                 panelViewModel.ensurePanelOnTop()
                 panelViewModel.initializeCurrentMode()
@@ -328,14 +328,14 @@ import SwiftUI
         }
 
         private func openSettingsWindow() {
-            // Jeśli okno ustawień już istnieje, po prostu je pokaż
+            // If settings window already exists, just show it
             if let existingWindow = NSApp.windows.first(where: { $0.title == "Fluttro Settings" }) {
                 existingWindow.makeKeyAndOrderFront(nil)
                 NSApp.activate(ignoringOtherApps: true)
                 return
             }
 
-            // Utwórz nowe okno ustawień
+            // Create new settings window
             let settingsView = SettingsView()
             let hostingController = NSHostingController(rootView: settingsView)
 

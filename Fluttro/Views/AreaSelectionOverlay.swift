@@ -63,13 +63,13 @@ import SwiftUI
                 // Instructions
                 VStack {
                     if selectionRect.isEmpty {
-                        Text("Przeciągnij, aby wybrać obszar")
+                        Text("Drag to select area")
                             .foregroundColor(.white)
                             .padding()
                             .background(Color.black.opacity(0.7))
                             .cornerRadius(8)
                     } else {
-                        Text("Naciśnij Enter aby potwierdzić lub ESC aby anulować")
+                        Text("Press Enter to confirm or ESC to cancel")
                             .foregroundColor(.white)
                             .padding()
                             .background(Color.black.opacity(0.7))
@@ -379,20 +379,20 @@ import SwiftUI
             context.setLineJoin(.round)
 
             if isNWSE {
-                // NW-SE diagonal (lewy górny ↔ prawy dolny)
-                // Główna linia diagonalna
+                // NW-SE diagonal (top-left ↔ bottom-right)
+                // Main diagonal line
                 context.move(to: CGPoint(x: 2, y: 14))
                 context.addLine(to: CGPoint(x: 14, y: 2))
                 context.strokePath()
 
-                // Strzałka w lewym górnym rogu (NW)
+                // Arrow in top-left corner (NW)
                 context.move(to: CGPoint(x: 2, y: 14))
                 context.addLine(to: CGPoint(x: 2, y: 10))
                 context.addLine(to: CGPoint(x: 6, y: 14))
                 context.addLine(to: CGPoint(x: 2, y: 14))
                 context.fillPath()
 
-                // Strzałka w prawym dolnym rogu (SE)
+                // Arrow in bottom-right corner (SE)
                 context.move(to: CGPoint(x: 14, y: 2))
                 context.addLine(to: CGPoint(x: 14, y: 6))
                 context.addLine(to: CGPoint(x: 10, y: 2))
@@ -400,20 +400,20 @@ import SwiftUI
                 context.fillPath()
 
             } else {
-                // NE-SW diagonal (prawy górny ↔ lewy dolny)
-                // Główna linia diagonalna
+                // NE-SW diagonal (top-right ↔ bottom-left)
+                // Main diagonal line
                 context.move(to: CGPoint(x: 14, y: 14))
                 context.addLine(to: CGPoint(x: 2, y: 2))
                 context.strokePath()
 
-                // Strzałka w prawym górnym rogu (NE)
+                // Arrow in top-right corner (NE)
                 context.move(to: CGPoint(x: 14, y: 14))
                 context.addLine(to: CGPoint(x: 10, y: 14))
                 context.addLine(to: CGPoint(x: 14, y: 10))
                 context.addLine(to: CGPoint(x: 14, y: 14))
                 context.fillPath()
 
-                // Strzałka w lewym dolnym rogu (SW)
+                // Arrow in bottom-left corner (SW)
                 context.move(to: CGPoint(x: 2, y: 2))
                 context.addLine(to: CGPoint(x: 6, y: 2))
                 context.addLine(to: CGPoint(x: 2, y: 6))
