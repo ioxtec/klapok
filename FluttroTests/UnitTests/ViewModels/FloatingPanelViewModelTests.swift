@@ -124,3 +124,5 @@ final class FloatingPanelViewModelTests: XCTestCase {
 
 #endif
 
+
+

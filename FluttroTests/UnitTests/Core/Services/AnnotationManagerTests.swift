@@ -211,9 +211,10 @@ final class AnnotationManagerTests: XCTestCase {
         
         // Point that's in both rectangles
         let point = CGPoint(x: 30, y: 30)
-        annotationManager.selectAnnotation(at: point)
+        let selected = annotationManager.selectAnnotation(at: point)
         
         // Should select the top-most (last added)
+        XCTAssertTrue(selected)
         XCTAssertEqual(annotationManager.selectedAnnotationId, annotation2.id)
     }
     

@@ -35,6 +35,19 @@ import SwiftUI
         @State private var selectionRect: CGRect = .zero
         @State private var mode: SelectionMode = .idle
         @State private var dragOffset: CGPoint = .zero
+        
+        // MARK: - Computed Properties
+        
+        private var instructionText: String {
+            selectionRect.isEmpty 
+                ? "Drag to select area"
+                : "Press Enter to confirm or ESC to cancel"
+        }
+        
+        private var screenBounds: CGRect {
+            guard let screen = NSScreen.main else { return .zero }
+            return CGRect(origin: .zero, size: screen.frame.size)
+        }
 
         var body: some View {
             ZStack {
@@ -62,39 +75,17 @@ import SwiftUI
 
                 // Instructions
                 VStack {
-                    if selectionRect.isEmpty {
-                        Text("Drag to select area")
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                    } else {
-                        Text("Press Enter to confirm or ESC to cancel")
-                            .foregroundColor(.white)
-                            .padding()
-                            .background(Color.black.opacity(0.7))
-                            .cornerRadius(8)
-                    }
+                    Text(instructionText)
+                        .foregroundColor(.white)
+                        .padding()
+                        .background(Color.black.opacity(0.7))
+                        .cornerRadius(8)
                     Spacer()
                 }
                 .padding(.top, 50)
 
                 // Mouse position indicator
-                VStack {
-                    HStack {
-                        Text("x:\(Int(mousePosition.x)), y:\(Int(mousePosition.y))")
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.black.opacity(0.8))
-                            .cornerRadius(4)
-                            .font(.system(size: 12, design: .monospaced))
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(.top, 10)
-                .padding(.leading, 10)
+                MousePositionIndicator(position: mousePosition)
 
                 // Selection rectangle with dashed border (hidden during recording)
                 if !selectionRect.isEmpty && !isRecording {
@@ -112,19 +103,7 @@ import SwiftUI
 
                 // Selection dimensions
                 if !selectionRect.isEmpty {
-                    Text(
-                        "x:\(Int(selectionRect.minX)), y:\(Int(selectionRect.minY)), w:\(Int(selectionRect.width)), h:\(Int(selectionRect.height))"
-                    )
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.blue.opacity(0.8))
-                    .cornerRadius(4)
-                    .font(.system(size: 12, design: .monospaced))
-                    .position(
-                        x: selectionRect.midX,
-                        y: max(selectionRect.minY - 15, 15)
-                    )
+                    SelectionDimensionsView(rect: selectionRect)
                 }
             }
             .contentShape(Rectangle())
@@ -266,70 +245,74 @@ import SwiftUI
         }
 
         private func resizeSelection(handle: ResizeHandle, to point: CGPoint) {
-            var newRect = selectionRect
-
-            switch handle {
-            case .topLeft:
-                newRect = CGRect(
-                    x: point.x,
-                    y: point.y,
-                    width: selectionRect.maxX - point.x,
-                    height: selectionRect.maxY - point.y
-                )
-            case .topRight:
-                newRect = CGRect(
-                    x: selectionRect.minX,
-                    y: point.y,
-                    width: point.x - selectionRect.minX,
-                    height: selectionRect.maxY - point.y
-                )
-            case .bottomLeft:
-                newRect = CGRect(
-                    x: point.x,
-                    y: selectionRect.minY,
-                    width: selectionRect.maxX - point.x,
-                    height: point.y - selectionRect.minY
-                )
-            case .bottomRight:
-                newRect = CGRect(
-                    x: selectionRect.minX,
-                    y: selectionRect.minY,
-                    width: point.x - selectionRect.minX,
-                    height: point.y - selectionRect.minY
-                )
-            case .top:
-                newRect = CGRect(
-                    x: selectionRect.minX,
-                    y: point.y,
-                    width: selectionRect.width,
-                    height: selectionRect.maxY - point.y
-                )
-            case .bottom:
-                newRect = CGRect(
-                    x: selectionRect.minX,
-                    y: selectionRect.minY,
-                    width: selectionRect.width,
-                    height: point.y - selectionRect.minY
-                )
-            case .left:
-                newRect = CGRect(
-                    x: point.x,
-                    y: selectionRect.minY,
-                    width: selectionRect.maxX - point.x,
-                    height: selectionRect.height
-                )
-            case .right:
-                newRect = CGRect(
-                    x: selectionRect.minX,
-                    y: selectionRect.minY,
-                    width: point.x - selectionRect.minX,
-                    height: selectionRect.height
-                )
-            }
-
+            let newRect = calculateResizedRect(handle: handle, to: point)
+            
             // Ensure minimum size and constrain to screen bounds
             if newRect.width > 10 && newRect.height > 10 {
                 selectionRect = constrainRectToScreen(newRect)
+            }
+        }
+        
+        private func calculateResizedRect(handle: ResizeHandle, to point: CGPoint) -> CGRect {
+            let rect = selectionRect
+            
+            switch handle {
+            case .topLeft:
+                return CGRect(
+                    x: point.x,
+                    y: point.y,
+                    width: rect.maxX - point.x,
+                    height: rect.maxY - point.y
+                )
+            case .topRight:
+                return CGRect(
+                    x: rect.minX,
+                    y: point.y,
+                    width: point.x - rect.minX,
+                    height: rect.maxY - point.y
+                )
+            case .bottomLeft:
+                return CGRect(
+                    x: point.x,
+                    y: rect.minY,
+                    width: rect.maxX - point.x,
+                    height: point.y - rect.minY
+                )
+            case .bottomRight:
+                return CGRect(
+                    x: rect.minX,
+                    y: rect.minY,
+                    width: point.x - rect.minX,
+                    height: point.y - rect.minY
+                )
+            case .top:
+                return CGRect(
+                    x: rect.minX,
+                    y: point.y,
+                    width: rect.width,
+                    height: rect.maxY - point.y
+                )
+            case .bottom:
+                return CGRect(
+                    x: rect.minX,
+                    y: rect.minY,
+                    width: rect.width,
+                    height: point.y - rect.minY
+                )
+            case .left:
+                return CGRect(
+                    x: point.x,
+                    y: rect.minY,
+                    width: rect.maxX - point.x,
+                    height: rect.height
+                )
+            case .right:
+                return CGRect(
+                    x: rect.minX,
+                    y: rect.minY,
+                    width: point.x - rect.minX,
+                    height: rect.height
+                )
             }
         }
 
@@ -487,26 +470,28 @@ import SwiftUI
         }
 
         private func setCursorForHandle(_ handle: ResizeHandle) {
-            print("DEBUG: Setting cursor for handle: \(handle)")
+            let cursor = cursorForHandle(handle)
+            cursor.set()
+        }
+        
+        private func cursorForHandle(_ handle: ResizeHandle) -> NSCursor {
             switch handle {
             case .topLeft, .bottomRight:
-                // Try using system cursor first, fallback to arrow
                 if #available(macOS 10.13, *) {
-                    NSCursor.resizeUpDown.set()  // Temporary - use vertical resize
+                    return NSCursor.resizeUpDown
                 } else {
-                    NSCursor.arrow.set()
+                    return NSCursor.arrow
                 }
             case .topRight, .bottomLeft:
-                // Try using system cursor first, fallback to arrow
                 if #available(macOS 10.13, *) {
-                    NSCursor.resizeLeftRight.set()  // Temporary - use horizontal resize
+                    return NSCursor.resizeLeftRight
                 } else {
-                    NSCursor.arrow.set()
+                    return NSCursor.arrow
                 }
             case .top, .bottom:
-                NSCursor.resizeUpDown.set()
+                return NSCursor.resizeUpDown
             case .left, .right:
-                NSCursor.resizeLeftRight.set()
+                return NSCursor.resizeLeftRight
             }
         }
 
@@ -588,38 +573,22 @@ import SwiftUI
             )
         }
 
-        private func getScreenBounds() -> CGRect {
-            guard let screen = NSScreen.main else { return CGRect.zero }
-            return CGRect(origin: .zero, size: screen.frame.size)
-        }
-
         private func constrainRectToScreen(_ rect: CGRect) -> CGRect {
-            let screenBounds = getScreenBounds()
-
+            let bounds = screenBounds
             var constrainedRect = rect
 
             // Ensure the rectangle doesn't go outside screen bounds
-            if constrainedRect.minX < screenBounds.minX {
-                constrainedRect.origin.x = screenBounds.minX
-            }
-            if constrainedRect.minY < screenBounds.minY {
-                constrainedRect.origin.y = screenBounds.minY
-            }
-            if constrainedRect.maxX > screenBounds.maxX {
-                constrainedRect.origin.x = screenBounds.maxX - constrainedRect.width
-            }
-            if constrainedRect.maxY > screenBounds.maxY {
-                constrainedRect.origin.y = screenBounds.maxY - constrainedRect.height
-            }
+            constrainedRect.origin.x = max(bounds.minX, min(constrainedRect.origin.x, bounds.maxX - constrainedRect.width))
+            constrainedRect.origin.y = max(bounds.minY, min(constrainedRect.origin.y, bounds.maxY - constrainedRect.height))
 
             // If the rectangle is larger than screen, resize it
-            if constrainedRect.width > screenBounds.width {
-                constrainedRect.size.width = screenBounds.width
-                constrainedRect.origin.x = screenBounds.minX
+            if constrainedRect.width > bounds.width {
+                constrainedRect.size.width = bounds.width
+                constrainedRect.origin.x = bounds.minX
             }
-            if constrainedRect.height > screenBounds.height {
-                constrainedRect.size.height = screenBounds.height
-                constrainedRect.origin.y = screenBounds.minY
+            if constrainedRect.height > bounds.height {
+                constrainedRect.size.height = bounds.height
+                constrainedRect.origin.y = bounds.minY
             }
 
             return constrainedRect
@@ -697,6 +666,65 @@ import SwiftUI
         }
     }
     
+    // MARK: - Helper Components
+    
+    struct MousePositionIndicator: View {
+        let position: CGPoint
+        
+        var body: some View {
+            VStack {
+                HStack {
+                    Text("x:\(Int(position.x)), y:\(Int(position.y))")
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.8))
+                        .cornerRadius(4)
+                        .font(.system(size: 12, design: .monospaced))
+                    Spacer()
+                }
+                Spacer()
+            }
+            .padding(.top, 10)
+            .padding(.leading, 10)
+        }
+    }
+    
+    struct SelectionDimensionsView: View {
+        let rect: CGRect
+        
+        var body: some View {
+            Text("x:\(Int(rect.minX)), y:\(Int(rect.minY)), w:\(Int(rect.width)), h:\(Int(rect.height))")
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.blue.opacity(0.8))
+                .cornerRadius(4)
+                .font(.system(size: 12, design: .monospaced))
+                .position(
+                    x: rect.midX,
+                    y: max(rect.minY - 15, 15)
+                )
+        }
+    }
+    
+    // MARK: - View Modifiers
+    
+    struct InstructionTextStyle: ViewModifier {
+        func body(content: Content) -> some View {
+            content
+                .foregroundColor(.white)
+                .padding()
+                .background(Color.black.opacity(0.7))
+                .cornerRadius(8)
+        }
+    }
+    
+    extension View {
+        func instructionTextStyle() -> some View {
+            modifier(InstructionTextStyle())
+        }
+    }
 
     #Preview {
         AreaSelectionView(
