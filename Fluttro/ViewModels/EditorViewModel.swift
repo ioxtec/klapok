@@ -47,6 +47,7 @@ import UniformTypeIdentifiers
         @MainActor
         func show(image: NSImage) {
             Logger.s("EditorViewModel: Showing editor with image: \(image.size)")
+            annotationManager.resetForNewImage()
             self.image = image
             self.isPresented = true
             Logger.s("EditorViewModel: isPresented set to true")
@@ -57,6 +58,7 @@ import UniformTypeIdentifiers
             print("EditorViewModel: Closing editor")
             self.isPresented = false
             self.image = nil
+            annotationManager.resetForNewImage()
         }
 
         @MainActor
@@ -263,16 +265,24 @@ import UniformTypeIdentifiers
                 case .gradient:
                     if let selectedGradient = backgroundManager.collections.selectedGradient {
                         print("EditorViewModel: Drawing custom gradient background")
-                        let gradientColors = selectedGradient.colors.map { $0.cgColor }
+                        let gradientColors = selectedGradient.sortedStops.map {
+                            $0.color.toNSColor().withAlphaComponent(selectedGradient.opacity).cgColor
+                        }
+                        let locations = selectedGradient.sortedStops.map { CGFloat($0.location) }
                         
                         let colorSpace = CGColorSpaceCreateDeviceRGB()
-                        let gradient = CGGradient(colorsSpace: colorSpace, colors: gradientColors as CFArray, locations: [0.0, 1.0])
+                        let gradient = CGGradient(
+                            colorsSpace: colorSpace,
+                            colors: gradientColors as CFArray,
+                            locations: locations
+                        )
                         
                         if let gradient = gradient {
+                            let points = selectedGradient.direction.cgPoints(in: compositeSize)
                             context.drawLinearGradient(
                                 gradient,
-                                start: CGPoint(x: 0, y: compositeSize.height),
-                                end: CGPoint(x: compositeSize.width, y: 0),
+                                start: points.start,
+                                end: points.end,
                                 options: []
                             )
                         }
@@ -460,10 +470,11 @@ import UniformTypeIdentifiers
                 context.fill(rect)
             }
             
-            // Stroke
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(annotation.strokeWidth)
-            context.stroke(rect)
+            if annotation.strokeWidth > 0 {
+                context.setStrokeColor(color.cgColor)
+                context.setLineWidth(annotation.strokeWidth)
+                context.stroke(rect)
+            }
             
             context.restoreGState()
         }

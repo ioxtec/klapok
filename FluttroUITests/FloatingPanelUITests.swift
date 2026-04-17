@@ -50,3 +50,8 @@ final class FloatingPanelUITests: XCTestCase {
 
 
 
+
+
+
+
+

@@ -10,31 +10,47 @@ import SwiftUI
 #if os(macOS)
     import AppKit
 
+    // MARK: - Resize Handle (local to Area Selection overlay target)
+
+    enum SelectionResizeHandle {
+        case topLeft
+        case topRight
+        case bottomLeft
+        case bottomRight
+        case top
+        case bottom
+        case left
+        case right
+    }
+
     // MARK: - Selection Mode Enum
 
     enum SelectionMode {
         case creating
-        case resizing(handle: ResizeHandle)
+        case resizing(handle: SelectionResizeHandle)
         case moving
         case idle
     }
 
-    // Uses global ResizeHandle from Core/Models/AnnotationModels.swift
-
     // MARK: - Area Selection View
 
     struct AreaSelectionView: View {
-        let backgroundImage: NSImage
         let onSelection: (NSRect?) -> Void
         @Binding var currentSelection: NSRect
         @Binding var isRecording: Bool
 
         @State private var startPoint: CGPoint = .zero
         @State private var currentPoint: CGPoint = .zero
-        @State private var mousePosition: CGPoint = .zero
         @State private var selectionRect: CGRect = .zero
+        @State private var moveAnchorRect: CGRect = .zero
+        @State private var moveStartPoint: CGPoint = .zero
         @State private var mode: SelectionMode = .idle
         @State private var dragOffset: CGPoint = .zero
+        @State private var isEditingSelection = false
+        @State private var draftX = ""
+        @State private var draftY = ""
+        @State private var draftWidth = ""
+        @State private var draftHeight = ""
         
         // MARK: - Computed Properties
         
@@ -84,14 +100,10 @@ import SwiftUI
                 }
                 .padding(.top, 50)
 
-                // Mouse position indicator
-                MousePositionIndicator(position: mousePosition)
-
                 // Selection rectangle with dashed border (hidden during recording)
                 if !selectionRect.isEmpty && !isRecording {
                     SelectionRectangleView(
                         rect: selectionRect,
-                        mousePosition: mousePosition,
                         onModeChange: { newMode in
                             mode = newMode
                         },
@@ -101,32 +113,53 @@ import SwiftUI
                     )
                 }
 
-                // Selection dimensions
+                // Selection controls
                 if !selectionRect.isEmpty {
-                    SelectionDimensionsView(rect: selectionRect)
+                    SelectionDimensionsView(
+                        rect: selectionRect,
+                        isEditing: isEditingSelection,
+                        showActions: !isRecording,
+                        onCapture: captureSelection,
+                        onEdit: startSelectionEdit
+                    )
+
+                    if isEditingSelection && !isRecording {
+                        SelectionCoordinateEditorView(
+                            x: $draftX,
+                            y: $draftY,
+                            width: $draftWidth,
+                            height: $draftHeight,
+                            onApply: applySelectionEdit,
+                            onCancel: cancelSelectionEdit
+                        )
+                        .position(selectionEditorPosition)
+                    }
                 }
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
-                if !isRecording {
+                if !isRecording && !isEditingSelection {
                     switch phase {
                     case .active(let location):
-                        mousePosition = location
                         updateCursor(at: location)
                     case .ended:
                         break
                     }
                 }
             }
-            .gesture(isRecording ? nil : mainDragGesture)
+            .gesture((isRecording || isEditingSelection) ? nil : mainDragGesture)
             .onKeyPress(.escape) {
-                onSelection(nil)
+                cancelSelection()
                 return .handled
             }
+            .onExitCommand(perform: cancelSelection)
             .onKeyPress(.return) {
+                if isEditingSelection {
+                    applySelectionEdit()
+                    return .handled
+                }
                 if !selectionRect.isEmpty {
-                    let nsRect = convertToScreenCoordinates(selectionRect)
-                    onSelection(nsRect)
+                    captureSelection()
                 }
                 return .handled
             }
@@ -143,6 +176,17 @@ import SwiftUI
                 .onEnded { value in
                     handleDragEnded(value)
                 }
+        }
+
+        private var selectionEditorPosition: CGPoint {
+            let x = min(max(selectionRect.midX, 150), max(screenBounds.width - 150, 150))
+
+            if selectionRect.minY > 96 {
+                return CGPoint(x: x, y: selectionRect.minY - 56)
+            }
+
+            let y = min(selectionRect.maxY + 56, max(screenBounds.height - 56, 56))
+            return CGPoint(x: x, y: y)
         }
 
         private func handleDragChanged(_ value: DragGesture.Value) {
@@ -162,6 +206,8 @@ import SwiftUI
                     } else if selectionRect.contains(startLocation) {
                         mode = .moving
                         startPoint = startLocation
+                        moveStartPoint = startLocation
+                        moveAnchorRect = selectionRect
                     } else {
                         // Clicked outside - start new selection
                         selectionRect = .zero
@@ -178,20 +224,21 @@ import SwiftUI
                 updateSelectionRect()
 
             case .moving:
-                let deltaX = value.location.x - startPoint.x
-                let deltaY = value.location.y - startPoint.y
+                let deltaX = value.location.x - moveStartPoint.x
+                let deltaY = value.location.y - moveStartPoint.y
+                let constrainedDelta = constrainedMoveDelta(x: deltaX, y: deltaY)
                 let proposedRect = CGRect(
-                    x: selectionRect.minX + deltaX,
-                    y: selectionRect.minY + deltaY,
-                    width: selectionRect.width,
-                    height: selectionRect.height
+                    x: moveAnchorRect.minX + constrainedDelta.x,
+                    y: moveAnchorRect.minY + constrainedDelta.y,
+                    width: moveAnchorRect.width,
+                    height: moveAnchorRect.height
                 )
                 // Constrain the rectangle to screen bounds
                 let constrainedRect = constrainRectToScreen(proposedRect)
                 selectionRect = constrainedRect
                 // Update currentSelection immediately during move
                 currentSelection = convertToScreenCoordinates(constrainedRect)
-                startPoint = value.location  // Update for next delta calculation
+                updateSelectionDraft(from: constrainedRect)
 
             case .resizing(let handle):
                 resizeSelection(handle: handle, to: value.location)
@@ -209,6 +256,7 @@ import SwiftUI
                     mode = .idle
                     // Update currentSelection with final coordinates
                     currentSelection = convertToScreenCoordinates(selectionRect)
+                    updateSelectionDraft(from: selectionRect)
                 } else {
                     selectionRect = .zero
                     mode = .idle
@@ -217,9 +265,24 @@ import SwiftUI
                 // For moving and resizing, ensure final coordinates are set
                 if !selectionRect.isEmpty {
                     currentSelection = convertToScreenCoordinates(selectionRect)
+                    updateSelectionDraft(from: selectionRect)
                 }
                 mode = .idle
+                moveAnchorRect = .zero
+                moveStartPoint = .zero
             }
+        }
+
+        private func constrainedMoveDelta(x: CGFloat, y: CGFloat) -> CGPoint {
+            guard NSEvent.modifierFlags.contains(.shift) else {
+                return CGPoint(x: x, y: y)
+            }
+
+            if abs(x) >= abs(y) {
+                return CGPoint(x: x, y: 0)
+            }
+
+            return CGPoint(x: 0, y: y)
         }
 
         private func updateSelectionRect() {
@@ -241,19 +304,21 @@ import SwiftUI
             // Update currentSelection during creation as well
             if selectionRect.width > 0 && selectionRect.height > 0 {
                 currentSelection = convertToScreenCoordinates(selectionRect)
+                updateSelectionDraft(from: selectionRect)
             }
         }
 
-        private func resizeSelection(handle: ResizeHandle, to point: CGPoint) {
+        private func resizeSelection(handle: SelectionResizeHandle, to point: CGPoint) {
             let newRect = calculateResizedRect(handle: handle, to: point)
             
             // Ensure minimum size and constrain to screen bounds
             if newRect.width > 10 && newRect.height > 10 {
                 selectionRect = constrainRectToScreen(newRect)
+                updateSelectionDraft(from: selectionRect)
             }
         }
         
-        private func calculateResizedRect(handle: ResizeHandle, to point: CGPoint) -> CGRect {
+        private func calculateResizedRect(handle: SelectionResizeHandle, to point: CGPoint) -> CGRect {
             let rect = selectionRect
             
             switch handle {
@@ -410,7 +475,7 @@ import SwiftUI
             cursor.set()
         }
 
-        private func getResizeHandle(at point: CGPoint) -> ResizeHandle? {
+        private func getResizeHandle(at point: CGPoint) -> SelectionResizeHandle? {
             let handleSize: CGFloat = 24  // Increased for much easier clicking
             let rect = selectionRect
 
@@ -469,30 +534,79 @@ import SwiftUI
             return nil
         }
 
-        private func setCursorForHandle(_ handle: ResizeHandle) {
+        private func setCursorForHandle(_ handle: SelectionResizeHandle) {
             let cursor = cursorForHandle(handle)
             cursor.set()
         }
         
-        private func cursorForHandle(_ handle: ResizeHandle) -> NSCursor {
+        private func cursorForHandle(_ handle: SelectionResizeHandle) -> NSCursor {
             switch handle {
             case .topLeft, .bottomRight:
-                if #available(macOS 10.13, *) {
-                    return NSCursor.resizeUpDown
-                } else {
-                    return NSCursor.arrow
-                }
+                return diagonalResizeCursor(isNWSE: true)
             case .topRight, .bottomLeft:
-                if #available(macOS 10.13, *) {
-                    return NSCursor.resizeLeftRight
-                } else {
-                    return NSCursor.arrow
-                }
+                return diagonalResizeCursor(isNWSE: false)
             case .top, .bottom:
                 return NSCursor.resizeUpDown
             case .left, .right:
                 return NSCursor.resizeLeftRight
             }
+        }
+
+        private func diagonalResizeCursor(isNWSE: Bool) -> NSCursor {
+            let size = CGSize(width: 18, height: 18)
+            let image = NSImage(size: size)
+
+            image.lockFocus()
+            guard let context = NSGraphicsContext.current?.cgContext else {
+                image.unlockFocus()
+                return NSCursor.arrow
+            }
+
+            context.clear(CGRect(origin: .zero, size: size))
+            context.setLineCap(.round)
+            context.setLineJoin(.round)
+
+            let start = isNWSE ? CGPoint(x: 4, y: 4) : CGPoint(x: 14, y: 4)
+            let end = isNWSE ? CGPoint(x: 14, y: 14) : CGPoint(x: 4, y: 14)
+
+            drawDiagonalResizeCursorLine(from: start, to: end, in: context, color: .white, width: 4)
+            drawDiagonalResizeCursorLine(from: start, to: end, in: context, color: .black, width: 2)
+
+            image.unlockFocus()
+
+            return NSCursor(image: image, hotSpot: NSPoint(x: 9, y: 9))
+        }
+
+        private func drawDiagonalResizeCursorLine(
+            from start: CGPoint,
+            to end: CGPoint,
+            in context: CGContext,
+            color: NSColor,
+            width: CGFloat
+        ) {
+            context.setStrokeColor(color.cgColor)
+            context.setFillColor(color.cgColor)
+            context.setLineWidth(width)
+            context.move(to: start)
+            context.addLine(to: end)
+            context.strokePath()
+
+            drawArrowHead(tip: start, toward: CGPoint(x: start.x - end.x, y: start.y - end.y), in: context)
+            drawArrowHead(tip: end, toward: CGPoint(x: end.x - start.x, y: end.y - start.y), in: context)
+        }
+
+        private func drawArrowHead(tip: CGPoint, toward direction: CGPoint, in context: CGContext) {
+            let length = max(sqrt(direction.x * direction.x + direction.y * direction.y), 1)
+            let unit = CGPoint(x: direction.x / length, y: direction.y / length)
+            let perpendicular = CGPoint(x: -unit.y, y: unit.x)
+            let base = CGPoint(x: tip.x - unit.x * 5, y: tip.y - unit.y * 5)
+
+            context.beginPath()
+            context.move(to: tip)
+            context.addLine(to: CGPoint(x: base.x + perpendicular.x * 3, y: base.y + perpendicular.y * 3))
+            context.addLine(to: CGPoint(x: base.x - perpendicular.x * 3, y: base.y - perpendicular.y * 3))
+            context.closePath()
+            context.fillPath()
         }
 
         private func createDiagonalCursor(angle: CGFloat) {
@@ -573,6 +687,64 @@ import SwiftUI
             )
         }
 
+        private func captureSelection() {
+            guard !selectionRect.isEmpty else { return }
+            onSelection(convertToScreenCoordinates(selectionRect))
+        }
+
+        private func cancelSelection() {
+            onSelection(nil)
+        }
+
+        private func startSelectionEdit() {
+            updateSelectionDraft(from: selectionRect)
+            isEditingSelection = true
+        }
+
+        private func cancelSelectionEdit() {
+            isEditingSelection = false
+            updateSelectionDraft(from: selectionRect)
+        }
+
+        private func applySelectionEdit() {
+            guard
+                let x = parseCoordinate(draftX),
+                let y = parseCoordinate(draftY),
+                let width = parseCoordinate(draftWidth),
+                let height = parseCoordinate(draftHeight),
+                width > 10,
+                height > 10
+            else {
+                return
+            }
+
+            let proposedRect = CGRect(x: x, y: y, width: width, height: height)
+            selectionRect = constrainRectToScreen(proposedRect)
+            currentSelection = convertToScreenCoordinates(selectionRect)
+            updateSelectionDraft(from: selectionRect)
+            isEditingSelection = false
+        }
+
+        private func updateSelectionDraft(from rect: CGRect) {
+            guard !isEditingSelection else { return }
+
+            draftX = formattedCoordinate(rect.minX)
+            draftY = formattedCoordinate(rect.minY)
+            draftWidth = formattedCoordinate(rect.width)
+            draftHeight = formattedCoordinate(rect.height)
+        }
+
+        private func formattedCoordinate(_ value: CGFloat) -> String {
+            String(Int(value.rounded()))
+        }
+
+        private func parseCoordinate(_ value: String) -> CGFloat? {
+            let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: ",", with: ".")
+            guard let doubleValue = Double(normalizedValue) else { return nil }
+            return CGFloat(doubleValue)
+        }
+
         private func constrainRectToScreen(_ rect: CGRect) -> CGRect {
             let bounds = screenBounds
             var constrainedRect = rect
@@ -599,7 +771,6 @@ import SwiftUI
 
     struct SelectionRectangleView: View {
         let rect: CGRect
-        let mousePosition: CGPoint
         let onModeChange: (SelectionMode) -> Void
         let onRectChange: (CGRect) -> Void
 
@@ -668,43 +839,124 @@ import SwiftUI
     
     // MARK: - Helper Components
     
-    struct MousePositionIndicator: View {
-        let position: CGPoint
-        
-        var body: some View {
-            VStack {
-                HStack {
-                    Text("x:\(Int(position.x)), y:\(Int(position.y))")
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Color.black.opacity(0.8))
-                        .cornerRadius(4)
-                        .font(.system(size: 12, design: .monospaced))
-                    Spacer()
-                }
-                Spacer()
-            }
-            .padding(.top, 10)
-            .padding(.leading, 10)
-        }
-    }
-    
     struct SelectionDimensionsView: View {
         let rect: CGRect
+        let isEditing: Bool
+        let showActions: Bool
+        let onCapture: () -> Void
+        let onEdit: () -> Void
         
         var body: some View {
-            Text("x:\(Int(rect.minX)), y:\(Int(rect.minY)), w:\(Int(rect.width)), h:\(Int(rect.height))")
-                .foregroundColor(.white)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.blue.opacity(0.8))
-                .cornerRadius(4)
-                .font(.system(size: 12, design: .monospaced))
-                .position(
-                    x: rect.midX,
-                    y: max(rect.minY - 15, 15)
-                )
+            HStack(spacing: 8) {
+                Text("x:\(Int(rect.minX)), y:\(Int(rect.minY)), w:\(Int(rect.width)), h:\(Int(rect.height))")
+                    .font(.system(size: 12, design: .monospaced))
+                    .lineLimit(1)
+
+                if showActions {
+                    Button(action: onCapture) {
+                        Image(systemName: "camera.fill")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Capture selected area")
+
+                    Button(action: onEdit) {
+                        Image(systemName: isEditing ? "pencil.circle.fill" : "pencil")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Edit selection coordinates")
+                }
+            }
+            .foregroundColor(.white)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(Color.blue.opacity(0.85))
+            .cornerRadius(4)
+            .position(
+                x: rect.midX,
+                y: max(rect.minY - 15, 15)
+            )
+        }
+    }
+
+    struct SelectionCoordinateEditorView: View {
+        @Binding var x: String
+        @Binding var y: String
+        @Binding var width: String
+        @Binding var height: String
+
+        let onApply: () -> Void
+        let onCancel: () -> Void
+
+        @FocusState private var focusedField: CoordinateField?
+
+        private enum CoordinateField {
+            case x
+            case y
+            case width
+            case height
+        }
+
+        var body: some View {
+            HStack(spacing: 8) {
+                coordinateField("x", text: $x, field: .x)
+                coordinateField("y", text: $y, field: .y)
+                coordinateField("w", text: $width, field: .width)
+                coordinateField("h", text: $height, field: .height)
+
+                Button(action: onApply) {
+                    Image(systemName: "checkmark")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .help("Apply coordinates")
+
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .frame(width: 20, height: 20)
+                }
+                .buttonStyle(.plain)
+                .help("Cancel")
+            }
+            .font(.system(size: 12))
+            .foregroundColor(.white)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(Color.black.opacity(0.78))
+            .cornerRadius(6)
+            .onAppear {
+                DispatchQueue.main.async {
+                    focusedField = .x
+                }
+            }
+        }
+
+        private func coordinateField(
+            _ label: String,
+            text: Binding<String>,
+            field: CoordinateField
+        ) -> some View {
+            HStack(spacing: 4) {
+                Text(label)
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.white.opacity(0.8))
+
+                TextField(label, text: text)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.trailing)
+                    .focused($focusedField, equals: field)
+                    .onSubmit(onApply)
+                    .frame(width: 48)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(Color.white.opacity(0.14))
+                    .cornerRadius(4)
+            }
         }
     }
     
@@ -728,8 +980,6 @@ import SwiftUI
 
     #Preview {
         AreaSelectionView(
-            backgroundImage: NSImage(systemSymbolName: "photo", accessibilityDescription: nil)
-                ?? NSImage(),
             onSelection: { rect in
                 print("Selected: \(String(describing: rect))")
             },

@@ -10,13 +10,17 @@ import SwiftUI
 #if os(macOS)
     import AppKit
 
+    private final class AreaSelectionOverlayPanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { true }
+    }
+
     // MARK: - Area Selection Manager
 
     final class AreaSelectionManager: ObservableObject {
         @Published var isPresented = false
         @Published var isRecording = false
 
-        private var backgroundImage: NSImage?
         private var completion: ((NSRect?) -> Void)?
         private var overlayWindow: NSWindow?
         private var currentSelection: NSRect = .zero
@@ -24,8 +28,7 @@ import SwiftUI
 
         // MARK: - Public Methods
 
-        func show(backgroundImage: NSImage, completion: @escaping (NSRect?) -> Void) {
-            self.backgroundImage = backgroundImage
+        func show(completion: @escaping (NSRect?) -> Void) {
             self.completion = completion
             self.isPresented = true
 
@@ -47,7 +50,6 @@ import SwiftUI
 
             let completionToCall = completion
             completion = nil
-            backgroundImage = nil
 
             completionToCall?(rect)
             isHiding = false
@@ -75,11 +77,6 @@ import SwiftUI
                 return
             }
 
-            guard let backgroundImage = backgroundImage else {
-                Logger.e("AreaSelectionManager: ERROR - No background image")
-                return
-            }
-
             // Use full screen bounds including menu bar
             let fullScreenRect = NSScreen.screens.first?.frame ?? screen.frame
             Logger.d(
@@ -88,7 +85,6 @@ import SwiftUI
 
             // Create SwiftUI view
             let overlayView = AreaSelectionView(
-                backgroundImage: backgroundImage,
                 onSelection: { rect in
                     Logger.s(
                         "AreaSelectionManager: Selection confirmed: \(String(describing: rect))")
@@ -108,7 +104,7 @@ import SwiftUI
             let hostingController = NSHostingController(rootView: overlayView)
 
             // Create window
-            let window = NSPanel(
+            let window = AreaSelectionOverlayPanel(
                 contentRect: fullScreenRect,
                 styleMask: [.nonactivatingPanel],
                 backing: .buffered,

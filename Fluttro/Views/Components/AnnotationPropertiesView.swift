@@ -280,23 +280,44 @@ struct DefaultToolProperties: View {
 struct ToolButton: View {
     let tool: DrawingTool
     let currentTool: DrawingTool
+    let selectedAnnotationType: AnnotationType?
     let action: () -> Void
+
+    init(
+        tool: DrawingTool,
+        currentTool: DrawingTool,
+        selectedAnnotationType: AnnotationType? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.tool = tool
+        self.currentTool = currentTool
+        self.selectedAnnotationType = selectedAnnotationType
+        self.action = action
+    }
     
     var isSelected: Bool {
+        if let selectedAnnotationType {
+            return tool.annotationType == selectedAnnotationType
+        }
         return tool == currentTool
     }
     
     var body: some View {
         Button(action: action) {
-            Image(systemName: tool.icon)
-                .font(.system(size: 16))
-                .frame(width: 32, height: 32)
-                .background(isSelected ? Color.blue : Color.clear)
-                .foregroundColor(isSelected ? .white : .primary)
-                .cornerRadius(6)
+            ZStack {
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isSelected ? Color.accentColor.opacity(0.95) : Color(NSColor.controlBackgroundColor).opacity(0.01))
+
+                Image(systemName: tool.icon)
+                    .font(.system(size: 15, weight: isSelected ? .semibold : .regular))
+                    .foregroundColor(isSelected ? .white : .primary)
+            }
+            .frame(width: 32, height: 32)
+            .contentShape(RoundedRectangle(cornerRadius: 7))
         }
         .buttonStyle(.plain)
         .help(tool.displayName)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
@@ -313,4 +334,3 @@ struct ToolButton: View {
 }
 
 #endif
-

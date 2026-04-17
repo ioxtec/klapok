@@ -15,10 +15,10 @@ struct ExportTypeSelector: View {
     @ObservedObject var exportManager: ExportManager
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Export Format")
-                .font(.headline)
-            
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Format")
+                .font(.callout)
+
             Picker("", selection: Binding(
                 get: { exportManager.settings.exportType },
                 set: { newType in
@@ -362,4 +362,3 @@ struct GIFExportSettingsView: View {
 }
 
 #endif
-

@@ -210,6 +210,31 @@ class VideoRecordingService: VideoCaptureService {
         self.recordingURL = nil
         return recording
     }
+
+    func cancelRecording() async {
+        guard isRecording else {
+            print("❌ Not recording, cannot cancel")
+            return
+        }
+
+        isRecording = false
+        let urlToRemove = recordingURL
+
+        try? await stream?.stopCapture()
+        stream = nil
+
+        if let streamOutput = streamOutput {
+            await streamOutput.finishWriting()
+        }
+        streamOutput = nil
+        recordingStartTime = nil
+        recordingURL = nil
+
+        if let urlToRemove {
+            try? FileManager.default.removeItem(at: urlToRemove)
+            print("🗑️ Cancelled video recording and removed: \(urlToRemove.path)")
+        }
+    }
     
     var currentRecordingDuration: TimeInterval {
         guard let startTime = recordingStartTime, isRecording else { return 0.0 }

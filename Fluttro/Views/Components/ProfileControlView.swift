@@ -15,13 +15,14 @@ struct ProfileControlView<T: Profile>: View {
     @ObservedObject var profileManager: ProfileManager
     @State private var showingAddProfile = false
     @State private var showingDeleteAlert = false
-    @State private var showingOptionsMenu = false
     @State private var selectedProfile: T?
     @State private var newProfileName = ""
     
     let profiles: [T]
     let activeProfile: T?
     let profileTypeName: String
+    let showsHeader: Bool
+    let usesContainer: Bool
     let onProfileSelected: (T) -> Void
     let onProfileAdded: (String) -> Void
     let onProfileEdited: (T, String) -> Void
@@ -35,6 +36,8 @@ struct ProfileControlView<T: Profile>: View {
         profiles: [T],
         activeProfile: T?,
         profileTypeName: String,
+        showsHeader: Bool = true,
+        usesContainer: Bool = true,
         onProfileSelected: @escaping (T) -> Void,
         onProfileAdded: @escaping (String) -> Void,
         onProfileEdited: @escaping (T, String) -> Void,
@@ -47,6 +50,8 @@ struct ProfileControlView<T: Profile>: View {
         self.profiles = profiles
         self.activeProfile = activeProfile
         self.profileTypeName = profileTypeName
+        self.showsHeader = showsHeader
+        self.usesContainer = usesContainer
         self.onProfileSelected = onProfileSelected
         self.onProfileAdded = onProfileAdded
         self.onProfileEdited = onProfileEdited
@@ -57,37 +62,55 @@ struct ProfileControlView<T: Profile>: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // Header with title and options menu
-            HStack {
-                Text("Profiles")
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                // Options menu button
-                Menu {
-                    Button("Import Profiles") {
-                        onImportProfiles()
-                    }
-                    
-                    Button("Export Profiles") {
-                        onExportProfiles()
-                    }
-                    
-                    Divider()
-                    
-                    Button("Reset to Defaults") {
-                        onResetProfiles()
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
+        Group {
+            if usesContainer {
+                controlContent
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
+                    )
+            } else {
+                controlContent
+            }
+        }
+        .sheet(isPresented: $showingAddProfile) {
+            AddProfileSheet(
+                profileName: $newProfileName,
+                profileTypeName: profileTypeName,
+                onSave: { name in
+                    onProfileAdded(name)
+                    newProfileName = ""
                 }
-                .menuStyle(.borderlessButton)
-                .frame(width: 20, height: 20)
+            )
+        }
+        .alert("Delete Profile", isPresented: $showingDeleteAlert) {
+            Button("Cancel", role: .cancel) { }
+            Button("Delete", role: .destructive) {
+                if let profile = selectedProfile {
+                    onProfileDeleted(profile)
+                }
+            }
+        } message: {
+            if let profile = selectedProfile {
+                Text("Are you sure you want to delete the profile '\(profile.name)'? This action cannot be undone.")
+            }
+        }
+    }
+
+    private var controlContent: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if showsHeader {
+                HStack {
+                    Text("Profiles")
+                        .font(.headline)
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
+                    optionsMenu
+                }
             }
             
             // Profile controls
@@ -114,6 +137,8 @@ struct ProfileControlView<T: Profile>: View {
                     }
                 }
                 .pickerStyle(.menu)
+                .labelsHidden()
+                .frame(maxWidth: .infinity)
                 
                 Spacer()
                 
@@ -155,36 +180,36 @@ struct ProfileControlView<T: Profile>: View {
                     .foregroundColor(.red)
                     .help("Delete profile")
                 }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 6)
-                .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
-        )
-        .sheet(isPresented: $showingAddProfile) {
-            AddProfileSheet(
-                profileName: $newProfileName,
-                profileTypeName: profileTypeName,
-                onSave: { name in
-                    onProfileAdded(name)
-                    newProfileName = ""
-                }
-            )
-        }
-        .alert("Delete Profile", isPresented: $showingDeleteAlert) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                if let profile = selectedProfile {
-                    onProfileDeleted(profile)
+
+                if !showsHeader {
+                    optionsMenu
                 }
             }
-        } message: {
-            if let profile = selectedProfile {
-                Text("Are you sure you want to delete the profile '\(profile.name)'? This action cannot be undone.")
-            }
         }
+    }
+
+    private var optionsMenu: some View {
+        Menu {
+            Button("Import Profiles") {
+                onImportProfiles()
+            }
+
+            Button("Export Profiles") {
+                onExportProfiles()
+            }
+
+            Divider()
+
+            Button("Reset to Defaults") {
+                onResetProfiles()
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(.secondary)
+        }
+        .menuStyle(.borderlessButton)
+        .frame(width: 22, height: 22)
     }
 }
 

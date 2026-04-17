@@ -198,8 +198,25 @@ struct GeneralSettingsView: View {
                             SettingsToggleOption(
                                 title: LocalizationKeys.showMouseCursorTitle.localized,
                                 description: LocalizationKeys.showMouseCursorDescription.localized,
-                                isLast: true,
+                                isLast: false,
                                 isOn: $viewModel.showMouseCursor
+                            )
+
+                            SettingsPickerOption(
+                                title: "Pozycja miniaturki",
+                                description: "Gdzie pojawi się szybki podgląd po zrobieniu zrzutu.",
+                                isLast: true,
+                                selection: Binding(
+                                    get: { viewModel.screenshotReviewPosition.rawValue },
+                                    set: {
+                                        if let position = ScreenshotReviewPosition(rawValue: $0) {
+                                            viewModel.screenshotReviewPosition = position
+                                        }
+                                    }
+                                ),
+                                options: ScreenshotReviewPosition.allCases.map {
+                                    ($0.rawValue, $0.displayName)
+                                }
                             )
                         }
                     }

@@ -13,24 +13,44 @@ import AppKit
 struct DrawingCanvasView: View {
     @ObservedObject var annotationManager: AnnotationManager
     let canvasSize: CGSize
+    let sourceImageSize: CGSize?
     
-    @State private var dragStart: CGPoint?
-    @State private var dragOffset: CGSize = .zero
+    @State private var lastDragLocation: CGPoint?
+    @State private var activeDragAnnotationId: UUID?
+    @State private var recordedDragUndo = false
+
+    private var sourceSize: CGSize {
+        sourceImageSize ?? canvasSize
+    }
+
+    private var scaleX: CGFloat {
+        guard sourceSize.width > 0 else { return 1 }
+        return canvasSize.width / sourceSize.width
+    }
+
+    private var scaleY: CGFloat {
+        guard sourceSize.height > 0 else { return 1 }
+        return canvasSize.height / sourceSize.height
+    }
+
+    private var displayScale: CGFloat {
+        min(scaleX, scaleY)
+    }
     
     var body: some View {
-        ZStack {
+        ZStack(alignment: .topLeading) {
             // Canvas for non-text annotations
             Canvas { context, size in
                 // Draw all committed non-text annotations
                 for annotation in annotationManager.annotations {
                     if annotation.type != .text {
-                        drawAnnotation(annotation, in: context, canvasSize: size, isSelected: annotation.id == annotationManager.selectedAnnotationId)
+                        drawAnnotation(annotationForDisplay(annotation), in: context, canvasSize: size)
                     }
                 }
                 
                 // Draw current draft annotation being drawn (if not text)
                 if let draft = annotationManager.currentDraft, draft.type != .text {
-                    drawAnnotation(draft, in: context, canvasSize: size, isSelected: false, opacity: 0.7)
+                    drawAnnotation(annotationForDisplay(draft), in: context, canvasSize: size, opacity: 0.7)
                 }
             }
             .frame(width: canvasSize.width, height: canvasSize.height)
@@ -40,7 +60,8 @@ struct DrawingCanvasView: View {
                 EditableTextAnnotationView(
                     annotation: annotation,
                     annotationManager: annotationManager,
-                    canvasSize: canvasSize
+                    canvasSize: canvasSize,
+                    sourceImageSize: sourceImageSize
                 )
             }
 
@@ -50,6 +71,8 @@ struct DrawingCanvasView: View {
                 selectionOverlay(for: selected)
             }
         }
+        .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
+        .clipped()
         .contentShape(Rectangle())
         .gesture(
             DragGesture(minimumDistance: 0)
@@ -60,12 +83,9 @@ struct DrawingCanvasView: View {
                     handleDragEnded(value)
                 }
         )
-        .onTapGesture { location in
-            handleTap(at: location)
-        }
     }
     
-    private func drawAnnotation(_ annotation: Annotation, in context: GraphicsContext, canvasSize: CGSize, isSelected: Bool, opacity: Double = 1.0) {
+    private func drawAnnotation(_ annotation: Annotation, in context: GraphicsContext, canvasSize: CGSize, opacity: Double = 1.0) {
         let color = annotation.color.toColor()
         
         switch annotation.type {
@@ -86,10 +106,6 @@ struct DrawingCanvasView: View {
             drawFreeDrawAnnotation(annotation, in: context, color: color, opacity: opacity)
         }
         
-        // Draw selection indicator
-        if isSelected {
-            drawSelectionIndicator(annotation, in: context)
-        }
     }
     
     private func drawFreeDrawAnnotation(_ annotation: Annotation, in context: GraphicsContext, color: Color, opacity: Double) {
@@ -167,12 +183,13 @@ struct DrawingCanvasView: View {
             )
         }
         
-        // Stroke
-        context.stroke(
-            Path(rect),
-            with: .color(color.opacity(opacity)),
-            lineWidth: annotation.strokeWidth
-        )
+        if annotation.strokeWidth > 0 {
+            context.stroke(
+                Path(rect),
+                with: .color(color.opacity(opacity)),
+                lineWidth: annotation.strokeWidth
+            )
+        }
     }
     
     private func drawCircleAnnotation(_ annotation: Annotation, in context: GraphicsContext, color: Color, opacity: Double) {
@@ -233,65 +250,78 @@ struct DrawingCanvasView: View {
         )
     }
     
-    private func drawSelectionIndicator(_ annotation: Annotation, in context: GraphicsContext) {
-        let bounds = annotation.bounds
-        let expandedRect = bounds.insetBy(dx: -5, dy: -5)
-        
-        var path = Path()
-        path.addRect(expandedRect)
-        
-        context.stroke(
-            path,
-            with: .color(.blue),
-            style: StrokeStyle(lineWidth: 2, dash: [5, 3])
-        )
-    }
-    
     // MARK: - Gesture Handlers
     
     private func handleTap(at location: CGPoint) {
-        print("DrawingCanvasView: Tap at location: \(location)")
-        print("DrawingCanvasView: Current tool: \(annotationManager.currentTool)")
-        print("DrawingCanvasView: Is editing text: \(annotationManager.isEditingText)")
-        
-        // If editing text, finish editing and return (don't create new annotation)
         if annotationManager.isEditingText {
-            print("DrawingCanvasView: Finishing text editing")
             annotationManager.finishEditingText()
+            annotationManager.selectTool(.select)
+            _ = annotationManager.selectAnnotation(at: location)
+            return
+        }
+
+        if annotationManager.currentTool != .text,
+           annotationManager.selectAnnotation(at: location) {
+            annotationManager.selectTool(.select)
             return
         }
         
         if annotationManager.currentTool == .select {
-            _ = annotationManager.selectAnnotation(at: location)
+            if annotationManager.selectAnnotation(at: location) {
+                annotationManager.selectTool(.select)
+            }
         } else if annotationManager.currentTool == .text {
-            print("DrawingCanvasView: Creating text annotation at: \(location)")
-            // Create text annotation at tap location
             annotationManager.createTextAnnotation(at: location)
         } else {
-            print("DrawingCanvasView: Tool \(annotationManager.currentTool) not handled in tap")
+            annotationManager.deselectAnnotation()
         }
     }
     
     private func handleDragChanged(_ value: DragGesture.Value) {
-        let location = value.location
-        
-        print("DrawingCanvasView: Drag changed at: \(location), start: \(value.startLocation)")
-        print("DrawingCanvasView: Current tool: \(annotationManager.currentTool)")
+        let location = sourcePoint(fromDisplayPoint: value.location)
+        let startLocation = sourcePoint(fromDisplayPoint: value.startLocation)
         
         if annotationManager.currentTool == .select {
-            // Move selected annotation
-            if dragStart == nil {
-                dragStart = value.startLocation
+            if annotationManager.isEditingText {
+                return
             }
+
+            if activeDragAnnotationId == nil {
+                guard annotationManager.selectAnnotation(at: startLocation),
+                      let selectedId = annotationManager.selectedAnnotationId
+                else { return }
+
+                activeDragAnnotationId = selectedId
+                lastDragLocation = startLocation
+            }
+
+            guard activeDragAnnotationId != nil,
+                  let lastDragLocation else { return }
+
             let delta = CGSize(
-                width: location.x - (dragStart?.x ?? location.x),
-                height: location.y - (dragStart?.y ?? location.y)
+                width: location.x - lastDragLocation.x,
+                height: location.y - lastDragLocation.y
             )
-            dragOffset = delta
+            if delta != .zero {
+                if !recordedDragUndo {
+                    annotationManager.recordUndoSnapshot()
+                    recordedDragUndo = true
+                }
+                annotationManager.moveSelectedAnnotation(by: delta, recordHistory: false)
+                self.lastDragLocation = location
+            }
         } else if let toolType = annotationManager.currentTool.annotationType, toolType != .text {
             // Draw new annotation (except text, which is handled by tap)
             if !annotationManager.isDrawing {
-                annotationManager.startDrawing(at: value.startLocation)
+                if annotationManager.selectAnnotation(at: startLocation),
+                   let selectedId = annotationManager.selectedAnnotationId {
+                    annotationManager.selectTool(.select)
+                    activeDragAnnotationId = selectedId
+                    lastDragLocation = startLocation
+                    return
+                }
+
+                annotationManager.startDrawing(at: startLocation)
             }
             annotationManager.updateDrawing(to: location)
         }
@@ -301,32 +331,45 @@ struct DrawingCanvasView: View {
         let dragDistance = sqrt(pow(value.translation.width, 2) + pow(value.translation.height, 2))
         let isTap = dragDistance < 5 // Consider it a tap if drag distance is less than 5 points
         
-        print("DrawingCanvasView: Drag ended. Distance: \(dragDistance), isTap: \(isTap)")
-        print("DrawingCanvasView: Current tool: \(annotationManager.currentTool)")
-        print("DrawingCanvasView: Is editing text: \(annotationManager.isEditingText)")
-        
-        // If editing text and it's a tap, finish editing
-        if annotationManager.isEditingText && isTap {
-            print("DrawingCanvasView: Finishing text editing from drag")
-            annotationManager.finishEditingText()
-            return
-        }
-        
         if annotationManager.currentTool == .select {
-            // Apply movement
-            if dragOffset != .zero {
-                annotationManager.moveSelectedAnnotation(by: dragOffset)
+            if isTap {
+                handleTap(at: sourcePoint(fromDisplayPoint: value.startLocation))
             }
-            dragStart = nil
-            dragOffset = .zero
+            resetDragState()
         } else if annotationManager.currentTool == .text && isTap {
-            // Handle tap for text tool
-            print("DrawingCanvasView: Handling tap for text tool at: \(value.startLocation)")
-            annotationManager.createTextAnnotation(at: value.startLocation)
+            handleTap(at: sourcePoint(fromDisplayPoint: value.startLocation))
         } else if annotationManager.isDrawing {
             // Finish drawing
             annotationManager.finishDrawing()
         }
+    }
+
+    private func resetDragState() {
+        lastDragLocation = nil
+        activeDragAnnotationId = nil
+        recordedDragUndo = false
+    }
+
+    private func sourcePoint(fromDisplayPoint point: CGPoint) -> CGPoint {
+        CGPoint(
+            x: scaleX == 0 ? point.x : point.x / scaleX,
+            y: scaleY == 0 ? point.y : point.y / scaleY
+        )
+    }
+
+    private func displayPoint(fromSourcePoint point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x * scaleX, y: point.y * scaleY)
+    }
+
+    private func annotationForDisplay(_ annotation: Annotation) -> Annotation {
+        var displayed = annotation
+        displayed.startPoint = displayPoint(fromSourcePoint: annotation.startPoint)
+        displayed.endPoint = displayPoint(fromSourcePoint: annotation.endPoint)
+        displayed.strokeWidth = annotation.strokeWidth * displayScale
+        displayed.fontSize = annotation.fontSize * displayScale
+        displayed.arrowheadSize = annotation.arrowheadSize * displayScale
+        displayed.pathPoints = annotation.pathPoints.map(displayPoint(fromSourcePoint:))
+        return displayed
     }
 }
 
@@ -335,12 +378,13 @@ struct DrawingCanvasView: View {
 extension DrawingCanvasView {
     @ViewBuilder
     private func selectionOverlay(for annotation: Annotation) -> some View {
-        let bounds = annotation.bounds
+        let bounds = annotationForDisplay(annotation).bounds
         ZStack {
-            handleView(at: CGPoint(x: bounds.minX, y: bounds.minY), handle: .topLeft)
-            handleView(at: CGPoint(x: bounds.maxX, y: bounds.minY), handle: .topRight)
-            handleView(at: CGPoint(x: bounds.minX, y: bounds.maxY), handle: .bottomLeft)
-            handleView(at: CGPoint(x: bounds.maxX, y: bounds.maxY), handle: .bottomRight)
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(Color.accentColor, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                .frame(width: max(1, bounds.width + 10), height: max(1, bounds.height + 10))
+                .position(x: bounds.midX, y: bounds.midY)
+                .allowsHitTesting(false)
 
             Button(action: { annotationManager.deleteSelectedAnnotation() }) {
                 Image(systemName: "xmark.circle.fill")
@@ -352,60 +396,6 @@ extension DrawingCanvasView {
             .position(x: bounds.maxX + 10, y: bounds.minY - 10)
         }
         .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
-        .onAppear {
-            print("🎯 SelectionOverlay [\(annotation.id.uuidString.prefix(8))]:")
-            print("   Annotation model:")
-            print("     startPoint: \(annotation.startPoint)")
-            print("     endPoint: \(annotation.endPoint)")
-            print("     bounds: \(bounds)")
-            print("   Overlay handles positions:")
-            print("     topLeft: (\(bounds.minX), \(bounds.minY))")
-            print("     topRight: (\(bounds.maxX), \(bounds.minY))")
-            print("     bottomLeft: (\(bounds.minX), \(bounds.maxY))")
-            print("     bottomRight: (\(bounds.maxX), \(bounds.maxY))")
-            print("   Delete button position: (\(bounds.maxX + 10), \(bounds.minY - 10))")
-        }
-        .onChange(of: annotation.startPoint) { _, _ in
-            let newBounds = annotation.bounds
-            print("🎯 SelectionOverlay: startPoint changed, bounds now: \(newBounds)")
-        }
-        .onChange(of: annotation.endPoint) { _, _ in
-            let newBounds = annotation.bounds
-            print("🎯 SelectionOverlay: endPoint changed, bounds now: \(newBounds)")
-        }
-    }
-
-    private struct CornerHandle: View {
-        let point: CGPoint
-        let handle: ResizeHandle
-        @ObservedObject var annotationManager: AnnotationManager
-        @State private var lastTranslation: CGSize = .zero
-        
-        var body: some View {
-            Circle()
-                .fill(Color.blue)
-                .frame(width: 10, height: 10)
-                .position(x: point.x, y: point.y)
-                .gesture(
-                    DragGesture()
-                        .onChanged { value in
-                            let delta = CGSize(
-                                width: value.translation.width - lastTranslation.width,
-                                height: value.translation.height - lastTranslation.height
-                            )
-                            annotationManager.resizeSelectedAnnotation(by: delta, handle: handle)
-                            lastTranslation = value.translation
-                        }
-                        .onEnded { _ in
-                            lastTranslation = .zero
-                        }
-                )
-        }
-    }
-
-    @ViewBuilder
-    private func handleView(at point: CGPoint, handle: ResizeHandle) -> some View {
-        CornerHandle(point: point, handle: handle, annotationManager: annotationManager)
     }
 }
 
@@ -437,7 +427,8 @@ extension DrawingCanvasView {
                 ]
                 return manager
             }(),
-            canvasSize: CGSize(width: 500, height: 400)
+            canvasSize: CGSize(width: 500, height: 400),
+            sourceImageSize: CGSize(width: 500, height: 400)
         )
     }
     .frame(width: 500, height: 400)
@@ -445,4 +436,3 @@ extension DrawingCanvasView {
 }
 
 #endif
-

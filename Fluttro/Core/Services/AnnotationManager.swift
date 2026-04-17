@@ -13,11 +13,18 @@ import Combine
 import AppKit
 
 final class AnnotationManager: ObservableObject {
+    private struct AnnotationHistoryState: Equatable {
+        var annotations: [Annotation]
+        var selectedAnnotationId: UUID?
+    }
+
     // MARK: - Published Properties
     
     @Published var annotations: [Annotation] = []
     @Published var selectedAnnotationId: UUID?
     @Published var currentTool: DrawingTool = .none
+    @Published private var undoStack: [AnnotationHistoryState] = []
+    @Published private var redoStack: [AnnotationHistoryState] = []
     
     // Drawing state
     @Published var isDrawing: Bool = false
@@ -33,6 +40,9 @@ final class AnnotationManager: ObservableObject {
     @Published var defaultFontSize: CGFloat = 18
     @Published var defaultFontWeight: FontWeight = .semibold
     @Published var defaultFillOpacity: Double = 0.3
+
+    private let maximumHistoryDepth = 50
+    private var isRestoringHistory = false
     
     // MARK: - Computed Properties
     
@@ -43,6 +53,14 @@ final class AnnotationManager: ObservableObject {
     
     var hasAnnotations: Bool {
         return !annotations.isEmpty
+    }
+
+    var canUndo: Bool {
+        !undoStack.isEmpty
+    }
+
+    var canRedo: Bool {
+        !redoStack.isEmpty
     }
     
     // MARK: - Public Methods
@@ -60,19 +78,22 @@ final class AnnotationManager: ObservableObject {
     
     // MARK: Annotation Management
     
-    func addAnnotation(_ annotation: Annotation) {
+    func addAnnotation(_ annotation: Annotation, recordHistory: Bool = true) {
+        recordUndoSnapshotIfNeeded(recordHistory)
         annotations.append(annotation)
     }
     
-    func updateAnnotation(_ annotation: Annotation) {
+    func updateAnnotation(_ annotation: Annotation, recordHistory: Bool = true) {
         if let index = annotations.firstIndex(where: { $0.id == annotation.id }) {
+            recordUndoSnapshotIfNeeded(recordHistory)
             var updated = annotation
             updated.modifiedAt = Date()
             annotations[index] = updated
         }
     }
     
-    func deleteAnnotation(withId id: UUID) {
+    func deleteAnnotation(withId id: UUID, recordHistory: Bool = true) {
+        recordUndoSnapshotIfNeeded(recordHistory)
         annotations.removeAll(where: { $0.id == id })
         if selectedAnnotationId == id {
             selectedAnnotationId = nil
@@ -86,9 +107,24 @@ final class AnnotationManager: ObservableObject {
     }
     
     func clearAllAnnotations() {
+        recordUndoSnapshotIfNeeded(!annotations.isEmpty)
         annotations.removeAll()
         selectedAnnotationId = nil
         currentDraft = nil
+        isDrawing = false
+        editingTextAnnotationId = nil
+        isEditingText = false
+    }
+
+    func resetForNewImage() {
+        annotations.removeAll()
+        selectedAnnotationId = nil
+        currentDraft = nil
+        isDrawing = false
+        editingTextAnnotationId = nil
+        isEditingText = false
+        undoStack.removeAll()
+        redoStack.removeAll()
     }
     
     // MARK: Selection
@@ -107,6 +143,12 @@ final class AnnotationManager: ObservableObject {
     
     func deselectAnnotation() {
         selectedAnnotationId = nil
+    }
+
+    func selectAnnotation(withId id: UUID) {
+        if annotations.contains(where: { $0.id == id }) {
+            selectedAnnotationId = id
+        }
     }
     
     // MARK: Drawing
@@ -165,10 +207,10 @@ final class AnnotationManager: ObservableObject {
         
         if hasSize || hasFreeDrawPath || draft.type == .text {
             addAnnotation(draft)
-            
-            // For text annotations, select them immediately for editing
-            if draft.type == .text {
-                selectedAnnotationId = draft.id
+            selectedAnnotationId = draft.id
+
+            if draft.type != .text {
+                currentTool = .select
             }
         }
         
@@ -183,15 +225,21 @@ final class AnnotationManager: ObservableObject {
     
     // MARK: Annotation Modification
     
-    func moveSelectedAnnotation(by delta: CGSize) {
+    func moveSelectedAnnotation(by delta: CGSize, recordHistory: Bool = true) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        recordUndoSnapshotIfNeeded(recordHistory)
         var annotation = annotations[index]
         annotation.startPoint.x += delta.width
         annotation.startPoint.y += delta.height
         annotation.endPoint.x += delta.width
         annotation.endPoint.y += delta.height
+        if annotation.type == .freeDraw {
+            annotation.pathPoints = annotation.pathPoints.map {
+                CGPoint(x: $0.x + delta.width, y: $0.y + delta.height)
+            }
+        }
         annotation.modifiedAt = Date()
         annotations[index] = annotation
     }
@@ -200,7 +248,8 @@ final class AnnotationManager: ObservableObject {
     func resizeSelectedAnnotation(by delta: CGSize, handle: ResizeHandle) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        recordUndoSnapshotIfNeeded(true)
         var annotation = annotations[index]
         let originalHeight = annotation.endPoint.y - annotation.startPoint.y
         
@@ -247,12 +296,15 @@ final class AnnotationManager: ObservableObject {
         annotations[index] = annotation
     }
     
-    func updateSelectedAnnotationText(_ text: String) {
+    func updateSelectedAnnotationText(_ text: String, recordHistory: Bool = true) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        guard annotations[index].text != text else { return }
+        recordUndoSnapshotIfNeeded(recordHistory)
         var annotation = annotations[index]
         annotation.text = text
+        fitTextAnnotation(&annotation)
         annotation.modifiedAt = Date()
         annotations[index] = annotation
     }
@@ -260,7 +312,8 @@ final class AnnotationManager: ObservableObject {
     func updateSelectedAnnotationColor(_ color: Color) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        recordUndoSnapshotIfNeeded(true)
         var annotation = annotations[index]
         annotation.color = ColorData(color: color)
         annotation.modifiedAt = Date()
@@ -270,7 +323,9 @@ final class AnnotationManager: ObservableObject {
     func updateSelectedAnnotationStrokeWidth(_ width: CGFloat) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        guard annotations[index].strokeWidth != width else { return }
+        recordUndoSnapshotIfNeeded(true)
         var annotation = annotations[index]
         annotation.strokeWidth = width
         annotation.modifiedAt = Date()
@@ -280,9 +335,37 @@ final class AnnotationManager: ObservableObject {
     func updateSelectedAnnotationFontSize(_ size: CGFloat) {
         guard let id = selectedAnnotationId,
               let index = annotations.firstIndex(where: { $0.id == id }) else { return }
-        
+
+        guard annotations[index].fontSize != size else { return }
+        recordUndoSnapshotIfNeeded(true)
         var annotation = annotations[index]
         annotation.fontSize = size
+        fitTextAnnotation(&annotation)
+        annotation.modifiedAt = Date()
+        annotations[index] = annotation
+    }
+
+    func updateSelectedAnnotationFontWeight(_ weight: FontWeight) {
+        guard let id = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+
+        guard annotations[index].fontWeight != weight else { return }
+        recordUndoSnapshotIfNeeded(true)
+        var annotation = annotations[index]
+        annotation.fontWeight = weight
+        fitTextAnnotation(&annotation)
+        annotation.modifiedAt = Date()
+        annotations[index] = annotation
+    }
+
+    func updateSelectedAnnotationFillOpacity(_ opacity: Double) {
+        guard let id = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == id }) else { return }
+
+        guard annotations[index].fillOpacity != opacity else { return }
+        recordUndoSnapshotIfNeeded(true)
+        var annotation = annotations[index]
+        annotation.fillOpacity = opacity
         annotation.modifiedAt = Date()
         annotations[index] = annotation
     }
@@ -290,6 +373,7 @@ final class AnnotationManager: ObservableObject {
     // Update size (endPoint) using provided size, anchoring at startPoint (top-left)
     func updateAnnotationSize(annotationId: UUID, to size: CGSize) {
         guard let index = annotations.firstIndex(where: { $0.id == annotationId }) else { return }
+        recordUndoSnapshotIfNeeded(true)
         var annotation = annotations[index]
         annotation.endPoint = CGPoint(x: annotation.startPoint.x + size.width,
                                       y: annotation.startPoint.y + size.height)
@@ -313,7 +397,7 @@ final class AnnotationManager: ObservableObject {
     func createTextAnnotation(at point: CGPoint) {
         print("🆕 AnnotationManager: Creating text annotation at \(point)")
         
-        let annotation = Annotation(
+        var annotation = Annotation(
             type: .text,
             startPoint: point, // This will be the top-left corner of the text field
             endPoint: CGPoint(x: point.x + 200, y: point.y + 30), // Fixed size text box
@@ -324,6 +408,7 @@ final class AnnotationManager: ObservableObject {
             strokeWidth: defaultStrokeWidth,
             fillOpacity: defaultFillOpacity
         )
+        fitTextAnnotation(&annotation)
         
         print("🆕 AnnotationManager: Created annotation:")
         print("   startPoint: \(annotation.startPoint)")
@@ -336,6 +421,21 @@ final class AnnotationManager: ObservableObject {
         startEditingText(annotationId: annotation.id)
         print("🆕 AnnotationManager: Started editing text annotation \(annotation.id)")
     }
+
+    private func fitTextAnnotation(_ annotation: inout Annotation) {
+        guard annotation.type == .text else { return }
+
+        let text = annotation.text?.isEmpty == false ? annotation.text ?? "" : "Text"
+        let font = NSFont.systemFont(ofSize: annotation.fontSize, weight: annotation.fontWeight.nsWeight)
+        let measuredSize = (text as NSString).size(withAttributes: [.font: font])
+        let width = max(112, ceil(measuredSize.width) + 64)
+        let height = max(36, ceil(measuredSize.height) + 18)
+
+        annotation.endPoint = CGPoint(
+            x: annotation.startPoint.x + width,
+            y: annotation.startPoint.y + height
+        )
+    }
     
     // MARK: Export
     
@@ -345,10 +445,66 @@ final class AnnotationManager: ObservableObject {
     
     func importAnnotations(from data: Data) {
         if let imported = try? JSONDecoder().decode([Annotation].self, from: data) {
+            recordUndoSnapshotIfNeeded(annotations != imported)
             annotations = imported
         }
+    }
+
+    // MARK: - History
+
+    func recordUndoSnapshot() {
+        recordUndoSnapshotIfNeeded(true)
+    }
+
+    func undo() {
+        guard let previousState = undoStack.popLast() else { return }
+
+        let currentState = historyState
+        isRestoringHistory = true
+        redoStack.append(currentState)
+        annotations = previousState.annotations
+        selectedAnnotationId = previousState.selectedAnnotationId
+        currentDraft = nil
+        isDrawing = false
+        editingTextAnnotationId = nil
+        isEditingText = false
+        isRestoringHistory = false
+    }
+
+    func redo() {
+        guard let nextState = redoStack.popLast() else { return }
+
+        let currentState = historyState
+        isRestoringHistory = true
+        undoStack.append(currentState)
+        annotations = nextState.annotations
+        selectedAnnotationId = nextState.selectedAnnotationId
+        currentDraft = nil
+        isDrawing = false
+        editingTextAnnotationId = nil
+        isEditingText = false
+        isRestoringHistory = false
+    }
+
+    private var historyState: AnnotationHistoryState {
+        AnnotationHistoryState(
+            annotations: annotations,
+            selectedAnnotationId: selectedAnnotationId
+        )
+    }
+
+    private func recordUndoSnapshotIfNeeded(_ shouldRecord: Bool) {
+        guard shouldRecord, !isRestoringHistory else { return }
+
+        let state = historyState
+        guard undoStack.last != state else { return }
+
+        undoStack.append(state)
+        if undoStack.count > maximumHistoryDepth {
+            undoStack.removeFirst(undoStack.count - maximumHistoryDepth)
+        }
+        redoStack.removeAll()
     }
 }
 
 #endif
-

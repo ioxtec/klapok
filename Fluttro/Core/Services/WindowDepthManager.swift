@@ -23,6 +23,7 @@ import Foundation
         enum WindowType {
             case editor
             case floatingPanel
+            case pinnedFloatingPanel
             case windowSelectionOverlay
             case areaSelectionOverlay
 
@@ -35,7 +36,9 @@ import Foundation
                 case .windowSelectionOverlay:
                     return 25  // Above area selection
                 case .floatingPanel:
-                    return 100  // Always on top, above all overlays
+                    return 100  // Above all overlays
+                case .pinnedFloatingPanel:
+                    return 120  // Pinned panel stays above the regular floating panel
                 }
             }
         }
@@ -61,8 +64,8 @@ import Foundation
         }
 
         /// Ensures floating panel is always on top
-        func ensureFloatingPanelOnTop(_ panel: NSPanel) {
-            setLevel(for: panel, type: .floatingPanel)
+        func ensureFloatingPanelOnTop(_ panel: NSPanel, pinned: Bool = false) {
+            setLevel(for: panel, type: pinned ? .pinnedFloatingPanel : .floatingPanel)
             Logger.d("WindowDepthManager: Ensured floating panel is on top")
         }
 
@@ -73,6 +76,7 @@ import Foundation
                 "areaSelectionOverlay": level(for: .areaSelectionOverlay).rawValue,
                 "windowSelectionOverlay": level(for: .windowSelectionOverlay).rawValue,
                 "floatingPanel": level(for: .floatingPanel).rawValue,
+                "pinnedFloatingPanel": level(for: .pinnedFloatingPanel).rawValue,
             ]
         }
 

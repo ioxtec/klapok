@@ -16,278 +16,19 @@ import SwiftUI
 
         var body: some View {
             NavigationSplitView {
-                // Left sidebar with options
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 16) {
-                        // Profile control
-                        ProfileControlView<ImageEditingProfile>(
-                            profileManager: profileManager,
-                            profiles: profileManager.imageProfiles.profiles,
-                            activeProfile: profileManager.getActiveImageProfile(),
-                            profileTypeName: "Image",
-                            onProfileSelected: { profile in
-                                profileManager.applyImageProfile(profile, to: viewModel)
-                            },
-                            onProfileAdded: { name in
-                                let newProfile = profileManager.createImageProfileFromCurrentSettings(name: name, from: viewModel)
-                                profileManager.setActiveImageProfile(newProfile)
-                            },
-                            onProfileEdited: { profile, newName in
-                                // If newName is the same as current name, it means we're saving changes to the profile
-                                if newName == profile.name {
-                                    // Save current editor settings to the active profile
-                                    let updatedProfile = ImageEditingProfile(
-                                        id: profile.id,
-                                        name: profile.name,
-                                        isDefault: profile.isDefault,
-                                        createdAt: profile.createdAt,
-                                        modifiedAt: Date(),
-                                        backgroundAspectRatio: viewModel.selectedAspectRatio,
-                                        backgroundPadding: viewModel.backgroundPadding,
-                                        backgroundCornerRadius: viewModel.backgroundCornerRadius,
-                                        shadowIntensity: viewModel.shadowIntensity
-                                    )
-                                    profileManager.updateImageProfile(updatedProfile)
-                                } else {
-                                    // Rename the profile
-                                    var updatedProfile = profile
-                                    updatedProfile.name = newName
-                                    updatedProfile.modifiedAt = Date()
-                                    profileManager.updateImageProfile(updatedProfile)
-                                }
-                            },
-                            onProfileDeleted: { profile in
-                                profileManager.removeImageProfile(withId: profile.id)
-                            },
-                            onImportProfiles: {
-                                _ = profileManager.importImageProfiles()
-                            },
-                            onExportProfiles: {
-                                _ = profileManager.exportImageProfiles()
-                            },
-                            onResetProfiles: {
-                                profileManager.resetImageProfilesToDefaults()
-                            }
-                        )
-                        
-                        Text("Properties")
-                            .font(.headline)
-                            .padding(.bottom, 8)
-
-                        // Background Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Background")
-                                .font(.headline)
-                            
-                            BackgroundEditorView(backgroundManager: backgroundManager)
-                        }
-                        .padding(.bottom, 8)
-                        
-                        // Image info section
-                        if let image = viewModel.image {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Image Size")
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
-
-                                Text("\(Int(image.size.width)) × \(Int(image.size.height)) px")
-                                    .font(.system(size: 13, design: .monospaced))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(Color(NSColor.controlBackgroundColor))
-                                    .cornerRadius(4)
-                            }
-                            .padding(.bottom, 8)
-                        }
-
-                        // Corner Radius Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Corner Radius")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-
-                            Toggle("Rounded Corners", isOn: $viewModel.enableRoundedCorners)
-                                .toggleStyle(.switch)
-
-                            if viewModel.enableRoundedCorners {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    HStack {
-                                        Text("Corner Radius")
-                                        Spacer()
-                                        Text("\(Int(viewModel.cornerRadius)) px")
-                                            .foregroundColor(.secondary)
-                                            .font(.system(size: 12, design: .monospaced))
-                                    }
-
-                                    Slider(
-                                        value: $viewModel.cornerRadius,
-                                        in: 0...50,
-                                        step: 1
-                                    )
-                                }
-                                .padding(.leading, 8)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
-                        }
-                        .animation(.easeInOut(duration: 0.2), value: viewModel.enableRoundedCorners)
-                        .padding(.bottom, 16)
-
-                        // Aspect Ratio Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Ratio / Size")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            
-                            // Aspect ratio buttons
-                            LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 3), spacing: 8) {
-                                ForEach(BackgroundAspectRatio.allCases, id: \.id) { ratio in
-                                    Button(action: {
-                                        viewModel.selectedAspectRatio = ratio
-                                    }) {
-                                        Text(ratio.displayName)
-                                            .font(.system(size: 12, weight: .medium))
-                                            .foregroundColor(viewModel.selectedAspectRatio == ratio ? .white : .primary)
-                                            .frame(maxWidth: .infinity)
-                                            .padding(.vertical, 8)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: 6)
-                                                    .fill(viewModel.selectedAspectRatio == ratio ? 
-                                                          Color.accentColor : Color(NSColor.controlBackgroundColor))
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        .padding(.bottom, 16)
-                        
-                        // Padding Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Padding")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            
-                            HStack {
-                                Text("Padding")
-                                Spacer()
-                                Text("\(Int(viewModel.backgroundPadding)) px")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 12, design: .monospaced))
-                            }
-                            
-                            Slider(
-                                value: $viewModel.backgroundPadding,
-                                in: 10...100,
-                                step: 5
-                            )
-                        }
-                        .padding(.bottom, 16)
-                        
-                        // Rounded Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Rounded")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            
-                            HStack {
-                                Text("Radius:")
-                                Spacer()
-                                Text("\(Int(viewModel.backgroundCornerRadius)) px")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 12, design: .monospaced))
-                            }
-                            
-                            Slider(
-                                value: $viewModel.backgroundCornerRadius,
-                                in: 0...50,
-                                step: 1
-                            )
-                        }
-                        .padding(.bottom, 16)
-                        
-                        // Shadow Section
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Shadow")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                            
-                            HStack {
-                                Text("Shadow Intensity")
-                                Spacer()
-                                Text("\(Int(viewModel.shadowIntensity))%")
-                                    .foregroundColor(.secondary)
-                                    .font(.system(size: 12, design: .monospaced))
-                            }
-                            
-                            Slider(
-                                value: $viewModel.shadowIntensity,
-                                in: 0...50,
-                                step: 1
-                            )
-                        }
-                        .padding(.bottom, 16)
-
-                        Spacer()
-                    }
-                    .padding()
-                }
-                .frame(minWidth: 300, maxWidth: 400)
-                .background(Color(NSColor.windowBackgroundColor))
+                EditorSidebarView(
+                    viewModel: viewModel,
+                    profileManager: profileManager,
+                    backgroundManager: backgroundManager
+                )
+                .navigationSplitViewColumnWidth(300)
             } detail: {
                 // Right side - preview area
                 VStack(spacing: 0) {
                     // Top toolbar
                     HStack(spacing: 0) {
                         // Drawing tools on the left
-                        HStack(spacing: 4) {
-                            ToolButton(
-                                tool: .select,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.select) }
-                            )
-                            
-                            ToolButton(
-                                tool: .text,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.text) }
-                            )
-                            
-                            ToolButton(
-                                tool: .arrow,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.arrow) }
-                            )
-                            
-                            ToolButton(
-                                tool: .rectangle,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.rectangle) }
-                            )
-                            
-                            ToolButton(
-                                tool: .circle,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.circle) }
-                            )
-                            
-                            ToolButton(
-                                tool: .line,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.line) }
-                            )
-                            
-                            ToolButton(
-                                tool: .highlight,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.highlight) }
-                            )
-                            
-                            ToolButton(
-                                tool: .freeDraw,
-                                currentTool: viewModel.annotationManager.currentTool,
-                                action: { viewModel.annotationManager.selectTool(.freeDraw) }
-                            )
-                        }
+                        AnnotationToolPickerView(annotationManager: viewModel.annotationManager)
                         .padding(.leading, 12)
                         
                         Divider()
@@ -298,20 +39,6 @@ import SwiftUI
                         AnnotationToolbarPropertiesView(annotationManager: viewModel.annotationManager)
                         
                         Spacer()
-
-                        // Save button
-                        Button(action: {
-                            viewModel.saveImage()
-                        }) {
-                            HStack(spacing: 4) {
-                                Image(systemName: "square.and.arrow.down")
-                                Text("Save")
-                                    .font(.system(size: 13))
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .help("Save")
-                        .padding(.trailing, 12)
                     }
                     .frame(height: 48)
                     .background(Color(NSColor.controlBackgroundColor))
@@ -327,8 +54,8 @@ import SwiftUI
                             
                             // Calculate image scale - only scale down if image doesn't fit
                             let imagePadding = viewModel.backgroundPadding
-                            let maxImageWidth = backgroundSize.width - (imagePadding * 2)
-                            let maxImageHeight = backgroundSize.height - (imagePadding * 2)
+                            let maxImageWidth = max(1, backgroundSize.width - (imagePadding * 2))
+                            let maxImageHeight = max(1, backgroundSize.height - (imagePadding * 2))
                             
                             // Only scale down if image is larger than available space
                             let scaleX = imageSize.width > maxImageWidth ? maxImageWidth / imageSize.width : 1.0
@@ -337,6 +64,12 @@ import SwiftUI
                             
                             let finalImageWidth = max(1, imageSize.width * scale)
                             let finalImageHeight = max(1, imageSize.height * scale)
+
+                            let directScaleX = imageSize.width > availableSize.width ? availableSize.width / imageSize.width : 1.0
+                            let directScaleY = imageSize.height > availableSize.height ? availableSize.height / imageSize.height : 1.0
+                            let directScale = min(directScaleX, directScaleY)
+                            let directImageWidth = max(1, imageSize.width * directScale)
+                            let directImageHeight = max(1, imageSize.height * directScale)
                             
                             // Validate dimensions to prevent invalid frames
                             let validBackgroundSize = CGSize(
@@ -387,7 +120,8 @@ import SwiftUI
                                                 // Drawing canvas overlay for annotations
                                                 DrawingCanvasView(
                                                     annotationManager: viewModel.annotationManager,
-                                                    canvasSize: CGSize(width: finalImageWidth, height: finalImageHeight)
+                                                    canvasSize: CGSize(width: finalImageWidth, height: finalImageHeight),
+                                                    sourceImageSize: imageSize
                                                 )
                                             }
                                             
@@ -407,7 +141,7 @@ import SwiftUI
                                                 Image(nsImage: image)
                                                     .resizable()
                                                     .interpolation(.none)
-                                                    .frame(width: imageSize.width, height: imageSize.height)
+                                                    .frame(width: directImageWidth, height: directImageHeight)
                                                     .background(viewModel.selectedBackgroundColor)
                                                     .clipShape(
                                                         RoundedRectangle(
@@ -425,7 +159,8 @@ import SwiftUI
                                                 // Drawing canvas overlay for annotations
                                                 DrawingCanvasView(
                                                     annotationManager: viewModel.annotationManager,
-                                                    canvasSize: imageSize
+                                                    canvasSize: CGSize(width: directImageWidth, height: directImageHeight),
+                                                    sourceImageSize: imageSize
                                                 )
                                             }
                                             
@@ -451,41 +186,15 @@ import SwiftUI
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(Color(NSColor.controlBackgroundColor).opacity(0.5))
                     }
-
-                    // Bottom toolbar
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            viewModel.copyToClipboard()
-                        }) {
-                            Image(systemName: "doc.on.clipboard")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Copy to Clipboard")
-
-                        Button(action: {
-                            viewModel.saveImage()
-                        }) {
-                            Image(systemName: "square.and.arrow.down")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Save")
-
-                        Button(action: {
-                            viewModel.saveImageAs()
-                        }) {
-                            Image(systemName: "square.and.arrow.down.on.square")
-                        }
-                        .buttonStyle(.bordered)
-                        .help("Save As...")
-
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(Color(NSColor.controlBackgroundColor))
                 }
             }
-            .frame(minWidth: 1000, minHeight: 700)
+            .toolbar {
+                EditorCommandToolbar(
+                    viewModel: viewModel,
+                    annotationManager: viewModel.annotationManager
+                )
+            }
+            .frame(minWidth: 1180, minHeight: 720)
         }
 
         // Background color options
@@ -514,9 +223,9 @@ import SwiftUI
         case .gradient:
             if let selectedGradient = backgroundManager.collections.selectedGradient {
                 LinearGradient(
-                    colors: selectedGradient.colors,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    gradient: Gradient(stops: selectedGradient.gradientStops),
+                    startPoint: selectedGradient.direction.startPoint,
+                    endPoint: selectedGradient.direction.endPoint
                 )
             } else {
                 Color.gray.opacity(0.1)
@@ -525,16 +234,447 @@ import SwiftUI
         case .image:
             if let selectedImage = backgroundManager.collections.selectedImage,
                let image = selectedImage.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .opacity(selectedImage.opacity)
+                BackgroundImageFillView(
+                    image: image,
+                    scaleMode: selectedImage.scaleMode,
+                    opacity: selectedImage.opacity
+                )
             } else {
                 Color.gray.opacity(0.1)
             }
             
         case .none:
             Color.clear
+        }
+    }
+
+    private struct BackgroundImageFillView: View {
+        let image: NSImage
+        let scaleMode: BackgroundScaleMode
+        let opacity: Double
+
+        var body: some View {
+            GeometryReader { geometry in
+                let size = geometry.size
+
+                switch scaleMode {
+                case .fit:
+                    centeredImage(in: size, contentMode: .fit)
+
+                case .fill:
+                    centeredImage(in: size, contentMode: .fill)
+                        .clipped()
+
+                case .stretch:
+                    Image(nsImage: image)
+                        .resizable()
+                        .frame(width: size.width, height: size.height)
+                        .opacity(opacity)
+
+                case .tile:
+                    Image(nsImage: image)
+                        .resizable(resizingMode: .tile)
+                        .frame(width: size.width, height: size.height)
+                        .opacity(opacity)
+                        .clipped()
+
+                case .center:
+                    Image(nsImage: image)
+                        .frame(width: image.size.width, height: image.size.height)
+                        .position(x: size.width / 2, y: size.height / 2)
+                        .opacity(opacity)
+                        .clipped()
+                }
+            }
+        }
+
+        private func centeredImage(in size: CGSize, contentMode: ContentMode) -> some View {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: contentMode)
+                .frame(width: size.width, height: size.height)
+                .opacity(opacity)
+        }
+    }
+
+    // MARK: - Annotation Toolbar
+
+    private struct AnnotationToolPickerView: View {
+        @ObservedObject var annotationManager: AnnotationManager
+        @Environment(\.colorScheme) private var colorScheme
+
+        private let tools: [DrawingTool] = [
+            .text,
+            .arrow,
+            .rectangle,
+            .circle,
+            .line,
+            .freeDraw,
+        ]
+
+        var body: some View {
+            HStack(spacing: 4) {
+                ForEach(tools, id: \.displayName) { tool in
+                    ToolButton(
+                        tool: tool,
+                        currentTool: annotationManager.currentTool,
+                        selectedAnnotationType: annotationManager.selectedAnnotation?.type,
+                        action: { annotationManager.selectTool(tool) }
+                    )
+                }
+            }
+            .padding(4)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.14), lineWidth: 1)
+            )
+        }
+    }
+
+    private struct EditorCommandToolbar: ToolbarContent {
+        @ObservedObject var viewModel: EditorViewModel
+        @ObservedObject var annotationManager: AnnotationManager
+
+        var body: some ToolbarContent {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    annotationManager.undo()
+                } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .disabled(!annotationManager.canUndo)
+                .keyboardShortcut("z", modifiers: .command)
+                .help("Undo")
+
+                Button {
+                    annotationManager.redo()
+                } label: {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .disabled(!annotationManager.canRedo)
+                .keyboardShortcut("Z", modifiers: [.command, .shift])
+                .help("Redo")
+
+                Button {
+                    annotationManager.clearAllAnnotations()
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .disabled(!annotationManager.hasAnnotations)
+                .help("Clear all annotations")
+
+                Button {
+                    viewModel.copyToClipboard()
+                } label: {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .help("Copy to Clipboard")
+
+                Button {
+                    viewModel.saveImageAs()
+                } label: {
+                    Image(systemName: "square.and.arrow.down.on.square")
+                }
+                .help("Save As...")
+
+                Button {
+                    viewModel.saveImage()
+                } label: {
+                    Image(systemName: "square.and.arrow.down")
+                }
+                .buttonStyle(.borderedProminent)
+                .help("Save")
+            }
+        }
+    }
+
+    // MARK: - Sidebar
+
+    private struct EditorSidebarView: View {
+        @ObservedObject var viewModel: EditorViewModel
+        @ObservedObject var profileManager: ProfileManager
+        @ObservedObject var backgroundManager: BackgroundManager
+
+        var body: some View {
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 0) {
+                    EditorSidebarSection(
+                        title: "Profiles",
+                        subtitle: "Presets for canvas size, spacing, corners, and shadow."
+                    ) {
+                        profileControl
+                    }
+
+                    EditorSidebarSection(
+                        title: "Background",
+                        subtitle: "Fill behind the screenshot."
+                    ) {
+                        BackgroundEditorView(backgroundManager: backgroundManager)
+                    }
+
+                    EditorSidebarSection(
+                        title: "Canvas",
+                        subtitle: "Outer frame, aspect ratio, and spacing."
+                    ) {
+                        if backgroundManager.collections.backgroundType == .none {
+                            SidebarHintText("Turn on Gradient or Image to edit canvas settings.")
+                        } else {
+                            SidebarAspectRatioGrid(selectedRatio: $viewModel.selectedAspectRatio)
+
+                            SidebarSliderControl(
+                                title: "Outer padding",
+                                valueText: "\(Int(viewModel.backgroundPadding)) px",
+                                value: $viewModel.backgroundPadding,
+                                range: 10...100,
+                                step: 5
+                            )
+
+                            SidebarSliderControl(
+                                title: "Canvas corner radius",
+                                valueText: "\(Int(viewModel.backgroundCornerRadius)) px",
+                                value: $viewModel.backgroundCornerRadius,
+                                range: 0...50,
+                                step: 1
+                            )
+                        }
+                    }
+
+                    EditorSidebarSection(
+                        title: "Screenshot",
+                        subtitle: "Source image corners and shadow."
+                    ) {
+                        if let image = viewModel.image {
+                            SidebarValueRow(
+                                title: "Source size",
+                                value: "\(Int(image.size.width)) x \(Int(image.size.height)) px"
+                            )
+                        }
+
+                        Toggle("Round screenshot corners", isOn: $viewModel.enableRoundedCorners)
+                            .toggleStyle(.switch)
+                            .controlSize(.small)
+
+                        if viewModel.enableRoundedCorners {
+                            SidebarSliderControl(
+                                title: "Screenshot corner radius",
+                                valueText: "\(Int(viewModel.cornerRadius)) px",
+                                value: $viewModel.cornerRadius,
+                                range: 0...50,
+                                step: 1
+                            )
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+
+                        SidebarSliderControl(
+                            title: "Screenshot shadow",
+                            valueText: "\(Int(viewModel.shadowIntensity))%",
+                            value: $viewModel.shadowIntensity,
+                            range: 0...50,
+                            step: 1
+                        )
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: viewModel.enableRoundedCorners)
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 24)
+                .padding(.vertical, 8)
+            }
+            .scrollIndicators(.visible)
+            .frame(width: 300)
+            .background(Color(NSColor.windowBackgroundColor))
+        }
+
+        private var profileControl: some View {
+            ProfileControlView<ImageEditingProfile>(
+                profileManager: profileManager,
+                profiles: profileManager.imageProfiles.profiles,
+                activeProfile: profileManager.getActiveImageProfile(),
+                profileTypeName: "Image",
+                showsHeader: false,
+                usesContainer: false,
+                onProfileSelected: { profile in
+                    profileManager.applyImageProfile(profile, to: viewModel)
+                },
+                onProfileAdded: { name in
+                    let newProfile = profileManager.createImageProfileFromCurrentSettings(
+                        name: name,
+                        from: viewModel
+                    )
+                    profileManager.setActiveImageProfile(newProfile)
+                },
+                onProfileEdited: updateProfile,
+                onProfileDeleted: { profile in
+                    profileManager.removeImageProfile(withId: profile.id)
+                },
+                onImportProfiles: {
+                    _ = profileManager.importImageProfiles()
+                },
+                onExportProfiles: {
+                    _ = profileManager.exportImageProfiles()
+                },
+                onResetProfiles: {
+                    profileManager.resetImageProfilesToDefaults()
+                }
+            )
+        }
+
+        private func updateProfile(_ profile: ImageEditingProfile, newName: String) {
+            if newName == profile.name {
+                let updatedProfile = ImageEditingProfile(
+                    id: profile.id,
+                    name: profile.name,
+                    isDefault: profile.isDefault,
+                    createdAt: profile.createdAt,
+                    modifiedAt: Date(),
+                    backgroundAspectRatio: viewModel.selectedAspectRatio,
+                    backgroundPadding: viewModel.backgroundPadding,
+                    backgroundCornerRadius: viewModel.backgroundCornerRadius,
+                    shadowIntensity: viewModel.shadowIntensity
+                )
+                profileManager.updateImageProfile(updatedProfile)
+            } else {
+                var updatedProfile = profile
+                updatedProfile.name = newName
+                updatedProfile.modifiedAt = Date()
+                profileManager.updateImageProfile(updatedProfile)
+            }
+        }
+    }
+
+    private struct EditorSidebarSection<Content: View>: View {
+        let title: String
+        let subtitle: String
+        let content: Content
+
+        init(
+            title: String,
+            subtitle: String,
+            @ViewBuilder content: () -> Content
+        ) {
+            self.title = title
+            self.subtitle = subtitle
+            self.content = content()
+        }
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .font(.headline)
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: 12) {
+                    content
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 14)
+            .overlay(alignment: .bottom) {
+                Divider()
+            }
+        }
+    }
+
+    private struct SidebarAspectRatioGrid: View {
+        @Binding var selectedRatio: BackgroundAspectRatio
+
+        private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Aspect ratio")
+                    .font(.callout)
+
+                LazyVGrid(columns: columns, spacing: 6) {
+                    ForEach(BackgroundAspectRatio.allCases, id: \.id) { ratio in
+                        Button {
+                            selectedRatio = ratio
+                        } label: {
+                            Text(ratio.displayName)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(selectedRatio == ratio ? .white : .primary)
+                                .frame(maxWidth: .infinity, minHeight: 28)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .fill(
+                                            selectedRatio == ratio
+                                                ? Color.accentColor
+                                                : Color(NSColor.controlBackgroundColor)
+                                        )
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private struct SidebarSliderControl: View {
+        let title: String
+        let valueText: String
+        @Binding var value: Double
+        let range: ClosedRange<Double>
+        let step: Double
+
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(title)
+                        .font(.callout)
+
+                    Spacer()
+
+                    Text(valueText)
+                        .font(.system(size: 12, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+
+                Slider(value: $value, in: range, step: step)
+            }
+        }
+    }
+
+    private struct SidebarValueRow: View {
+        let title: String
+        let value: String
+
+        var body: some View {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.callout)
+
+                Spacer()
+
+                Text(value)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
+        }
+    }
+
+    private struct SidebarHintText: View {
+        let text: String
+
+        init(_ text: String) {
+            self.text = text
+        }
+
+        var body: some View {
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

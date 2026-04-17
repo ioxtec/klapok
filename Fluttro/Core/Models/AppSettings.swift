@@ -12,6 +12,31 @@ import Foundation
 
     // MARK: - Settings Model
 
+    enum ScreenshotReviewPosition: String, CaseIterable, Identifiable {
+        case bottomRight
+        case bottomLeft
+        case topRight
+        case topLeft
+        case bottomCenter
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .bottomRight:
+                return "Prawy dolny"
+            case .bottomLeft:
+                return "Lewy dolny"
+            case .topRight:
+                return "Prawy górny"
+            case .topLeft:
+                return "Lewy górny"
+            case .bottomCenter:
+                return "Dół środek"
+            }
+        }
+    }
+
     final class AppSettings: ObservableObject {
         static let shared = AppSettings()
 
@@ -26,6 +51,12 @@ import Foundation
         @Published var fileNameTemplate: String {
             didSet {
                 UserDefaults.standard.set(fileNameTemplate, forKey: "fileNameTemplate")
+            }
+        }
+
+        @Published var screenshotReviewPosition: ScreenshotReviewPosition {
+            didSet {
+                UserDefaults.standard.set(screenshotReviewPosition.rawValue, forKey: "screenshotReviewPosition")
             }
         }
 
@@ -223,6 +254,9 @@ import Foundation
             
             self.fileNameTemplate =
                 UserDefaults.standard.string(forKey: "fileNameTemplate") ?? "Screenshot-{datetime}"
+            self.screenshotReviewPosition = ScreenshotReviewPosition(
+                rawValue: UserDefaults.standard.string(forKey: "screenshotReviewPosition") ?? ""
+            ) ?? .bottomRight
             self.videoFileNameTemplate =
                 UserDefaults.standard.string(forKey: "videoFileNameTemplate") ?? "Video-{datetime}"
             
@@ -264,12 +298,14 @@ import Foundation
 
             saveDirectory = defaultSaveDirectory
             fileNameTemplate = "Screenshot-{datetime}"
+            screenshotReviewPosition = .bottomRight
             videoSaveDirectory = defaultVideoSaveDirectory
             videoFileNameTemplate = "Video-{datetime}"
             
             // Clear any saved paths from UserDefaults
             UserDefaults.standard.removeObject(forKey: "saveDirectory")
             UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
+            UserDefaults.standard.removeObject(forKey: "screenshotReviewPosition")
             
             // Reset video settings to defaults
             videoResolution = "Source"

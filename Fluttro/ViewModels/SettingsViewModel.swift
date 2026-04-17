@@ -29,6 +29,12 @@ import Foundation
             }
         }
 
+        @Published var screenshotReviewPosition: ScreenshotReviewPosition {
+            didSet {
+                appSettings.screenshotReviewPosition = screenshotReviewPosition
+            }
+        }
+
         @Published var hotkeyModifiers: NSEvent.ModifierFlags {
             didSet {
                 appSettings.hotkeyModifiers = hotkeyModifiers
@@ -72,6 +78,7 @@ import Foundation
             // Initialize with current settings
             self.saveDirectory = appSettings.saveDirectory
             self.fileNameTemplate = appSettings.fileNameTemplate
+            self.screenshotReviewPosition = appSettings.screenshotReviewPosition
             self.hotkeyModifiers = appSettings.hotkeyModifiers
             self.hotkeyKeyCode = appSettings.hotkeyKeyCode
             self.showInDock = appSettings.showInDock
@@ -100,6 +107,7 @@ import Foundation
             // Update local properties
             saveDirectory = appSettings.saveDirectory
             fileNameTemplate = appSettings.fileNameTemplate
+            screenshotReviewPosition = appSettings.screenshotReviewPosition
             hotkeyModifiers = appSettings.hotkeyModifiers
             hotkeyKeyCode = appSettings.hotkeyKeyCode
             showInDock = appSettings.showInDock

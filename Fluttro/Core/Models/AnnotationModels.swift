@@ -125,7 +125,19 @@ struct Annotation: Identifiable, Codable, Equatable {
     
     // Convenience computed properties
     var bounds: CGRect {
-        if type == .freeDraw && !pathPoints.isEmpty {
+        if type == .circle {
+            let width = abs(endPoint.x - startPoint.x)
+            let height = abs(endPoint.y - startPoint.y)
+            let diameter = max(width, height)
+            let centerX = (startPoint.x + endPoint.x) / 2
+            let centerY = (startPoint.y + endPoint.y) / 2
+            return CGRect(
+                x: centerX - diameter / 2,
+                y: centerY - diameter / 2,
+                width: diameter,
+                height: diameter
+            )
+        } else if type == .freeDraw && !pathPoints.isEmpty {
             // Calculate bounds from path points
             let minX = pathPoints.map { $0.x }.min() ?? startPoint.x
             let maxX = pathPoints.map { $0.x }.max() ?? endPoint.x
@@ -289,4 +301,3 @@ enum DrawingTool: Equatable {
 }
 
 #endif
-

@@ -11,20 +11,46 @@ import SwiftUI
     import AppKit
     import ScreenCaptureKit
 
+    private struct WindowSelectionItem: Identifiable, Equatable {
+        let id: CGWindowID
+        let window: SCWindow
+        let frame: CGRect
+        let displayName: String
+
+        init(window: SCWindow) {
+            self.id = window.windowID
+            self.window = window
+            self.frame = window.frame
+
+            if let appName = window.owningApplication?.applicationName,
+                let title = window.title, !title.isEmpty
+            {
+                self.displayName = "\(appName) - \(title)"
+            } else if let appName = window.owningApplication?.applicationName {
+                self.displayName = appName
+            } else if let title = window.title, !title.isEmpty {
+                self.displayName = title
+            } else {
+                self.displayName = "Unknown window"
+            }
+        }
+
+        static func == (lhs: WindowSelectionItem, rhs: WindowSelectionItem) -> Bool {
+            lhs.id == rhs.id
+        }
+    }
+
     // MARK: - Window Selection View
 
     struct WindowSelectionOverlayView: View {
         let onSelection: (SCWindow?) -> Void
         let onCancel: () -> Void
-        @State private var availableWindows: [SCWindow] = []
-        @State private var hoveredWindow: SCWindow?
-        @State private var selectedWindow: SCWindow?
-        @State private var mousePosition: CGPoint = .zero
+        @State private var availableWindows: [WindowSelectionItem] = []
+        @State private var hoveredWindow: WindowSelectionItem?
+        @State private var selectedWindow: WindowSelectionItem?
         @State private var isLoading: Bool = true
-        @StateObject private var windowHighlighter = WindowHighlighter()
-        @State private var lastHoverUpdate: Date = Date()
-        @State private var isProcessingHover: Bool = false
-        private let hoverThrottleInterval: TimeInterval = 0.5  // 500ms throttle - even more
+        @State private var lastHoverUpdate: TimeInterval = 0
+        private let hoverThrottleInterval: TimeInterval = 1.0 / 30.0
 
         var body: some View {
             ZStack {
@@ -36,14 +62,14 @@ import SwiftUI
 
                 // Selected window (red frame)
                 if let selectedWindow = selectedWindow {
-                    WindowFrameHighlight(window: selectedWindow, color: .red, label: "SELECTED")
+                    WindowFrameHighlight(item: selectedWindow, color: .red, label: "SELECTED")
                 }
 
                 // Hovered window (blue frame) - only if different from selected
                 if let hoveredWindow = hoveredWindow,
-                    hoveredWindow.windowID != selectedWindow?.windowID
+                    hoveredWindow.id != selectedWindow?.id
                 {
-                    WindowFrameHighlight(window: hoveredWindow, color: .blue, label: nil)
+                    WindowFrameHighlight(item: hoveredWindow, color: .blue, label: nil)
                 }
 
                 // Instructions
@@ -68,7 +94,7 @@ import SwiftUI
                                     .foregroundColor(.white)
                                     .font(.headline)
 
-                                Text(windowDisplayName(selectedWindow))
+                                Text(selectedWindow.displayName)
                                     .foregroundColor(.green)
                                     .font(.subheadline)
                                     .padding(.horizontal, 12)
@@ -82,7 +108,7 @@ import SwiftUI
                                     .font(.headline)
 
                                 if let hoveredWindow = hoveredWindow {
-                                    Text("Hovering: \(windowDisplayName(hoveredWindow))")
+                                    Text("Hovering: \(hoveredWindow.displayName)")
                                         .foregroundColor(.yellow)
                                         .font(.subheadline)
                                         .padding(.horizontal, 12)
@@ -108,40 +134,17 @@ import SwiftUI
                     Spacer()
                 }
                 .padding(.top, 50)
-
-                // Mouse position indicator (for debugging)
-                if !isLoading {
-                    VStack {
-                        HStack {
-                            Text("x:\(Int(mousePosition.x)), y:\(Int(mousePosition.y))")
-                                .foregroundColor(.white.opacity(0.6))
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.black.opacity(0.6))
-                                .cornerRadius(4)
-                                .font(.system(size: 10, design: .monospaced))
-                            Spacer()
-                        }
-                        Spacer()
-                    }
-                    .padding(.top, 10)
-                    .padding(.leading, 10)
-                }
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
                 switch phase {
                 case .active(let location):
-                    mousePosition = location
-
-                    // Skip if still loading or processing
-                    guard !isLoading && !isProcessingHover else { return }
+                    guard !isLoading else { return }
 
                     // Throttle hover updates to prevent performance issues
-                    let now = Date()
-                    if now.timeIntervalSince(lastHoverUpdate) >= hoverThrottleInterval {
+                    let now = ProcessInfo.processInfo.systemUptime
+                    if now - lastHoverUpdate >= hoverThrottleInterval {
                         lastHoverUpdate = now
-                        isProcessingHover = true
 
                         // Find window under cursor
                         let screenLocation = convertToScreenCoordinates(location)
@@ -151,8 +154,6 @@ import SwiftUI
                         if windowUnderCursor != hoveredWindow {
                             hoveredWindow = windowUnderCursor
                         }
-
-                        isProcessingHover = false
                     }
                 case .ended:
                     // Reset on hover end
@@ -162,12 +163,12 @@ import SwiftUI
             .onTapGesture { location in
                 if let window = hoveredWindow {
                     // Toggle logic: if clicked window is already selected, deselect it
-                    if selectedWindow?.windowID == window.windowID {
+                    if selectedWindow?.id == window.id {
                         selectedWindow = nil
                         onSelection(nil)  // Pass nil = no selection
                     } else {
                         selectedWindow = window
-                        onSelection(window)  // Pass newly selected window
+                        onSelection(window.window)  // Pass newly selected window
                     }
                 }
             }
@@ -180,7 +181,6 @@ import SwiftUI
                 loadAvailableWindows()
             }
             .onDisappear {
-                isProcessingHover = false
                 hoveredWindow = nil
             }
         }
@@ -194,7 +194,7 @@ import SwiftUI
 
                     Logger.d("WindowSelection: Found \(content.windows.count) total windows")
 
-                    let windows = content.windows.compactMap { window -> SCWindow? in
+                    let windows = content.windows.compactMap { window -> WindowSelectionItem? in
                         // Filter out system windows and very small windows
                         guard let app = window.owningApplication else {
                             return nil
@@ -249,13 +249,13 @@ import SwiftUI
                             return nil
                         }
 
-                        return window
+                        return WindowSelectionItem(window: window)
                     }
 
                     Logger.d("WindowSelection: After filtering: \(windows.count) windows available")
-                    for window in windows.prefix(5) {
+                    for item in windows.prefix(5) {
                         Logger.d(
-                            "WindowSelection: Available window: \(window.title ?? "No title") - \(window.owningApplication?.applicationName ?? "No app")"
+                            "WindowSelection: Available window: \(item.displayName)"
                         )
                     }
 
@@ -273,59 +273,18 @@ import SwiftUI
             }
         }
 
-        private func updateHoveredWindow(at location: CGPoint) {
-            guard !isLoading else {
-                return
-            }
-
-            // Convert screen coordinates to find the window under cursor
-            let screenLocation = convertToScreenCoordinates(location)
-
-            // Safely find window under cursor
-            let windowUnderCursor = findWindowUnderCursor(at: screenLocation)
-
-            if windowUnderCursor != hoveredWindow {
-                // DISABLED: Stop previous highlighting safely
-                // windowHighlighter.stopHighlighting()
-
-                hoveredWindow = windowUnderCursor
-
-                if windowUnderCursor != nil {
-                    // DISABLED: windowHighlighter.highlightWindow(windowUnderCursor)
-                }
-            }
-        }
-
-        private func findWindowUnderCursor(at screenLocation: CGPoint) -> SCWindow? {
+        private func findWindowUnderCursor(at screenLocation: CGPoint) -> WindowSelectionItem? {
             guard !availableWindows.isEmpty else {
                 return nil
             }
 
-            // Limit to first 20 windows to prevent performance issues
-            let windowsToCheck = Array(availableWindows.prefix(20))
-
-            for window in windowsToCheck {
-                let windowFrame = window.frame
-                if windowFrame.contains(screenLocation) {
+            for window in availableWindows {
+                if window.frame.contains(screenLocation) {
                     return window
                 }
             }
 
             return nil
-        }
-
-        private func windowDisplayName(_ window: SCWindow) -> String {
-            if let appName = window.owningApplication?.applicationName,
-                let title = window.title, !title.isEmpty
-            {
-                return "\(appName) - \(title)"
-            } else if let appName = window.owningApplication?.applicationName {
-                return appName
-            } else if let title = window.title, !title.isEmpty {
-                return title
-            } else {
-                return "Unknown window"
-            }
         }
 
         private func convertToScreenCoordinates(_ point: CGPoint) -> CGPoint {
@@ -345,13 +304,13 @@ import SwiftUI
 
     // MARK: - Window Frame Highlight
 
-    struct WindowFrameHighlight: View {
-        let window: SCWindow
+    private struct WindowFrameHighlight: View {
+        let item: WindowSelectionItem
         let color: Color
         let label: String?
 
         var body: some View {
-            let windowFrame = window.frame
+            let windowFrame = item.frame
             let screenFrame = NSScreen.main?.frame ?? .zero
 
             // Convert window coordinates to SwiftUI coordinates
@@ -382,7 +341,7 @@ import SwiftUI
                                         .background(color)
                                         .cornerRadius(3)
                                 }
-                                Text(windowDisplayName(window))
+                                Text(item.displayName)
                                     .foregroundColor(.white)
                                     .font(.system(size: 14, weight: .semibold))
                                     .padding(.horizontal, 8)
@@ -399,20 +358,6 @@ import SwiftUI
                 .frame(width: swiftUIFrame.width, height: swiftUIFrame.height)
                 .position(x: swiftUIFrame.midX, y: swiftUIFrame.midY)
                 .allowsHitTesting(false)  // Don't interfere with mouse events
-        }
-
-        private func windowDisplayName(_ window: SCWindow) -> String {
-            if let appName = window.owningApplication?.applicationName,
-                let title = window.title, !title.isEmpty
-            {
-                return "\(appName) - \(title)"
-            } else if let appName = window.owningApplication?.applicationName {
-                return appName
-            } else if let title = window.title, !title.isEmpty {
-                return title
-            } else {
-                return "Unknown window"
-            }
         }
     }
 

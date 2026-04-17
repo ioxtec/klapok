@@ -120,9 +120,18 @@ final class FloatingPanelViewModelTests: XCTestCase {
         XCTAssertEqual(floatingPanelViewModel.screenshotType, .area)
         XCTAssertTrue(floatingPanelViewModel.isAlwaysOnTop)
     }
+
+    func testPinnedPanelLevelStaysAboveSelectionOverlays() {
+        let manager = WindowDepthManager.shared
+        let areaSelectionLevel = manager.level(for: .areaSelectionOverlay).rawValue
+        let windowSelectionLevel = manager.level(for: .windowSelectionOverlay).rawValue
+        let floatingPanelLevel = manager.level(for: .floatingPanel).rawValue
+        let pinnedPanelLevel = manager.level(for: .pinnedFloatingPanel).rawValue
+
+        XCTAssertGreaterThan(floatingPanelLevel, areaSelectionLevel)
+        XCTAssertGreaterThan(floatingPanelLevel, windowSelectionLevel)
+        XCTAssertGreaterThan(pinnedPanelLevel, floatingPanelLevel)
+    }
 }
 
 #endif
-
-
-

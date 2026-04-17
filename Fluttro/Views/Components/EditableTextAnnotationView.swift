@@ -14,122 +14,119 @@ struct EditableTextAnnotationView: View {
     let annotation: Annotation
     @ObservedObject var annotationManager: AnnotationManager
     let canvasSize: CGSize
+    let sourceImageSize: CGSize?
     @State private var editingText: String = ""
     @State private var isDragging: Bool = false
-    @State private var dragOffset: CGSize = .zero
-    @State private var viewSize: CGSize = .zero
+    @State private var lastDragTranslation: CGSize = .zero
+    @State private var recordedDragUndo = false
     @FocusState private var isTextFieldFocused: Bool
     
     private var isEditing: Bool {
         annotationManager.editingTextAnnotationId == annotation.id
     }
-    
-    private var isSelected: Bool {
-        annotationManager.selectedAnnotationId == annotation.id
+
+    private var sourceSize: CGSize {
+        sourceImageSize ?? canvasSize
+    }
+
+    private var scaleX: CGFloat {
+        guard sourceSize.width > 0 else { return 1 }
+        return canvasSize.width / sourceSize.width
+    }
+
+    private var scaleY: CGFloat {
+        guard sourceSize.height > 0 else { return 1 }
+        return canvasSize.height / sourceSize.height
+    }
+
+    private var displayScale: CGFloat {
+        min(scaleX, scaleY)
     }
     
     var body: some View {
-        let width = max(80, annotation.bounds.width)
-        let height = max(30, annotation.bounds.height)
+        let width = max(1, annotation.bounds.width * scaleX)
+        let height = max(1, annotation.bounds.height * scaleY)
+        let fontSize = max(6, annotation.fontSize * displayScale)
         
-        // Use same positioning approach as overlay - frame on entire canvas with topLeading alignment
-        Color.clear
-            .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
-            .overlay(
-                Group {
-                    if isEditing {
-                        // Editing mode - TextField
-                        TextField("Enter text", text: $editingText)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: annotation.fontSize, weight: annotation.fontWeight.swiftUIWeight))
-                            .foregroundColor(annotation.color.toColor())
-                            .focused($isTextFieldFocused)
-                            .frame(width: width, height: height, alignment: .topLeading)
-                            .position(
-                                x: annotation.startPoint.x + width / 2,
-                                y: annotation.startPoint.y + height / 2
-                            )
-                            .onSubmit {
-                                finishEditing()
-                            }
-                            .onAppear {
-                                editingText = annotation.text ?? "Text"
-                                print("EditableTextAnnotationView: Starting editing for annotation \(annotation.id)")
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    isTextFieldFocused = true
-                                    print("EditableTextAnnotationView: Focus set for text field")
-                                }
-                            }
-                    } else {
-                        // Display mode - Text
-                        Text(annotation.text ?? "Text")
-                            .font(.system(size: annotation.fontSize, weight: annotation.fontWeight.swiftUIWeight))
-                            .foregroundColor(annotation.color.toColor())
-                            .frame(width: width, height: height, alignment: .topLeading)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(Color.white.opacity(0.001))
-                                    .stroke(isSelected ? Color.blue : Color.clear, lineWidth: isSelected ? 2 : 0)
-                            )
-                            .position(
-                                x: annotation.startPoint.x + width / 2,
-                                y: annotation.startPoint.y + height / 2
-                            )
-                            .onTapGesture {
-                                if annotationManager.currentTool == .select {
-                                    startEditing()
-                                }
-                            }
-                            .onTapGesture(count: 2) {
-                                // Double-click to edit
-                                startEditing()
-                            }
+        Group {
+            if isEditing {
+                TextField("Enter text", text: $editingText)
+                    .textFieldStyle(.roundedBorder)
+                    .font(.system(size: fontSize, weight: annotation.fontWeight.swiftUIWeight))
+                    .foregroundColor(annotation.color.toColor())
+                    .padding(.horizontal, 4)
+                    .focused($isTextFieldFocused)
+                    .onSubmit {
+                        finishEditing()
                     }
-                }
-                .zIndex(10)
-                .offset(dragOffset)
-            )
-        .onAppear {
-            let centerX = annotation.startPoint.x + width / 2
-            let centerY = annotation.startPoint.y + height / 2
-            let textFieldFrame = CGRect(
-                x: annotation.startPoint.x,
-                y: annotation.startPoint.y,
-                width: width,
-                height: height
-            )
-            print("📝 EditableTextAnnotationView [\(annotation.id.uuidString.prefix(8))]:")
-            print("   Annotation model:")
-            print("     startPoint: \(annotation.startPoint)")
-            print("     endPoint: \(annotation.endPoint)")
-            print("     bounds: \(annotation.bounds)")
-            print("   Text field position:")
-            print("     frame size: width=\(width), height=\(height)")
-            print("     position center: x=\(centerX), y=\(centerY)")
-            print("     calculated top-left from center: x=\(centerX - width/2), y=\(centerY - height/2)")
-            print("     expected top-left: x=\(annotation.startPoint.x), y=\(annotation.startPoint.y)")
-            print("     frame rect: \(textFieldFrame)")
+                    .onAppear {
+                        editingText = annotation.text ?? "Text"
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            isTextFieldFocused = true
+                        }
+                    }
+                    .onChange(of: editingText) { _, newValue in
+                        annotationManager.updateSelectedAnnotationText(newValue, recordHistory: false)
+                    }
+            } else {
+                Text(annotation.text ?? "Text")
+                    .font(.system(size: fontSize, weight: annotation.fontWeight.swiftUIWeight))
+                    .foregroundColor(annotation.color.toColor())
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.001))
+                    )
+                    .onTapGesture {
+                        if annotationManager.currentTool == .select {
+                            annotationManager.selectAnnotation(withId: annotation.id)
+                        }
+                    }
+                    .onTapGesture(count: 2) {
+                        startEditing()
+                    }
+            }
         }
-        .onChange(of: annotation.startPoint) { _, newPoint in
-            print("📝 EditableTextAnnotationView: startPoint changed to \(newPoint), bounds now: \(annotation.bounds)")
-        }
-        .onChange(of: annotation.endPoint) { _, newPoint in
-            print("📝 EditableTextAnnotationView: endPoint changed to \(newPoint), bounds now: \(annotation.bounds)")
-        }
+        .frame(width: width, height: height, alignment: .leading)
+        .contentShape(Rectangle())
+        .position(
+            x: annotation.startPoint.x * scaleX + width / 2,
+            y: annotation.startPoint.y * scaleY + height / 2
+        )
         .gesture(
             DragGesture()
                 .onChanged { value in
                     if annotationManager.currentTool == .select && !isEditing {
+                        guard value.translation != .zero else { return }
+                        if !isDragging {
+                            annotationManager.selectAnnotation(withId: annotation.id)
+                        }
+                        if !recordedDragUndo {
+                            annotationManager.recordUndoSnapshot()
+                            recordedDragUndo = true
+                        }
                         isDragging = true
-                        dragOffset = value.translation
+
+                        let displayDelta = CGSize(
+                            width: value.translation.width - lastDragTranslation.width,
+                            height: value.translation.height - lastDragTranslation.height
+                        )
+                        let sourceDelta = CGSize(
+                            width: scaleX == 0 ? displayDelta.width : displayDelta.width / scaleX,
+                            height: scaleY == 0 ? displayDelta.height : displayDelta.height / scaleY
+                        )
+                        annotationManager.moveSelectedAnnotation(by: sourceDelta, recordHistory: false)
+                        lastDragTranslation = value.translation
                     }
                 }
                 .onEnded { value in
                     if isDragging {
-                        // Apply the drag offset to the annotation position
-                        annotationManager.moveSelectedAnnotation(by: value.translation)
-                        dragOffset = .zero
                         isDragging = false
+                        lastDragTranslation = .zero
+                        recordedDragUndo = false
                     }
                 }
         )
@@ -140,51 +137,16 @@ struct EditableTextAnnotationView: View {
         }
     }
     
-    private var dragHandle: some View {
-        Circle()
-            .fill(Color.blue)
-            .frame(width: 8, height: 8)
-            .position(
-                x: annotation.center.x + abs(annotation.endPoint.x - annotation.startPoint.x) / 2,
-                y: annotation.center.y + abs(annotation.endPoint.y - annotation.startPoint.y) / 2
-            )
-            .offset(dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        // Handle resize gesture
-                        dragOffset = value.translation
-                    }
-                    .onEnded { value in
-                        // Apply resize
-                        resizeAnnotation(by: value.translation)
-                        dragOffset = .zero
-                    }
-            )
-    }
-    
     private func startEditing() {
         annotationManager.startEditingText(annotationId: annotation.id)
     }
     
     private func finishEditing() {
         // Update annotation text
-        annotationManager.updateSelectedAnnotationText(editingText)
+        annotationManager.updateSelectedAnnotationText(editingText, recordHistory: false)
         annotationManager.finishEditingText()
         // Switch back to select tool after finishing text editing
         annotationManager.selectTool(.select)
-    }
-    
-    private func resizeAnnotation(by translation: CGSize) {
-        // Update annotation size based on drag
-        guard let index = annotationManager.annotations.firstIndex(where: { $0.id == annotation.id }) else { return }
-        
-        var updatedAnnotation = annotationManager.annotations[index]
-        updatedAnnotation.endPoint.x += translation.width
-        updatedAnnotation.endPoint.y += translation.height
-        updatedAnnotation.modifiedAt = Date()
-        
-        annotationManager.annotations[index] = updatedAnnotation
     }
 }
 
@@ -199,7 +161,8 @@ struct EditableTextAnnotationView: View {
                 color: ColorData(color: .red)
             ),
             annotationManager: AnnotationManager(),
-            canvasSize: CGSize(width: 400, height: 300)
+            canvasSize: CGSize(width: 400, height: 300),
+            sourceImageSize: CGSize(width: 400, height: 300)
         )
     }
     .frame(width: 400, height: 300)

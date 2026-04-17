@@ -23,6 +23,8 @@ import SwiftUI
         private var panelWindow: NSPanel?
         private var overlayWindow: NSWindow?  // Pre-created overlay window
         private var statusItem: NSStatusItem?
+        private var localEscapeMonitor: Any?
+        private var globalEscapeMonitor: Any?
 
         @Published var isPanelPresented = false
 
@@ -56,6 +58,7 @@ import SwiftUI
             createOverlayWindow()  // Create overlay window at startup
             setupStatusBarItem()
             setupEditorObservation()
+            setupEscapeKeyHandling()
 
             // Debug informacje o aplikacji
             PermissionsManager.debugPermissions()
@@ -96,29 +99,63 @@ import SwiftUI
                 object: nil,
                 queue: .main
             ) { [weak self] _ in
-                self?.handleAppDidResignActive()
+                Task { @MainActor in
+                    self?.handleAppDidResignActive()
+                }
             }
         }
 
+        @MainActor
         private func handleAppDidResignActive() {
-            // Hide floating panel when application loses focus, but only if there's no active area selection
-            guard let viewModel = floatingPanelViewModel else { return }
+            guard let panel = panelWindow, isPanelPresented else { return }
 
-            // Don't hide panel if area selection is active
-            if !viewModel.isAreaSelectionActive {
-                Logger.d("AppDelegate: App resigned active, hiding floating panel")
-                panelWindow?.orderOut(nil)
-                isPanelPresented = false
-            } else {
-                Logger.d(
-                    "AppDelegate: App resigned active but area selection is active, keeping panel")
-            }
+            Logger.d("AppDelegate: App resigned active, keeping floating panel visible")
+            panel.hidesOnDeactivate = false
+            panel.orderFrontRegardless()
+            floatingPanelViewModel?.ensurePanelOnTop()
         }
 
         private func hideFloatingPanelForEditor() {
             Logger.d("AppDelegate: Hiding floating panel because editor opened")
             panelWindow?.orderOut(nil)
             isPanelPresented = false
+        }
+
+        private func setupEscapeKeyHandling() {
+            localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
+                [weak self] event in
+                guard event.keyCode == kVK_Escape else { return event }
+
+                guard self?.isFloatingCaptureFlowPresented == true else { return event }
+                Task { @MainActor in
+                    _ = self?.dismissFloatingCaptureFlowFromEscape()
+                }
+                return nil
+            }
+
+            globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
+                [weak self] event in
+                guard event.keyCode == kVK_Escape else { return }
+                Task { @MainActor in
+                    _ = self?.dismissFloatingCaptureFlowFromEscape()
+                }
+            }
+        }
+
+        @MainActor
+        @discardableResult
+        private func dismissFloatingCaptureFlowFromEscape() -> Bool {
+            guard isFloatingCaptureFlowPresented else { return false }
+
+            Logger.d("AppDelegate: Escape pressed, closing floating capture flow")
+            floatingPanelViewModel?.closeFloatingPanel()
+            panelWindow = nil
+            isPanelPresented = false
+            return true
+        }
+
+        private var isFloatingCaptureFlowPresented: Bool {
+            floatingPanelViewModel != nil && panelWindow != nil && isPanelPresented
         }
 
         private func handleHotkey() {
@@ -143,7 +180,7 @@ import SwiftUI
 
                 // Window without visible title but with buttons
                 let window = NSWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
+                    contentRect: NSRect(x: 0, y: 0, width: 1180, height: 720),
                     styleMask: [
                         .titled, .closable, .miniaturizable, .resizable, .fullSizeContentView,
                     ],
@@ -155,6 +192,7 @@ import SwiftUI
                 window.title = "Fluttro Editor"
                 window.titleVisibility = .hidden
                 window.titlebarAppearsTransparent = true
+                window.minSize = NSSize(width: 1180, height: 720)
                 window.center()
                 window.isReleasedWhenClosed = false
 
@@ -183,10 +221,16 @@ import SwiftUI
         private func showFloatingPanel() {
             // If panel already exists, just show it
             if let existingPanel = panelWindow {
-                existingPanel.orderFront(nil)
                 isPanelPresented = true
                 // Initialize current mode for existing panel
                 Task { @MainActor in
+                    existingPanel.hidesOnDeactivate = false
+                    existingPanel.sharingType = .none
+                    existingPanel.collectionBehavior = [
+                        .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+                    ]
+                    existingPanel.orderFrontRegardless()
+                    floatingPanelViewModel?.ensurePanelOnTop()
                     floatingPanelViewModel?.initializeCurrentMode()
                 }
                 return
@@ -202,7 +246,10 @@ import SwiftUI
             panel.isFloatingPanel = true
             // Set panel level using WindowDepthManager
             WindowDepthManager.shared.setLevel(for: panel, type: .floatingPanel)
-            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+            panel.sharingType = .none
+            panel.collectionBehavior = [
+                .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+            ]
             panel.hidesOnDeactivate = false
             panel.titleVisibility = .hidden
             panel.titlebarAppearsTransparent = true
@@ -222,6 +269,13 @@ import SwiftUI
 
             // Create ViewModel
             let panelViewModel = FloatingPanelViewModel(editorViewModel: editorViewModel)
+            panelViewModel.onPanelVisibilityChanged = { [weak self] isVisible in
+                self?.isPanelPresented = isVisible
+            }
+            panelViewModel.onPanelClosed = { [weak self] in
+                self?.panelWindow = nil
+                self?.isPanelPresented = false
+            }
             floatingPanelViewModel = panelViewModel
 
             Logger.s("AppDelegate: FloatingPanelViewModel created and connected to editorViewModel")

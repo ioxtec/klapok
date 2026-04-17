@@ -24,14 +24,15 @@ import SwiftUI
         @Published var selectedWindow: SCWindow?
         
         // Video recording state
-    @Published var videoRecordingState: VideoRecordingState = .idle
-    @Published var recordingDuration: TimeInterval = 0.0
-    @Published var isAlwaysOnTop: Bool = false
-    @Published var isVideoWindowSelectionPending: Bool = false
+        @Published var videoRecordingState: VideoRecordingState = .idle
+        @Published var recordingDuration: TimeInterval = 0.0
+        @Published var isAlwaysOnTop: Bool = false
+        @Published var isVideoWindowSelectionPending: Bool = false
         private var recordingTimer: Timer?
         
         // Video editor window reference - simplified approach
         private var videoEditorWindow: NSWindow?
+        private var videoEditorWindowDelegate: VideoEditorWindowDelegate?
 
         // MARK: - Dependencies
 
@@ -44,17 +45,22 @@ import SwiftUI
         // MARK: - Panel Visibility
 
         weak var panelWindow: NSPanel?
+        var onPanelVisibilityChanged: (@MainActor (Bool) -> Void)?
+        var onPanelClosed: (@MainActor () -> Void)?
 
         @MainActor
         func hideFloatingPanel() {
             Logger.d("FloatingPanelViewModel: Hiding floating panel")
+            panelWindow?.alphaValue = 1.0
             panelWindow?.orderOut(nil)
+            onPanelVisibilityChanged?(false)
         }
 
         @MainActor
         func showFloatingPanel() {
             Logger.d("FloatingPanelViewModel: Showing floating panel")
             panelWindow?.orderFront(nil)
+            onPanelVisibilityChanged?(true)
             // Ensure floating panel is always on top
             if panelWindow != nil {
                 ensurePanelOnTop()
@@ -64,17 +70,27 @@ import SwiftUI
         @MainActor
         func ensurePanelOnTop() {
             guard let panel = panelWindow else { return }
-            
-            if isAlwaysOnTop {
-                // Use the highest possible level
-                panel.level = .screenSaver
-            } else {
-                // Use the standard floating panel level (which is now very high)
-                WindowDepthManager.shared.setLevel(for: panel, type: .floatingPanel)
-            }
+
+            panel.alphaValue = panelOpacity
+            panel.hidesOnDeactivate = false
+            panel.sharingType = .none
+            panel.collectionBehavior = [
+                .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+            ]
+
+            WindowDepthManager.shared.ensureFloatingPanelOnTop(panel, pinned: shouldPinPanel)
             
             // Bring to front
             panel.orderFrontRegardless()
+        }
+
+        private var shouldPinPanel: Bool {
+            isAlwaysOnTop || isCapturing || isAreaSelectionActive || isWindowSelectionActive
+                || isVideoWindowSelectionPending || videoRecordingState != .idle
+        }
+
+        private var panelOpacity: CGFloat {
+            videoRecordingState == .recording ? 0.76 : 1.0
         }
 
         // MARK: - Initialization
@@ -112,20 +128,19 @@ import SwiftUI
             isCapturing = true
             defer {
                 isCapturing = false
+                ensurePanelOnTop()
             }
 
-            // Hide floating panel immediately when user clicks capture button
-            hideFloatingPanel()
-
-            // Small delay to ensure panel is hidden
-            try? await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
+            ensurePanelOnTop()
 
             do {
                 let image: NSImage
+                let sourceRect: NSRect?
 
                 switch screenshotType {
                 case .fullScreen:
                     image = try await captureManager.captureFullScreen()
+                    sourceRect = NSScreen.main?.frame
 
                 case .area:
                     Logger.d("FloatingPanelViewModel: Area mode - checking for active selection")
@@ -149,6 +164,7 @@ import SwiftUI
 
                             // Now take the screenshot
                             image = try await captureManager.captureArea(currentSelection)
+                            sourceRect = currentSelection
                         } else {
                             Logger.w("FloatingPanelViewModel: No valid selection")
                             showFloatingPanel()
@@ -169,10 +185,11 @@ import SwiftUI
                         return
                     }
                     image = try await captureManager.captureWindow(window)
+                    sourceRect = window.frame
                 }
 
-                editorViewModel.show(image: image)
-                Logger.s("FloatingPanelViewModel: Editor opened successfully")
+                presentCapturedScreenshot(image, sourceRect: sourceRect)
+                Logger.s("FloatingPanelViewModel: Screenshot review opened successfully")
 
                 // Hide window selection after successful capture
                 if screenshotType == .window {
@@ -239,41 +256,30 @@ import SwiftUI
 
             hideAreaSelection()
 
-            Task {
-                do {
-                    let fullScreenImage = try await captureManager.captureFullScreen()
-                    Logger.s("FloatingPanelViewModel: Background captured: \(fullScreenImage.size)")
-
-                    await MainActor.run {
-                        areaSelectionManager.show(backgroundImage: fullScreenImage) { rect in
-                            Logger.s(
-                                "FloatingPanelViewModel: Area selection completed: \(String(describing: rect))"
-                            )
-                            if let rect = rect {
-                                self.selectedArea = rect
-                                Task {
-                                    await self.captureSelectedArea(rect: rect)
-                                }
-                            } else {
-                                // User cancelled (pressed Esc) - just hide area selection
-                                Logger.d(
-                                    "FloatingPanelViewModel: Area selection cancelled"
-                                )
-                                self.hideAreaSelection()
-                                // Don't automatically switch to fullScreen - let user choose
-                            }
-                        }
-
-                        isAreaSelectionActive = true
-                        Logger.s("FloatingPanelViewModel: Area selection active")
-                        
-                        // Ensure panel is on top of overlay
-                        ensurePanelOnTop()
+            areaSelectionManager.show { rect in
+                Logger.s(
+                    "FloatingPanelViewModel: Area selection completed: \(String(describing: rect))"
+                )
+                if let rect = rect {
+                    self.selectedArea = rect
+                    Task {
+                        await self.captureSelectedArea(rect: rect)
                     }
-                } catch {
-                    Logger.e("FloatingPanelViewModel: Error creating overlay: \(error)")
+                } else {
+                    // User cancelled (pressed Esc) - just hide area selection
+                    Logger.d(
+                        "FloatingPanelViewModel: Area selection cancelled"
+                    )
+                    self.hideAreaSelection()
+                    // Don't automatically switch to fullScreen - let user choose
                 }
             }
+
+            isAreaSelectionActive = true
+            Logger.s("FloatingPanelViewModel: Area selection active")
+
+            // Ensure panel is on top of overlay
+            ensurePanelOnTop()
         }
 
         @MainActor
@@ -305,7 +311,7 @@ import SwiftUI
 
             do {
                 let image = try await captureManager.captureArea(rect)
-                editorViewModel.show(image: image)
+                presentCapturedScreenshot(image, sourceRect: rect)
                 Logger.s("FloatingPanelViewModel: Area screenshot completed")
             } catch {
                 Logger.e("FloatingPanelViewModel: Area capture error: \(error)")
@@ -389,11 +395,18 @@ import SwiftUI
 
             do {
                 let image = try await captureManager.captureWindow(window)
-                editorViewModel.show(image: image)
+                presentCapturedScreenshot(image, sourceRect: window.frame)
                 Logger.s("FloatingPanelViewModel: Window screenshot completed")
             } catch {
                 Logger.e("FloatingPanelViewModel: Window capture error: \(error)")
                 showFloatingPanel()  // Show panel back on error
+            }
+        }
+
+        @MainActor
+        private func presentCapturedScreenshot(_ image: NSImage, sourceRect: NSRect?) {
+            ScreenshotReviewPresenter.shared.present(image: image, sourceRect: sourceRect) { [weak self] image in
+                self?.editorViewModel.show(image: image)
             }
         }
 
@@ -488,9 +501,12 @@ import SwiftUI
                     
                     videoRecordingState = .recording
                     startRecordingTimer()
+                    ensurePanelOnTop()
                     Logger.d("Video recording started for type: \(screenshotType)")
                 } catch {
                     Logger.e("Failed to start video recording: \(error)")
+                    videoRecordingState = .idle
+                    ensurePanelOnTop()
                     // TODO: Show error to user
                 }
             }
@@ -507,6 +523,7 @@ import SwiftUI
                     videoRecordingState = .idle
                     stopRecordingTimer()
                     recordingDuration = 0.0
+                    ensurePanelOnTop()
                     Logger.d("Video recording stopped: \(recording.duration)s")
                     
                     // Stop recording mode in area selection overlay
@@ -521,9 +538,14 @@ import SwiftUI
                     }
                     
                     // Save video to user's chosen directory
+                    hideFloatingPanel()
                     await saveVideoAndOpenEditor(recording)
                 } catch {
                     Logger.e("Failed to stop video recording: \(error)")
+                    videoRecordingState = .idle
+                    stopRecordingTimer()
+                    recordingDuration = 0.0
+                    ensurePanelOnTop()
                     
                     // Stop recording mode in area selection overlay
                     areaSelectionManager.stopRecording()
@@ -536,6 +558,26 @@ import SwiftUI
                         hideAreaSelection()
                     }
                 }
+            }
+        }
+
+        @MainActor
+        func cancelVideoRecording() {
+            guard videoRecordingState != .idle else {
+                cancelActiveCapture()
+                return
+            }
+
+            videoRecordingState = .idle
+            stopRecordingTimer()
+            recordingDuration = 0.0
+            ensurePanelOnTop()
+            areaSelectionManager.stopRecording()
+            cancelActiveCapture()
+
+            Task {
+                await videoRecordingService.cancelRecording()
+                Logger.d("Video recording cancelled and discarded")
             }
         }
         
@@ -612,51 +654,91 @@ import SwiftUI
             // Create video editor view
             let videoEditorView = VideoEditorView(viewModel: videoEditorViewModel)
             
-            // Create hosting view
-            let hostingView = NSHostingView(rootView: videoEditorView)
-            hostingView.frame = NSRect(x: 0, y: 0, width: 800, height: 600)
+            let hostingController = NSHostingController(rootView: videoEditorView)
+            hostingController.view.wantsLayer = true
+            hostingController.view.layer?.cornerRadius = 18
+            hostingController.view.layer?.cornerCurve = .continuous
+            hostingController.view.layer?.masksToBounds = true
             
             // Create window delegate
             let windowDelegate = VideoEditorWindowDelegate()
             
             // Create video editor window
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-                styleMask: [.titled, .closable, .miniaturizable, .resizable],
+                contentRect: NSRect(x: 0, y: 0, width: 1180, height: 720),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
             )
             
-            window.title = "Video Editor - \(recording.url.lastPathComponent)"
-            window.contentView = hostingView
+            window.contentViewController = hostingController
+            window.contentView?.wantsLayer = true
+            window.contentView?.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+            window.contentView?.layer?.cornerRadius = 18
+            window.contentView?.layer?.cornerCurve = .continuous
+            window.contentView?.layer?.masksToBounds = true
+            window.title = "Fluttro Video Editor"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.isOpaque = false
+            window.backgroundColor = .clear
             window.delegate = windowDelegate
+            window.minSize = NSSize(width: 1180, height: 720)
             window.isReleasedWhenClosed = false
             window.center()
+            videoEditorWindow = window
+            videoEditorWindowDelegate = windowDelegate
             window.makeKeyAndOrderFront(nil)
+            refreshVideoEditorWindowLayout(window)
+
+            DispatchQueue.main.async {
+                self.refreshVideoEditorWindowLayout(window)
+            }
             
             Logger.d("🔍 Video editor window created and shown")
+        }
+
+        @MainActor
+        private func refreshVideoEditorWindowLayout(_ window: NSWindow) {
+            window.contentView?.needsLayout = true
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.contentView?.needsDisplay = true
+            window.invalidateShadow()
+
+            let frame = window.frame
+            let nudgedFrame = NSRect(
+                x: frame.origin.x,
+                y: frame.origin.y,
+                width: frame.width + 1,
+                height: frame.height
+            )
+
+            window.setFrame(nudgedFrame, display: true, animate: false)
+            window.setFrame(frame, display: true, animate: false)
         }
         
         // MARK: - Panel Management
         
         @MainActor
         func closeFloatingPanel() {
-            // Stop any active recording
             if videoRecordingState != .idle {
-                Task {
-                     stopVideoRecording()
-                }
+                cancelVideoRecording()
+            } else {
+                cancelActiveCapture()
             }
-            
-            // Hide overlays and clear selections
-            isAreaSelectionActive = false
-            isWindowSelectionActive = false
-            selectedArea = .zero
-            selectedWindow = nil
-            
+
             // Close the panel window
             panelWindow?.close()
             panelWindow = nil
+            onPanelClosed?()
+        }
+
+        @MainActor
+        private func cancelActiveCapture() {
+            hideAreaSelection()
+            hideWindowSelection()
+            isVideoWindowSelectionPending = false
+            selectedArea = .zero
         }
         
         @MainActor

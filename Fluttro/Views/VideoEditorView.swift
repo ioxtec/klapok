@@ -22,184 +22,24 @@ struct VideoEditorView: View {
     
     var body: some View {
         NavigationSplitView {
-            // Left sidebar with video details
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Profile control
-                    ProfileControlView<VideoEditingProfile>(
-                        profileManager: profileManager,
-                        profiles: profileManager.videoProfiles.profiles,
-                        activeProfile: profileManager.getActiveVideoProfile(),
-                        profileTypeName: "Video",
-                        onProfileSelected: { profile in
-                            profileManager.applyVideoProfile(profile, to: settings)
-                        },
-                        onProfileAdded: { name in
-                            let newProfile = profileManager.createVideoProfileFromCurrentSettings(name: name, from: settings)
-                            profileManager.setActiveVideoProfile(newProfile)
-                        },
-                        onProfileEdited: { profile, newName in
-                            // If newName is the same as current name, it means we're saving changes to the profile
-                            if newName == profile.name {
-                                // Save current video settings to the active profile
-                                let updatedProfile = VideoEditingProfile(
-                                    id: profile.id,
-                                    name: profile.name,
-                                    isDefault: profile.isDefault,
-                                    createdAt: profile.createdAt,
-                                    modifiedAt: Date(),
-                                    resolution: settings.videoResolution,
-                                    frameRate: settings.videoFrameRate,
-                                    bitrate: settings.videoBitrate,
-                                    codec: settings.videoCodec,
-                                    format: settings.videoFormat,
-                                    recordSystemAudio: settings.recordSystemAudio,
-                                    recordMicrophone: settings.recordMicrophone,
-                                    audioQuality: "High", // Default quality
-                                    showMouseCursor: settings.showMouseCursor,
-                                    showRecordingTimer: true, // Default behavior
-                                    autoStopAfterTime: false, // Default behavior
-                                    maxTime: "10min", // Default max time
-                                    compressAfterRecording: true, // Default behavior
-                                    deleteAfterRecording: false // Default behavior
-                                )
-                                profileManager.updateVideoProfile(updatedProfile)
-                            } else {
-                                // Rename the profile
-                                var updatedProfile = profile
-                                updatedProfile.name = newName
-                                updatedProfile.modifiedAt = Date()
-                                profileManager.updateVideoProfile(updatedProfile)
-                            }
-                        },
-                        onProfileDeleted: { profile in
-                            profileManager.removeVideoProfile(withId: profile.id)
-                        },
-                        onImportProfiles: {
-                            _ = profileManager.importVideoProfiles()
-                        },
-                        onExportProfiles: {
-                            _ = profileManager.exportVideoProfiles()
-                        },
-                        onResetProfiles: {
-                            profileManager.resetVideoProfilesToDefaults()
-                        }
-                    )
-                    
-                    Text("Video Details")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    if let video = viewModel.video {
-                        VStack(alignment: .leading, spacing: 12) {
-                            DetailRow(label: "File:", value: video.url.lastPathComponent)
-                            DetailRow(label: "Duration:", value: formatDuration(video.duration))
-                            DetailRow(label: "Size:", value: formatFileSize(video.url))
-                            DetailRow(label: "Created:", value: formatDate(video.url))
-                            DetailRow(label: "Frame Rate:", value: "\(Int(video.frameRate)) FPS")
-                            DetailRow(label: "Resolution:", value: "\(Int(video.size.width)) × \(Int(video.size.height))")
-                        }
-                    } else {
-                        Text("No video selected")
-                            .font(.body)
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    // Export Settings Section
-                    Text("Export Settings")
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    ExportTypeSelector(exportManager: exportManager)
-                    
-                    Divider()
-                        .padding(.vertical, 8)
-                    
-                    // Conditional export settings based on type
-                    if exportManager.settings.exportType == .video {
-                        VideoExportSettingsView(exportManager: exportManager)
-                    } else {
-                        GIFExportSettingsView(exportManager: exportManager)
-                    }
-                    
-                    Spacer()
-                }
-                .padding()
-            }
-            .frame(minWidth: 300, maxWidth: 400)
-            .background(Color(NSColor.controlBackgroundColor))
+            VideoEditorSidebarView(
+                video: viewModel.video,
+                settings: settings,
+                profileManager: profileManager,
+                exportManager: exportManager,
+                formatDuration: formatDuration,
+                formatFileSize: formatFileSize,
+                formatDate: formatDate
+            )
+            .navigationSplitViewColumnWidth(300)
         } detail: {
-            // Right side - video player and controls
             VStack(spacing: 0) {
-                // Top toolbar
-                HStack(spacing: 12) {
-                    Button(action: {
-                        viewModel.shareVideo()
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16))
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Share video")
-                    
-                    Button(action: {
-                        viewModel.openInFinder()
-                    }) {
-                        Image(systemName: "folder")
-                            .font(.system(size: 16))
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Show in Finder")
-                    
-                    Button(action: {
-                        Task {
-                            if exportManager.settings.exportType == .video {
-                                await viewModel.exportTrimmedVideo()
-                            } else {
-                                await viewModel.exportAsGIF(settings: exportManager.settings.gifSettings)
-                            }
-                        }
-                    }) {
-                        HStack(spacing: 4) {
-                            if viewModel.isExporting {
-                                ProgressView()
-                                    .scaleEffect(0.7)
-                            } else {
-                                Image(systemName: exportManager.settings.exportType == .video ? "scissors" : "rectangle.stack.fill")
-                                    .font(.system(size: 16))
-                            }
-                            Text(exportManager.settings.exportType == .video ? "Export Video" : "Export GIF")
-                                .font(.system(size: 12))
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Export as \(exportManager.settings.exportType.displayName)")
-                    .disabled(viewModel.isExporting || viewModel.video == nil)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        viewModel.deleteVideo()
-                    }) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 16))
-                            .foregroundColor(.red)
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Delete video")
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(NSColor.controlBackgroundColor))
-
                 // Video player area
                 GeometryReader { geometry in
                     if let video = viewModel.video {
                         VideoPlayerView(videoURL: video.url, viewModel: viewModel)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(Color(NSColor.controlBackgroundColor))
                     } else {
                         VStack(spacing: 16) {
                             Image(systemName: "video.slash")
@@ -218,18 +58,26 @@ struct VideoEditorView: View {
                         .background(Color(NSColor.controlBackgroundColor))
                     }
                 }
+                .background(Color(NSColor.controlBackgroundColor))
                 
                 // Video timeline for trimming
                 if viewModel.video != nil {
                     VideoTimelineView(viewModel: viewModel)
-                        .frame(height: 80)
+                        .frame(height: 176)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 8)
                         .background(Color(NSColor.controlBackgroundColor))
                 }
             }
+            .background(Color(NSColor.controlBackgroundColor))
         }
-        .frame(minWidth: 1000, minHeight: 700)
+        .toolbar {
+            VideoEditorCommandToolbar(
+                viewModel: viewModel,
+                exportManager: exportManager
+            )
+        }
+        .frame(minWidth: 1180, minHeight: 720)
     }
     
     // MARK: - Helper Functions
@@ -268,15 +116,322 @@ struct VideoEditorView: View {
     }
 }
 
+// MARK: - Video Editor Sidebar
+
+private struct VideoEditorSidebarView: View {
+    let video: VideoRecording?
+    @ObservedObject var settings: AppSettings
+    @ObservedObject var profileManager: ProfileManager
+    @ObservedObject var exportManager: ExportManager
+    let formatDuration: (TimeInterval) -> String
+    let formatFileSize: (URL) -> String
+    let formatDate: (URL) -> String
+
+    var body: some View {
+        RoundedSidebarHost(cornerRadius: 18) {
+            sidebarContent
+        }
+        .frame(width: 300)
+    }
+
+    private var sidebarContent: some View {
+        ScrollView(.vertical, showsIndicators: true) {
+            VStack(alignment: .leading, spacing: 0) {
+                VideoSidebarSection(
+                    title: "Profiles",
+                    subtitle: "Presets for export format, quality, size, and audio."
+                ) {
+                    profileControl
+                }
+
+                VideoSidebarSection(
+                    title: "Video",
+                    subtitle: "Source file, duration, and capture details."
+                ) {
+                    if let video {
+                        VStack(alignment: .leading, spacing: 10) {
+                            VideoDetailRow(title: "File", value: video.url.lastPathComponent)
+                            VideoDetailRow(title: "Duration", value: formatDuration(video.duration))
+                            VideoDetailRow(title: "Size", value: formatFileSize(video.url))
+                            VideoDetailRow(title: "Created", value: formatDate(video.url))
+                            VideoDetailRow(title: "Frame rate", value: "\(Int(video.frameRate)) FPS")
+                            VideoDetailRow(
+                                title: "Resolution",
+                                value: "\(Int(video.size.width)) x \(Int(video.size.height))"
+                            )
+                        }
+                    } else {
+                        VideoSidebarHint("No video selected.")
+                    }
+                }
+
+                VideoSidebarSection(
+                    title: "Export",
+                    subtitle: "Trimmed video or GIF output settings."
+                ) {
+                    ExportTypeSelector(exportManager: exportManager)
+
+                    if exportManager.settings.exportType == .video {
+                        VideoExportSettingsView(exportManager: exportManager)
+                    } else {
+                        GIFExportSettingsView(exportManager: exportManager)
+                    }
+                }
+            }
+            .padding(.leading, 16)
+            .padding(.trailing, 24)
+            .padding(.vertical, 8)
+        }
+        .scrollIndicators(.visible)
+        .frame(width: 300)
+        .background(Color(NSColor.windowBackgroundColor))
+    }
+
+    private var profileControl: some View {
+        ProfileControlView<VideoEditingProfile>(
+            profileManager: profileManager,
+            profiles: profileManager.videoProfiles.profiles,
+            activeProfile: profileManager.getActiveVideoProfile(),
+            profileTypeName: "Video",
+            showsHeader: false,
+            usesContainer: false,
+            onProfileSelected: { profile in
+                profileManager.applyVideoProfile(profile, to: settings)
+            },
+            onProfileAdded: { name in
+                let newProfile = profileManager.createVideoProfileFromCurrentSettings(
+                    name: name,
+                    from: settings
+                )
+                profileManager.setActiveVideoProfile(newProfile)
+            },
+            onProfileEdited: updateProfile,
+            onProfileDeleted: { profile in
+                profileManager.removeVideoProfile(withId: profile.id)
+            },
+            onImportProfiles: {
+                _ = profileManager.importVideoProfiles()
+            },
+            onExportProfiles: {
+                _ = profileManager.exportVideoProfiles()
+            },
+            onResetProfiles: {
+                profileManager.resetVideoProfilesToDefaults()
+            }
+        )
+    }
+
+    private func updateProfile(_ profile: VideoEditingProfile, newName: String) {
+        if newName == profile.name {
+            let updatedProfile = VideoEditingProfile(
+                id: profile.id,
+                name: profile.name,
+                isDefault: profile.isDefault,
+                createdAt: profile.createdAt,
+                modifiedAt: Date(),
+                resolution: settings.videoResolution,
+                frameRate: settings.videoFrameRate,
+                bitrate: settings.videoBitrate,
+                codec: settings.videoCodec,
+                format: settings.videoFormat,
+                recordSystemAudio: settings.recordSystemAudio,
+                recordMicrophone: settings.recordMicrophone,
+                audioQuality: "High",
+                showMouseCursor: settings.showMouseCursor,
+                showRecordingTimer: true,
+                autoStopAfterTime: false,
+                maxTime: "10min",
+                compressAfterRecording: true,
+                deleteAfterRecording: false
+            )
+            profileManager.updateVideoProfile(updatedProfile)
+        } else {
+            var updatedProfile = profile
+            updatedProfile.name = newName
+            updatedProfile.modifiedAt = Date()
+            profileManager.updateVideoProfile(updatedProfile)
+        }
+    }
+}
+
+private struct RoundedSidebarHost<Content: View>: NSViewRepresentable {
+    let cornerRadius: CGFloat
+    let content: Content
+
+    init(cornerRadius: CGFloat, @ViewBuilder content: () -> Content) {
+        self.cornerRadius = cornerRadius
+        self.content = content()
+    }
+
+    func makeNSView(context: Context) -> NSHostingView<Content> {
+        let hostingView = NSHostingView(rootView: content)
+        configure(hostingView)
+        return hostingView
+    }
+
+    func updateNSView(_ nsView: NSHostingView<Content>, context: Context) {
+        nsView.rootView = content
+        configure(nsView)
+    }
+
+    private func configure(_ view: NSView) {
+        view.wantsLayer = true
+        view.layer?.backgroundColor = NSColor.windowBackgroundColor.cgColor
+        view.layer?.cornerRadius = cornerRadius
+        view.layer?.cornerCurve = .continuous
+        view.layer?.masksToBounds = true
+        view.needsLayout = true
+        view.needsDisplay = true
+    }
+}
+
+private struct VideoSidebarSection<Content: View>: View {
+    let title: String
+    let subtitle: String
+    let content: Content
+
+    init(
+        title: String,
+        subtitle: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.headline)
+
+                Text(subtitle)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 12) {
+                content
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 14)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+    }
+}
+
+private struct VideoDetailRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(title)
+                .font(.callout)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 12, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+private struct VideoSidebarHint: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+private struct VideoEditorCommandToolbar: ToolbarContent {
+    @ObservedObject var viewModel: VideoEditorViewModel
+    @ObservedObject var exportManager: ExportManager
+
+    var body: some ToolbarContent {
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button {
+                viewModel.shareVideo()
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .disabled(viewModel.video == nil)
+            .help("Share video")
+
+            Button {
+                viewModel.openInFinder()
+            } label: {
+                Image(systemName: "folder")
+            }
+            .disabled(viewModel.video == nil)
+            .help("Show in Finder")
+
+            Button {
+                Task {
+                    if exportManager.settings.exportType == .video {
+                        await viewModel.exportTrimmedVideo()
+                    } else {
+                        await viewModel.exportAsGIF(settings: exportManager.settings.gifSettings)
+                    }
+                }
+            } label: {
+                if viewModel.isExporting {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Image(systemName: exportManager.settings.exportType == .video ? "scissors" : "rectangle.stack.fill")
+                }
+            }
+            .disabled(viewModel.isExporting || viewModel.video == nil)
+            .help("Export as \(exportManager.settings.exportType.displayName)")
+
+            Button(role: .destructive) {
+                viewModel.deleteVideo()
+            } label: {
+                Image(systemName: "trash")
+            }
+            .disabled(viewModel.video == nil)
+            .help("Delete video")
+        }
+    }
+}
+
 // MARK: - Video Player View
 
 struct VideoPlayerView: NSViewRepresentable {
     let videoURL: URL
     let viewModel: VideoEditorViewModel
+
+    final class Coordinator {
+        var player: AVPlayer?
+        var videoURL: URL?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
     
     func makeNSView(context: Context) -> AVPlayerView {
         print("🔍 VideoPlayerView: makeNSView called for URL: \(videoURL)")
         let playerView = AVPlayerView()
+        playerView.wantsLayer = true
+        playerView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
         playerView.controlsStyle = .floating
         playerView.showsFrameSteppingButtons = true
         playerView.showsSharingServiceButton = true
@@ -287,9 +442,15 @@ struct VideoPlayerView: NSViewRepresentable {
     
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
         print("🔍 VideoPlayerView: updateNSView called for URL: \(videoURL)")
-        // Create new player each time to avoid zombie issues
+
+        guard context.coordinator.videoURL != videoURL || context.coordinator.player == nil else {
+            return
+        }
+
         let player = AVPlayer(url: videoURL)
         print("🔍 VideoPlayerView: AVPlayer created")
+        context.coordinator.player = player
+        context.coordinator.videoURL = videoURL
         nsView.player = player
         print("🔍 VideoPlayerView: Player set on AVPlayerView")
         
@@ -317,6 +478,31 @@ struct DetailRow: View {
 
 // MARK: - Video Editor ViewModel
 
+struct TimelineThumbnail: Identifiable, Equatable {
+    let id = UUID()
+    let time: TimeInterval
+    let image: NSImage
+}
+
+struct VideoCutSegment: Identifiable, Equatable {
+    let id = UUID()
+    var startTime: TimeInterval
+    var endTime: TimeInterval
+
+    var duration: TimeInterval {
+        max(0, endTime - startTime)
+    }
+}
+
+private struct TimelineTimeRange: Equatable {
+    var start: TimeInterval
+    var end: TimeInterval
+
+    var duration: TimeInterval {
+        max(0, end - start)
+    }
+}
+
 @MainActor
 class VideoEditorViewModel: ObservableObject {
     @Published var video: VideoRecording?
@@ -324,9 +510,14 @@ class VideoEditorViewModel: ObservableObject {
     @Published var trimEndTime: TimeInterval = 0
     @Published var currentTime: TimeInterval = 0
     @Published var isExporting: Bool = false
+    @Published var timelineThumbnails: [TimelineThumbnail] = []
+    @Published var isLoadingTimelineThumbnails: Bool = false
+    @Published var timelineCutSelection: VideoCutSegment?
+    @Published var cutSegments: [VideoCutSegment] = []
     
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var thumbnailRequestID = UUID()
     
     init(video: VideoRecording? = nil) {
         self.video = video
@@ -340,10 +531,18 @@ class VideoEditorViewModel: ObservableObject {
         self.trimStartTime = 0
         self.trimEndTime = video.duration
         self.currentTime = 0
+        self.timelineThumbnails = []
+        self.isLoadingTimelineThumbnails = false
+        self.timelineCutSelection = nil
+        self.cutSegments = []
     }
     
     var trimmedDuration: TimeInterval {
-        return trimEndTime - trimStartTime
+        return max(0, trimEndTime - trimStartTime)
+    }
+
+    var editedDuration: TimeInterval {
+        editedSourceRanges().reduce(0) { $0 + $1.duration }
     }
     
     var trimStartPercentage: Double {
@@ -368,6 +567,8 @@ class VideoEditorViewModel: ObservableObject {
         let maxStartTime = max(0, trimEndTime - 0.1)
         if newStartTime >= 0 && newStartTime < maxStartTime {
             trimStartTime = newStartTime
+            cutSegments = normalizedCutSegments(cutSegments)
+            timelineCutSelection = nil
         }
     }
     
@@ -378,6 +579,8 @@ class VideoEditorViewModel: ObservableObject {
         let minEndTime = min(video.duration, trimStartTime + 0.1)
         if newEndTime > minEndTime && newEndTime <= video.duration {
             trimEndTime = newEndTime
+            cutSegments = normalizedCutSegments(cutSegments)
+            timelineCutSelection = nil
         }
     }
     
@@ -386,14 +589,157 @@ class VideoEditorViewModel: ObservableObject {
         currentTime = percentage * video.duration
         seekToCurrentTime()
     }
+
+    func updateCutSelection(startPercentage: Double, endPercentage: Double) {
+        guard let video else { return }
+        let start = max(trimStartTime, min(trimEndTime, startPercentage * video.duration))
+        let end = max(trimStartTime, min(trimEndTime, endPercentage * video.duration))
+        let normalizedStart = min(start, end)
+        let normalizedEnd = max(start, end)
+
+        guard normalizedEnd - normalizedStart >= 0.05 else {
+            timelineCutSelection = nil
+            return
+        }
+
+        timelineCutSelection = VideoCutSegment(
+            startTime: normalizedStart,
+            endTime: normalizedEnd
+        )
+    }
+
+    func commitCutSelection() {
+        guard let selection = timelineCutSelection, selection.duration >= 0.05 else { return }
+
+        let candidateSegments = normalizedCutSegments(cutSegments + [selection])
+        guard !editedSourceRanges(using: candidateSegments).isEmpty else {
+            timelineCutSelection = nil
+            return
+        }
+
+        cutSegments = candidateSegments
+        timelineCutSelection = nil
+    }
+
+    func removeCut(_ cut: VideoCutSegment) {
+        cutSegments.removeAll { $0.id == cut.id }
+    }
+
+    func clearCuts() {
+        cutSegments = []
+        timelineCutSelection = nil
+    }
+
+    func loadTimelineThumbnails(for width: CGFloat) async {
+        guard let video, width > 0 else { return }
+
+        let targetCount = max(6, min(36, Int(width / 72)))
+        if timelineThumbnails.count == targetCount {
+            return
+        }
+
+        let requestID = UUID()
+        thumbnailRequestID = requestID
+        isLoadingTimelineThumbnails = true
+        defer {
+            if thumbnailRequestID == requestID {
+                isLoadingTimelineThumbnails = false
+            }
+        }
+
+        let asset = AVURLAsset(url: video.url)
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 144, height: 82)
+        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
+        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
+
+        var thumbnails: [TimelineThumbnail] = []
+        let assetDuration = (try? await asset.load(.duration).seconds) ?? video.duration
+        let duration = assetDuration.isFinite && assetDuration > 0 ? assetDuration : video.duration
+        guard duration > 0 else { return }
+
+        let step = duration / Double(targetCount)
+
+        for index in 0..<targetCount {
+            guard thumbnailRequestID == requestID else { return }
+
+            let seconds = min(max(0, duration - 0.01), max(0, (Double(index) + 0.5) * step))
+            let time = CMTime(seconds: seconds, preferredTimescale: 600)
+
+            do {
+                let generated = try await generator.image(at: time)
+                let image = NSImage(
+                    cgImage: generated.image,
+                    size: CGSize(width: generated.image.width, height: generated.image.height)
+                )
+                thumbnails.append(TimelineThumbnail(time: seconds, image: image))
+            } catch {
+                print("⚠️ Failed to generate timeline thumbnail at \(seconds)s: \(error)")
+            }
+        }
+
+        if thumbnails.isEmpty {
+            thumbnails = await fallbackTimelineThumbnails(
+                from: generator,
+                duration: duration,
+                targetCount: targetCount
+            )
+        }
+
+        guard thumbnailRequestID == requestID else { return }
+        timelineThumbnails = thumbnails
+    }
+
+    private func fallbackTimelineThumbnails(
+        from generator: AVAssetImageGenerator,
+        duration: TimeInterval,
+        targetCount: Int
+    ) async -> [TimelineThumbnail] {
+        let fallbackTimes = [0, duration * 0.25, duration * 0.5, duration * 0.75]
+        var fallbackImage: NSImage?
+
+        for seconds in fallbackTimes {
+            do {
+                let generated = try await generator.image(
+                    at: CMTime(seconds: max(0, min(duration, seconds)), preferredTimescale: 600)
+                )
+                fallbackImage = NSImage(
+                    cgImage: generated.image,
+                    size: CGSize(width: generated.image.width, height: generated.image.height)
+                )
+                break
+            } catch {
+                print("⚠️ Fallback timeline thumbnail failed at \(seconds)s: \(error)")
+            }
+        }
+
+        guard let fallbackImage else { return [] }
+
+        return (0..<targetCount).map { index in
+            TimelineThumbnail(
+                time: duration * (Double(index) + 0.5) / Double(targetCount),
+                image: fallbackImage
+            )
+        }
+    }
     
     private func seekToCurrentTime() {
         guard let player = player else { return }
         let time = CMTime(seconds: currentTime, preferredTimescale: 1000)
-        player.seek(to: time)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
     
     func setPlayer(_ player: AVPlayer) {
+        if self.player === player {
+            return
+        }
+
+        if let timeObserver = timeObserver {
+            self.player?.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+
         self.player = player
         setupTimeObserver()
     }
@@ -429,26 +775,22 @@ class VideoEditorViewModel: ObservableObject {
         
         do {
             let asset = AVURLAsset(url: video.url)
-            let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality)
-            
-            // Create time range for trimming
-            let startTime = CMTime(seconds: trimStartTime, preferredTimescale: 1000)
-            let endTime = CMTime(seconds: trimEndTime, preferredTimescale: 1000)
-            let timeRange = CMTimeRange(start: startTime, end: endTime)
-            
-            exportSession?.timeRange = timeRange
+            let exportAsset = try await editedExportAsset(from: asset)
+            let exportSession = AVAssetExportSession(asset: exportAsset, presetName: AVAssetExportPresetHighestQuality)
             
             // Create output URL
-            let outputURL = video.url.deletingLastPathComponent()
-                .appendingPathComponent("\(video.url.deletingPathExtension().lastPathComponent)_trimmed")
-                .appendingPathExtension(video.url.pathExtension)
+            let outputURL = uniqueOutputURL(
+                baseName: "\(video.url.deletingPathExtension().lastPathComponent)_edited",
+                fileExtension: "mp4",
+                in: video.url.deletingLastPathComponent()
+            )
             
             exportSession?.outputURL = outputURL
             exportSession?.outputFileType = .mp4
             
             try await exportSession?.export(to: outputURL, as: .mp4)
             
-            print("✅ Trimmed video exported successfully to: \(outputURL.path)")
+            print("✅ Edited video exported successfully to: \(outputURL.path)")
             // Open the exported video
             NSWorkspace.shared.open(outputURL)
             
@@ -464,11 +806,6 @@ class VideoEditorViewModel: ObservableObject {
         defer { isExporting = false }
         
         let asset = AVURLAsset(url: video.url)
-        
-        // Create time range for trimming
-        let startTime = CMTime(seconds: trimStartTime, preferredTimescale: 600)
-        let endTime = CMTime(seconds: trimEndTime, preferredTimescale: 600)
-        let _ = CMTimeRange(start: startTime, end: endTime)
         
         // Generate frames
         let generator = AVAssetImageGenerator(asset: asset)
@@ -491,14 +828,15 @@ class VideoEditorViewModel: ObservableObject {
         generator.maximumSize = CGSize(width: targetWidth, height: targetHeight)
         
         // Calculate frame times
-        let duration = trimmedDuration
-        let frameCount = Int(duration * Double(settings.frameRate))
+        let ranges = editedSourceRanges()
+        let duration = max(0.1, ranges.reduce(0) { $0 + $1.duration })
+        let frameCount = max(1, Int(duration * Double(settings.frameRate)))
         let frameDuration = duration / Double(frameCount)
         
         var frameTimes: [CMTime] = []
         for i in 0..<frameCount {
-            let time = CMTimeAdd(startTime, CMTime(seconds: Double(i) * frameDuration, preferredTimescale: 600))
-            if CMTimeCompare(time, endTime) <= 0 {
+            if let sourceSeconds = sourceTime(forEditedOffset: Double(i) * frameDuration, in: ranges) {
+                let time = CMTime(seconds: sourceSeconds, preferredTimescale: 600)
                 frameTimes.append(time)
             }
         }
@@ -566,6 +904,154 @@ class VideoEditorViewModel: ObservableObject {
         // Open the exported GIF
         NSWorkspace.shared.open(outputURL)
     }
+
+    private func editedSourceRanges() -> [TimelineTimeRange] {
+        editedSourceRanges(using: cutSegments)
+    }
+
+    private func editedSourceRanges(using segments: [VideoCutSegment]) -> [TimelineTimeRange] {
+        guard trimEndTime > trimStartTime else { return [] }
+
+        let cuts = normalizedCutSegments(segments)
+        var ranges: [TimelineTimeRange] = []
+        var cursor = trimStartTime
+
+        for cut in cuts {
+            if cut.startTime > cursor {
+                ranges.append(TimelineTimeRange(start: cursor, end: cut.startTime))
+            }
+            cursor = max(cursor, cut.endTime)
+        }
+
+        if cursor < trimEndTime {
+            ranges.append(TimelineTimeRange(start: cursor, end: trimEndTime))
+        }
+
+        return ranges.filter { $0.duration >= 0.05 }
+    }
+
+    private func normalizedCutSegments(_ segments: [VideoCutSegment]) -> [VideoCutSegment] {
+        let clipped = segments
+            .map { segment in
+                VideoCutSegment(
+                    startTime: max(trimStartTime, min(trimEndTime, segment.startTime)),
+                    endTime: max(trimStartTime, min(trimEndTime, segment.endTime))
+                )
+            }
+            .filter { $0.duration >= 0.05 }
+            .sorted { $0.startTime < $1.startTime }
+
+        var merged: [VideoCutSegment] = []
+
+        for segment in clipped {
+            guard let last = merged.last else {
+                merged.append(segment)
+                continue
+            }
+
+            if segment.startTime <= last.endTime {
+                merged[merged.count - 1] = VideoCutSegment(
+                    startTime: last.startTime,
+                    endTime: max(last.endTime, segment.endTime)
+                )
+            } else {
+                merged.append(segment)
+            }
+        }
+
+        return merged
+    }
+
+    private func editedExportAsset(from asset: AVURLAsset) async throws -> AVAsset {
+        let ranges = editedSourceRanges()
+
+        guard !ranges.isEmpty else { return asset }
+
+        let composition = AVMutableComposition()
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let sourceVideoTrack = videoTracks.first,
+              let compositionVideoTrack = composition.addMutableTrack(
+                withMediaType: .video,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+              )
+        else {
+            return asset
+        }
+
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        let compositionAudioTrack = audioTracks.first.flatMap { _ in
+            composition.addMutableTrack(
+                withMediaType: .audio,
+                preferredTrackID: kCMPersistentTrackID_Invalid
+            )
+        }
+
+        var insertionTime = CMTime.zero
+
+        for range in ranges {
+            let sourceRange = CMTimeRange(
+                start: CMTime(seconds: range.start, preferredTimescale: 1000),
+                duration: CMTime(seconds: range.duration, preferredTimescale: 1000)
+            )
+
+            try compositionVideoTrack.insertTimeRange(
+                sourceRange,
+                of: sourceVideoTrack,
+                at: insertionTime
+            )
+
+            if let sourceAudioTrack = audioTracks.first,
+               let compositionAudioTrack {
+                try compositionAudioTrack.insertTimeRange(
+                    sourceRange,
+                    of: sourceAudioTrack,
+                    at: insertionTime
+                )
+            }
+
+            insertionTime = CMTimeAdd(insertionTime, sourceRange.duration)
+        }
+
+        let transform = try await sourceVideoTrack.load(.preferredTransform)
+        compositionVideoTrack.preferredTransform = transform
+
+        return composition
+    }
+
+    private func sourceTime(
+        forEditedOffset offset: TimeInterval,
+        in ranges: [TimelineTimeRange]
+    ) -> TimeInterval? {
+        var remaining = offset
+
+        for range in ranges {
+            if remaining <= range.duration {
+                return range.start + remaining
+            }
+            remaining -= range.duration
+        }
+
+        return ranges.last?.end
+    }
+
+    private func uniqueOutputURL(
+        baseName: String,
+        fileExtension: String,
+        in directory: URL
+    ) -> URL {
+        var candidate = directory.appendingPathComponent(baseName).appendingPathExtension(fileExtension)
+        var index = 2
+
+        while FileManager.default.fileExists(atPath: candidate.path) {
+            candidate = directory
+                .appendingPathComponent("\(baseName)_\(index)")
+                .appendingPathExtension(fileExtension)
+            index += 1
+        }
+
+        return candidate
+    }
     
     func shareVideo() {
         guard let video = video else { return }
@@ -606,83 +1092,302 @@ class VideoEditorViewModel: ObservableObject {
 
 struct VideoTimelineView: View {
     @ObservedObject var viewModel: VideoEditorViewModel
+    @State private var dragMode: TimelineDragMode?
     
     var body: some View {
-        VStack(spacing: 8) {
-            // Timeline info
+        VStack(spacing: 10) {
             HStack {
-                Text("Duration: \(formatDuration(viewModel.trimmedDuration))")
+                Text("Source \(formatTime(viewModel.video?.duration ?? 0))")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
-                Spacer()
-                
-                Text("Start: \(formatTime(viewModel.trimStartTime))")
+
+                Text("Selection \(formatTime(viewModel.trimmedDuration))")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
-                Text("End: \(formatTime(viewModel.trimEndTime))")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            
-            // Timeline track
-            GeometryReader { geometry in
-                ZStack(alignment: .leading) {
-                    // Background track
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(height: 6)
-                        .cornerRadius(3)
-                    
-                    // Trimmed section
-                    Rectangle()
-                        .fill(Color.blue)
-                        .frame(
-                            width: geometry.size.width * (viewModel.trimEndPercentage - viewModel.trimStartPercentage),
-                            height: 6
-                        )
-                        .offset(x: geometry.size.width * viewModel.trimStartPercentage)
-                        .cornerRadius(3)
-                    
-                    // Current time indicator
-                    Rectangle()
-                        .fill(Color.yellow)
-                        .frame(width: 2, height: 20)
-                        .offset(x: geometry.size.width * viewModel.currentTimePercentage - 1)
-                    
-                    // Start trim handle
-                    TrimHandle(
-                        position: viewModel.trimStartPercentage,
-                        geometry: geometry,
-                        isStartHandle: true
-                    ) { percentage in
-                        viewModel.updateTrimStart(from: percentage)
-                    }
-                    
-                    // End trim handle
-                    TrimHandle(
-                        position: viewModel.trimEndPercentage,
-                        geometry: geometry,
-                        isStartHandle: false
-                    ) { percentage in
-                        viewModel.updateTrimEnd(from: percentage)
-                    }
+
+                if !viewModel.cutSegments.isEmpty {
+                    Text("Output \(formatTime(viewModel.editedDuration))")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
-                .onTapGesture { location in
-                    let percentage = location.x / geometry.size.width
-                    viewModel.updateCurrentTime(from: max(0, min(1, percentage)))
+
+                Spacer()
+
+                Text("\(formatTime(viewModel.trimStartTime)) - \(formatTime(viewModel.trimEndTime))")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                Button("Cut selection") {
+                    viewModel.commitCutSelection()
+                }
+                .controlSize(.small)
+                .disabled(viewModel.timelineCutSelection == nil)
+
+                Button("Clear cuts") {
+                    viewModel.clearCuts()
+                }
+                .controlSize(.small)
+                .disabled(viewModel.cutSegments.isEmpty && viewModel.timelineCutSelection == nil)
+            }
+
+            GeometryReader { geometry in
+                let trackHeight: CGFloat = 64
+                let interactionOutset: CGFloat = 24
+                let playheadTopOutset: CGFloat = 14
+
+                VStack(spacing: 6) {
+                    TimelineRuler(duration: viewModel.video?.duration ?? 0)
+                        .frame(height: 18)
+
+                    ZStack(alignment: .leading) {
+                        TimelineThumbnailStrip(
+                            thumbnails: viewModel.timelineThumbnails,
+                            isLoading: viewModel.isLoadingTimelineThumbnails
+                        )
+                            .frame(height: trackHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 6)
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            }
+                            .zIndex(0)
+
+                        TimelineDimmedRegion(
+                            start: 0,
+                            end: viewModel.trimStartPercentage,
+                            width: geometry.size.width,
+                            height: trackHeight
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(2)
+
+                        TimelineDimmedRegion(
+                            start: viewModel.trimEndPercentage,
+                            end: 1,
+                            width: geometry.size.width,
+                            height: trackHeight
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(2)
+
+                        ForEach(viewModel.cutSegments) { cut in
+                            TimelineSegmentOverlay(
+                                start: percentage(for: cut.startTime),
+                                end: percentage(for: cut.endTime),
+                                width: geometry.size.width,
+                                height: trackHeight,
+                                color: .red,
+                                opacity: 0.45
+                            )
+                            .allowsHitTesting(false)
+                            .zIndex(3)
+                        }
+
+                        if let selection = viewModel.timelineCutSelection {
+                            TimelineSegmentOverlay(
+                                start: percentage(for: selection.startTime),
+                                end: percentage(for: selection.endTime),
+                                width: geometry.size.width,
+                                height: trackHeight,
+                                color: .orange,
+                                opacity: 0.42
+                            )
+                            .allowsHitTesting(false)
+                            .zIndex(4)
+
+                            TimelineCutLabel(
+                                start: percentage(for: selection.startTime),
+                                width: geometry.size.width
+                            )
+                            .allowsHitTesting(false)
+                            .zIndex(8)
+                        }
+
+                        TimelinePlayhead(
+                            position: viewModel.currentTimePercentage,
+                            height: trackHeight + 20,
+                            width: geometry.size.width
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(20)
+
+                        TrimHandle(
+                            position: viewModel.trimStartPercentage,
+                            width: geometry.size.width,
+                            height: trackHeight,
+                            isStartHandle: true
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(30)
+
+                        TrimHandle(
+                            position: viewModel.trimEndPercentage,
+                            width: geometry.size.width,
+                            height: trackHeight,
+                            isStartHandle: false
+                        )
+                        .allowsHitTesting(false)
+                        .zIndex(30)
+
+                        TimelineInteractionLayer()
+                            .frame(
+                                width: geometry.size.width + interactionOutset * 2,
+                                height: trackHeight + playheadTopOutset
+                            )
+                            .offset(x: -interactionOutset, y: -playheadTopOutset)
+                            .gesture(interactionGesture(width: geometry.size.width))
+                            .zIndex(40)
+                    }
+                    .frame(height: trackHeight)
+                    .coordinateSpace(name: "timelineTrack")
+                    .task(id: timelineLoadID(width: geometry.size.width)) {
+                        await viewModel.loadTimelineThumbnails(for: geometry.size.width)
+                    }
+
+                    if !viewModel.cutSegments.isEmpty {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 6) {
+                                ForEach(viewModel.cutSegments) { cut in
+                                    CutSegmentPill(cut: cut) {
+                                        viewModel.removeCut(cut)
+                                    }
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    } else {
+                        HStack {
+                            Text("Drag across the frame strip to mark a part to cut.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                    }
                 }
             }
         }
     }
-    
-    private func formatDuration(_ duration: TimeInterval) -> String {
-        let minutes = Int(duration) / 60
-        let seconds = Int(duration) % 60
-        return String(format: "%d:%02d", minutes, seconds)
+
+    private func interactionGesture(width: CGFloat) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("timelineTrack"))
+            .onChanged { value in
+                guard width > 0 else { return }
+
+                let start = percentage(fromTimelineX: value.startLocation.x, width: width)
+                let current = percentage(fromTimelineX: value.location.x, width: width)
+
+                if dragMode == nil {
+                    dragMode = dragModeForStartLocation(value.startLocation.x, width: width)
+                }
+
+                switch dragMode {
+                case .trimStart:
+                    viewModel.updateTrimStart(from: current)
+                case .trimEnd:
+                    viewModel.updateTrimEnd(from: current)
+                case .playhead:
+                    viewModel.updateCurrentTime(from: current)
+                case .cutSelection:
+                    if abs(value.translation.width) < 3 {
+                        viewModel.updateCurrentTime(from: current)
+                    } else {
+                        viewModel.updateCurrentTime(from: current)
+                        viewModel.updateCutSelection(startPercentage: start, endPercentage: current)
+                    }
+                case nil:
+                    break
+                }
+            }
+            .onEnded { _ in
+                dragMode = nil
+            }
     }
-    
+
+    private func dragModeForStartLocation(_ x: CGFloat, width: CGFloat) -> TimelineDragMode {
+        let hitRadius: CGFloat = 28
+        let startX = width * viewModel.trimStartPercentage
+        let endX = width * viewModel.trimEndPercentage
+        let playheadX = width * viewModel.currentTimePercentage
+
+        if abs(x - playheadX) <= hitRadius {
+            return .playhead
+        }
+
+        if abs(x - startX) <= hitRadius {
+            return .trimStart
+        }
+
+        if abs(x - endX) <= hitRadius {
+            return .trimEnd
+        }
+
+        return .cutSelection
+    }
+
+    private func percentage(fromTimelineX x: CGFloat, width: CGFloat) -> Double {
+        guard width > 0 else { return 0 }
+        return clampedPercentage(x / width)
+    }
+
+    private func percentage(for time: TimeInterval) -> Double {
+        guard let duration = viewModel.video?.duration, duration > 0 else { return 0 }
+        return max(0, min(1, time / duration))
+    }
+
+    private func clampedPercentage(_ value: Double) -> Double {
+        max(0, min(1, value))
+    }
+
+    private func timelineLoadID(width: CGFloat) -> String {
+        "\(viewModel.video?.url.path ?? "none")-\(Int(width))"
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        let tenths = Int((time - floor(time)) * 10)
+        return String(format: "%d:%02d.%d", minutes, seconds, tenths)
+    }
+}
+
+private enum TimelineDragMode {
+    case trimStart
+    case trimEnd
+    case playhead
+    case cutSelection
+}
+
+private struct TimelineRuler: View {
+    let duration: TimeInterval
+
+    var body: some View {
+        GeometryReader { geometry in
+            let tickCount = max(2, min(12, Int(geometry.size.width / 96)))
+
+            ZStack(alignment: .leading) {
+                ForEach(0...tickCount, id: \.self) { index in
+                    let progress = Double(index) / Double(tickCount)
+                    let x = geometry.size.width * progress
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.35))
+                            .frame(width: 1, height: index % 2 == 0 ? 8 : 5)
+
+                        if index % 2 == 0 {
+                            Text(formatTime(duration * progress))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                                .fixedSize()
+                                .offset(x: index == tickCount ? -28 : 0)
+                        }
+                    }
+                    .offset(x: x)
+                }
+            }
+        }
+    }
+
     private func formatTime(_ time: TimeInterval) -> String {
         let minutes = Int(time) / 60
         let seconds = Int(time) % 60
@@ -690,55 +1395,182 @@ struct VideoTimelineView: View {
     }
 }
 
-// MARK: - Trim Handle
+private struct TimelineThumbnailStrip: View {
+    let thumbnails: [TimelineThumbnail]
+    let isLoading: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            if thumbnails.isEmpty {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color(NSColor.windowBackgroundColor).opacity(0.7))
+                    .overlay {
+                        if isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "film")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+            } else {
+                HStack(spacing: 1) {
+                    ForEach(thumbnails) { thumbnail in
+                        Image(nsImage: thumbnail.image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(
+                                width: max(1, geometry.size.width / CGFloat(thumbnails.count)),
+                                height: geometry.size.height
+                            )
+                            .clipped()
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct TimelineDimmedRegion: View {
+    let start: Double
+    let end: Double
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        TimelineSegmentOverlay(
+            start: start,
+            end: end,
+            width: width,
+            height: height,
+            color: .black,
+            opacity: 0.58
+        )
+    }
+}
+
+private struct TimelineSegmentOverlay: View {
+    let start: Double
+    let end: Double
+    let width: CGFloat
+    let height: CGFloat
+    let color: Color
+    let opacity: Double
+
+    var body: some View {
+        Rectangle()
+            .fill(color.opacity(opacity))
+            .frame(width: max(0, width * max(0, end - start)), height: height)
+            .offset(x: width * start)
+    }
+}
+
+private struct TimelineInteractionLayer: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.clear)
+            .contentShape(Rectangle())
+    }
+}
+
+private struct TimelinePlayhead: View {
+    let position: Double
+    let height: CGFloat
+    let width: CGFloat
+    private let topOutset: CGFloat = 12
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Circle()
+                .fill(Color.white)
+                .frame(width: 8, height: 8)
+
+            Rectangle()
+                .fill(Color.white)
+                .frame(width: 2, height: height - 8)
+        }
+        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+        .frame(width: 18, height: height)
+        .position(x: width * position, y: height / 2 - topOutset)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct TimelineCutLabel: View {
+    let start: Double
+    let width: CGFloat
+
+    var body: some View {
+        Text("cut")
+            .font(.system(size: 10, weight: .bold))
+            .foregroundColor(.white)
+            .fixedSize(horizontal: true, vertical: true)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(Color.orange)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .offset(x: labelX, y: 6)
+    }
+
+    private var labelX: CGFloat {
+        let preferredX = width * start + 6
+        return min(max(6, preferredX), max(6, width - 34))
+    }
+}
 
 struct TrimHandle: View {
     let position: Double
-    let geometry: GeometryProxy
+    let width: CGFloat
+    let height: CGFloat
     let isStartHandle: Bool
-    let onDrag: (Double) -> Void
-    
-    @State private var isDragging = false
-    @State private var dragStartPosition: Double = 0
     
     var body: some View {
-        VStack(spacing: 2) {
-            // Handle icon
-            Image(systemName: isStartHandle ? "chevron.left" : "chevron.right")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 12, height: 12)
-                .background(Color.blue)
-                .cornerRadius(6)
-            
-            // Handle line
-            Rectangle()
-                .fill(Color.blue)
-                .frame(width: 2, height: 16)
+        VStack(spacing: 0) {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(Color.accentColor)
+                .frame(width: 14, height: height)
+                .overlay {
+                    Image(systemName: isStartHandle ? "chevron.left" : "chevron.right")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundColor(.white)
+                }
         }
-        .offset(x: geometry.size.width * position - 6)
-        .scaleEffect(isDragging ? 1.2 : 1.0)
-        .gesture(
-            DragGesture(minimumDistance: 1)
-                .onChanged { value in
-                    if !isDragging {
-                        isDragging = true
-                        dragStartPosition = position
-                    }
-                    
-                    // Calculate new position based on drag distance
-                    let dragDistance = value.translation.width
-                    let dragPercentage = dragDistance / geometry.size.width
-                    let newPosition = dragStartPosition + dragPercentage
-                    
-                    // Clamp to valid range
-                    let clampedPosition = max(0, min(1, newPosition))
-                    onDrag(clampedPosition)
-                }
-                .onEnded { _ in
-                    isDragging = false
-                }
-        )
+        .frame(width: 18, height: height)
+        .position(x: width * position, y: 32)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct CutSegmentPill: View {
+    let cut: VideoCutSegment
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "scissors")
+                .font(.system(size: 10, weight: .semibold))
+
+            Text("\(formatTime(cut.startTime)) - \(formatTime(cut.endTime))")
+                .font(.system(size: 11, design: .monospaced))
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .bold))
+            }
+            .buttonStyle(.plain)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(Color.red.opacity(0.82))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func formatTime(_ time: TimeInterval) -> String {
+        let minutes = Int(time) / 60
+        let seconds = Int(time) % 60
+        let tenths = Int((time - floor(time)) * 10)
+        return String(format: "%d:%02d.%d", minutes, seconds, tenths)
     }
 }
 

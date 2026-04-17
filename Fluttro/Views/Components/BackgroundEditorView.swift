@@ -22,32 +22,39 @@ struct BackgroundEditorView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Background Type Selector
-            Picker("Type", selection: Binding(
-                get: { backgroundManager.collections.backgroundType },
-                set: { newType in
-                    backgroundManager.collections.backgroundType = newType
-                    // Save asynchronously to avoid publishing during view updates
-                    DispatchQueue.main.async {
-                        backgroundManager.saveCollections()
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Fill")
+                    .font(.callout)
+
+                Picker("", selection: Binding(
+                    get: { backgroundManager.collections.backgroundType },
+                    set: { newType in
+                        backgroundManager.collections.backgroundType = newType
+                        // Save asynchronously to avoid publishing during view updates.
+                        DispatchQueue.main.async {
+                            backgroundManager.saveCollections()
+                        }
+                    }
+                )) {
+                    ForEach(BackgroundType.allCases, id: \.id) { type in
+                        Text(type.displayName).tag(type)
                     }
                 }
-            )) {
-                ForEach(BackgroundType.allCases, id: \.id) { type in
-                    Text(type.displayName).tag(type)
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
             }
-            .pickerStyle(.segmented)
             
-            // Gradient Section
             if backgroundManager.collections.backgroundType == .gradient {
                 gradientSection
             }
             
-            // Image Section
             if backgroundManager.collections.backgroundType == .image {
                 imageSection
+            }
+
+            if backgroundManager.collections.backgroundType == .none {
+                BackgroundPanelHint("The screenshot is exported without a decorative background.")
             }
         }
         .sheet(isPresented: $showingGradientEditor) {
@@ -77,24 +84,12 @@ struct BackgroundEditorView: View {
     
     private var gradientSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Gradients")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                Spacer()
-                
-                Button(action: {
-                    showingGradientEditor = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .help("Add new gradient")
-            }
+            BackgroundAssetHeader(
+                title: "Gradient presets",
+                buttonHelp: "Add new gradient",
+                action: { showingGradientEditor = true }
+            )
             
-            // Gradient Grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(backgroundManager.collections.customGradients) { gradient in
                     GradientThumbnailView(
@@ -111,6 +106,10 @@ struct BackgroundEditorView: View {
                     )
                 }
             }
+
+            if backgroundManager.collections.customGradients.isEmpty {
+                BackgroundPanelHint("Add a gradient to use this background type.")
+            }
         }
     }
     
@@ -118,24 +117,12 @@ struct BackgroundEditorView: View {
     
     private var imageSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("Background Images")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                
-                Spacer()
-                
-                Button(action: {
-                    showingImageImporter = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 14, weight: .medium))
-                }
-                .buttonStyle(.bordered)
-                .help("Add new background image")
-            }
+            BackgroundAssetHeader(
+                title: "Images",
+                buttonHelp: "Add new background image",
+                action: { showingImageImporter = true }
+            )
             
-            // Image Grid
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(backgroundManager.collections.backgroundImages) { image in
                     ImageThumbnailView(
@@ -152,48 +139,124 @@ struct BackgroundEditorView: View {
                     )
                 }
             }
-            
-            // Image Settings
+
+            if backgroundManager.collections.backgroundImages.isEmpty {
+                BackgroundPanelHint("Add an image to use this background type.")
+            }
+
             if let selectedImage = backgroundManager.collections.selectedImage {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Image Settings")
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Selected image")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    
-                    HStack {
-                        Text("Opacity")
-                        Spacer()
-                        Slider(value: Binding(
+
+                    BackgroundSliderControl(
+                        title: "Image opacity",
+                        valueText: "\(Int(selectedImage.opacity * 100))%",
+                        value: Binding(
                             get: { selectedImage.opacity },
                             set: { newValue in
                                 var updatedImage = selectedImage
                                 updatedImage.opacity = newValue
                                 backgroundManager.updateBackgroundImage(updatedImage)
                             }
-                        ), in: 0.1...1.0, step: 0.1)
-                        .frame(width: 100)
-                        Text("\(Int(selectedImage.opacity * 100))%")
-                            .font(.caption)
-                            .frame(width: 30)
-                    }
-                    
-                    Picker("Scale Mode", selection: Binding(
-                        get: { selectedImage.scaleMode },
-                        set: { newValue in
-                            var updatedImage = selectedImage
-                            updatedImage.scaleMode = newValue
-                            backgroundManager.updateBackgroundImage(updatedImage)
+                        ),
+                        range: 0.1...1.0,
+                        step: 0.1
+                    )
+
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Image scale")
+                            .font(.callout)
+
+                        Spacer()
+
+                        Picker("", selection: Binding(
+                            get: { selectedImage.scaleMode },
+                            set: { newValue in
+                                var updatedImage = selectedImage
+                                updatedImage.scaleMode = newValue
+                                backgroundManager.updateBackgroundImage(updatedImage)
+                            }
+                        )) {
+                            ForEach(BackgroundScaleMode.allCases, id: \.id) { mode in
+                                Text(mode.displayName).tag(mode)
+                            }
                         }
-                    )) {
-                        ForEach(BackgroundScaleMode.allCases, id: \.id) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
+                        .pickerStyle(.menu)
+                        .labelsHidden()
+                        .frame(width: 104)
                     }
-                    .pickerStyle(.menu)
                 }
-                .padding(.top, 8)
+                .padding(.top, 2)
             }
         }
+    }
+}
+
+// MARK: - Background Panel Controls
+
+private struct BackgroundAssetHeader: View {
+    let title: String
+    let buttonHelp: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack(alignment: .center) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+
+            Button(action: action) {
+                Image(systemName: "plus")
+                    .font(.system(size: 12, weight: .medium))
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help(buttonHelp)
+        }
+    }
+}
+
+private struct BackgroundSliderControl: View {
+    let title: String
+    let valueText: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(title)
+                    .font(.callout)
+
+                Spacer()
+
+                Text(valueText)
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            Slider(value: $value, in: range, step: step)
+        }
+    }
+}
+
+private struct BackgroundPanelHint: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -209,9 +272,9 @@ struct GradientThumbnailView: View {
         Button(action: onSelect) {
             RoundedRectangle(cornerRadius: 8)
                 .fill(LinearGradient(
-                    colors: gradient.colors,
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
+                    gradient: Gradient(stops: gradient.gradientStops),
+                    startPoint: gradient.direction.startPoint,
+                    endPoint: gradient.direction.endPoint
                 ))
                 .frame(height: 40)
                 .overlay(
@@ -227,6 +290,11 @@ struct GradientThumbnailView: View {
                 )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Delete Gradient", role: .destructive) {
+                onLongPress()
+            }
+        }
         .onLongPressGesture {
             onLongPress()
         }
@@ -273,6 +341,11 @@ struct ImageThumbnailView: View {
             )
         }
         .buttonStyle(.plain)
+        .contextMenu {
+            Button("Delete Image", role: .destructive) {
+                onLongPress()
+            }
+        }
         .onLongPressGesture {
             onLongPress()
         }
