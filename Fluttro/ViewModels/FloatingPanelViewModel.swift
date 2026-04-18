@@ -16,17 +16,18 @@ import SwiftUI
         // MARK: - Published Properties
 
         @Published var captureMode: CaptureMode = .image
-        @Published var screenshotType: CaptureType = .fullScreen
+        @Published var screenshotType: CaptureType = AppSettings.shared.defaultCaptureType
         @Published var isCapturing: Bool = false
         @Published var isAreaSelectionActive: Bool = false
         @Published var isWindowSelectionActive: Bool = false
+        @Published var isDisplayPickerPresented: Bool = false
+        @Published var availableDisplays: [CaptureDisplay] = []
         @Published var selectedArea: NSRect = .zero
         @Published var selectedWindow: SCWindow?
         
         // Video recording state
         @Published var videoRecordingState: VideoRecordingState = .idle
         @Published var recordingDuration: TimeInterval = 0.0
-        @Published var isAlwaysOnTop: Bool = false
         @Published var isVideoWindowSelectionPending: Bool = false
         private var recordingTimer: Timer?
         
@@ -78,15 +79,10 @@ import SwiftUI
                 .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
             ]
 
-            WindowDepthManager.shared.ensureFloatingPanelOnTop(panel, pinned: shouldPinPanel)
+            WindowDepthManager.shared.ensureFloatingPanelOnTop(panel, pinned: true)
             
             // Bring to front
             panel.orderFrontRegardless()
-        }
-
-        private var shouldPinPanel: Bool {
-            isAlwaysOnTop || isCapturing || isAreaSelectionActive || isWindowSelectionActive
-                || isVideoWindowSelectionPending || videoRecordingState != .idle
         }
 
         private var panelOpacity: CGFloat {
@@ -116,6 +112,131 @@ import SwiftUI
             let oldType = screenshotType
             screenshotType = newType
             handleScreenshotTypeChange(from: oldType, to: newType)
+        }
+
+        @MainActor
+        func prepareForPresentation(mode: CaptureMode) {
+            guard videoRecordingState == .idle else {
+                captureMode = mode
+                ensurePanelOnTop()
+                return
+            }
+
+            captureMode = mode
+            setScreenshotType(AppSettings.shared.defaultCaptureType)
+            isDisplayPickerPresented = false
+            resizePanelForDisplayPicker(false)
+            ensurePanelOnTop()
+        }
+
+        @MainActor
+        func performPrimaryCaptureAction() {
+            if captureMode == .video && videoRecordingState == .recording {
+                stopVideoRecording()
+                return
+            }
+
+            if screenshotType == .fullScreen {
+                presentDisplayPickerOrRunDefault()
+                return
+            }
+
+            switch captureMode {
+            case .image:
+                Task {
+                    await captureScreenshot()
+                }
+            case .video:
+                switch videoRecordingState {
+                case .idle:
+                    if screenshotType == .window && selectedWindow == nil {
+                        showWindowSelectionForVideo()
+                    } else {
+                        startVideoRecording()
+                    }
+                case .recording:
+                    stopVideoRecording()
+                }
+            }
+        }
+
+        @MainActor
+        func cancelDisplayPicker() {
+            isDisplayPickerPresented = false
+            resizePanelForDisplayPicker(false)
+        }
+
+        @MainActor
+        func selectDisplay(_ display: CaptureDisplay) {
+            isDisplayPickerPresented = false
+            resizePanelForDisplayPicker(false)
+            performFullScreenCapture(displayID: display.id)
+        }
+
+        @MainActor
+        private func presentDisplayPickerOrRunDefault() {
+            let displays = CaptureDisplayResolver.availableDisplays
+            guard displays.count > 1 else {
+                performFullScreenCapture(displayID: displays.first?.id)
+                return
+            }
+
+            availableDisplays = displays
+            resizePanelForDisplayPicker(true)
+            isDisplayPickerPresented = true
+            ensurePanelOnTop()
+        }
+
+        @MainActor
+        private func resizePanelForDisplayPicker(_ isPresented: Bool) {
+            guard let panel = panelWindow else { return }
+
+            let targetSize = isPresented
+                ? NSSize(width: 560, height: 250)
+                : NSSize(width: 480, height: 90)
+            var frame = panel.frame
+            guard frame.size != targetSize else { return }
+
+            frame.origin.x += (frame.width - targetSize.width) / 2
+            frame.size = targetSize
+            panel.setFrame(frame, display: true, animate: true)
+        }
+
+        @MainActor
+        private func performFullScreenCapture(displayID: CGDirectDisplayID?) {
+            switch captureMode {
+            case .image:
+                Task {
+                    await captureFullScreen(displayID: displayID)
+                }
+            case .video:
+                switch videoRecordingState {
+                case .idle:
+                    startVideoRecording(displayID: displayID)
+                case .recording:
+                    stopVideoRecording()
+                }
+            }
+        }
+
+        @MainActor
+        private func captureFullScreen(displayID: CGDirectDisplayID?) async {
+            isCapturing = true
+            defer {
+                isCapturing = false
+                ensurePanelOnTop()
+            }
+
+            ensurePanelOnTop()
+
+            do {
+                let image = try await captureManager.captureFullScreen(displayID: displayID)
+                let sourceRect = ScreenPixelGeometry.screen(for: displayID)?.frame ?? NSScreen.main?.frame
+                presentCapturedScreenshot(image, sourceRect: sourceRect)
+            } catch {
+                Logger.e("FloatingPanelViewModel: Full screen screenshot error: \(error)")
+                showFloatingPanel()
+            }
         }
 
         @MainActor
@@ -449,7 +570,7 @@ import SwiftUI
         // MARK: - Video Recording Methods
         
         @MainActor
-        func startVideoRecording() {
+        func startVideoRecording(displayID: CGDirectDisplayID? = nil) {
             guard videoRecordingState == .idle else { return }
             
             // Store selected window and area before hiding overlays
@@ -470,7 +591,10 @@ import SwiftUI
                     // Start recording based on current capture type
                     switch screenshotType {
                     case .fullScreen:
-                        try await videoRecordingService.startRecording(excludingWindows: windowsToExclude)
+                        try await videoRecordingService.startRecording(
+                            displayID: displayID,
+                            excludingWindows: windowsToExclude
+                        )
                     case .area:
                         // For area recording, check if an area is selected
                         if let area = areaToRecord, !area.isEmpty && area.width > 10 && area.height > 10 {
@@ -685,7 +809,7 @@ import SwiftUI
             window.delegate = windowDelegate
             window.minSize = NSSize(width: 1180, height: 720)
             window.isReleasedWhenClosed = false
-            window.center()
+            WindowPlacement.center(window, on: panelWindow?.screen)
             videoEditorWindow = window
             videoEditorWindowDelegate = windowDelegate
             window.makeKeyAndOrderFront(nil)
@@ -739,12 +863,6 @@ import SwiftUI
             hideWindowSelection()
             isVideoWindowSelectionPending = false
             selectedArea = .zero
-        }
-        
-        @MainActor
-        func toggleAlwaysOnTop() {
-            isAlwaysOnTop.toggle()
-            ensurePanelOnTop()
         }
         
         private func startRecordingTimer() {

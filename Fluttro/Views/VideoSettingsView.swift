@@ -11,366 +11,231 @@ import SwiftUI
 import AppKit
 
 struct VideoSettingsView: View {
-    @StateObject private var viewModel = SettingsViewModel()
     @StateObject private var settings = AppSettings.shared
     @StateObject private var profileManager = ProfileManager.shared
-    
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                
-                // Video Profiles Section
-                GroupBox("Video Profiles") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Manage your video recording profiles. Profiles save all your recording settings for quick access.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
-                        
-                        Divider()
-                            .background(Color.gray.opacity(0.08))
-                            .padding(.leading, 16)
-                        
-                        // Profile list
-                        ForEach(profileManager.videoProfiles.profiles, id: \.id) { profile in
-                            ProfileInfoView(profile: profile)
-                                .padding(.horizontal, 16)
-                            
-                            if profile.id != profileManager.videoProfiles.profiles.last?.id {
-                                Divider()
-                                    .background(Color.gray.opacity(0.08))
-                                    .padding(.leading, 16)
-                            }
-                        }
-                        
-                        // Profile management buttons
-                        HStack {
-                            Button("Reset to Defaults") {
-                                profileManager.resetVideoProfilesToDefaults()
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Spacer()
-                            
-                            Button("Export Profiles") {
-                                _ = profileManager.exportVideoProfiles()
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Button("Import Profiles") {
-                                _ = profileManager.importVideoProfiles()
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                    }
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsSection(
+                    title: "Video profiles",
+                    subtitle: "Profiles are selected and applied from the recorder. Settings keeps profile import/export compact.",
+                    systemImage: "square.stack.3d.up"
+                ) {
+                    SettingsProfilesSummary(
+                        profiles: profileManager.videoProfiles.profiles,
+                        activeProfile: profileManager.videoProfiles.activeProfile,
+                        resetAction: profileManager.resetVideoProfilesToDefaults,
+                        exportAction: { _ = profileManager.exportVideoProfiles() },
+                        importAction: { _ = profileManager.importVideoProfiles() }
+                    )
                 }
-                
-                // Video Quality Section
-                GroupBox(LocalizationKeys.videoQualityTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsPickerOption(
-                            title: LocalizationKeys.resolutionTitle.localized,
-                            description: LocalizationKeys.resolutionDescription.localized,
-                            selection: $settings.videoResolution,
-                            options: [("Source", "Źródło"), ("1080p", "1080p"), ("720p", "720p"), ("480p", "480p")]
-                        )
-                        
-                        SettingsPickerOption(
-                            title: LocalizationKeys.fpsTitle.localized,
-                            description: LocalizationKeys.fpsDescription.localized,
-                            selection: $settings.videoFrameRateString,
-                            options: [("60", "60 FPS"), ("30", "30 FPS"), ("24", "24 FPS")]
-                        )
-                        
-                        SettingsPickerOption(
-                            title: LocalizationKeys.bitrateTitle.localized,
-                            description: LocalizationKeys.bitrateDescription.localized,
-                            isLast: true,
-                            selection: $settings.videoBitrateString,
-                            options: [("5 Mbps", "5 Mbps"), ("10 Mbps", "10 Mbps"), ("2 Mbps", "2 Mbps"), ("1 Mbps", "1 Mbps")]
-                        )
-                    }
+
+                SettingsSection(
+                    title: LocalizationKeys.videoQualityTitle.localized,
+                    subtitle: "Recording quality used by new videos.",
+                    systemImage: "slider.horizontal.3"
+                ) {
+                    SettingsPickerOption(
+                        title: LocalizationKeys.resolutionTitle.localized,
+                        description: "Source keeps the captured screen size. Presets downscale to a fixed output size.",
+                        selection: $settings.videoResolution,
+                        options: [
+                            ("Source", "Source"),
+                            ("1080p", "1080p"),
+                            ("720p", "720p"),
+                            ("480p", "480p")
+                        ]
+                    )
+
+                    SettingsPickerOption(
+                        title: "Source size",
+                        description: "Used when Resolution is set to Source.",
+                        selection: Binding(
+                            get: { settings.capturePixelMode.rawValue },
+                            set: {
+                                if let mode = CapturePixelMode(rawValue: $0) {
+                                    settings.capturePixelMode = mode
+                                }
+                            }
+                        ),
+                        options: CapturePixelMode.allCases.map {
+                            ($0.rawValue, $0.videoDisplayName)
+                        }
+                    )
+
+                    SettingsValueOption(
+                        title: "Expected recording size",
+                        description: expectedRecordingDescription,
+                        value: "\(Int(expectedRecordingSize.width)) x \(Int(expectedRecordingSize.height)) px"
+                    )
+
+                    SettingsPickerOption(
+                        title: LocalizationKeys.fpsTitle.localized,
+                        description: LocalizationKeys.fpsDescription.localized,
+                        selection: $settings.videoFrameRateString,
+                        options: [
+                            ("60", "60 FPS"),
+                            ("30", "30 FPS"),
+                            ("24", "24 FPS")
+                        ]
+                    )
+
+                    SettingsPickerOption(
+                        title: LocalizationKeys.bitrateTitle.localized,
+                        description: LocalizationKeys.bitrateDescription.localized,
+                        isLast: true,
+                        selection: $settings.videoBitrateString,
+                        options: [
+                            ("10 Mbps", "10 Mbps"),
+                            ("5 Mbps", "5 Mbps"),
+                            ("2 Mbps", "2 Mbps"),
+                            ("1 Mbps", "1 Mbps")
+                        ]
+                    )
                 }
-                
-                // Audio Settings Section
-                GroupBox(LocalizationKeys.audioTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsToggleOption(
-                            title: LocalizationKeys.recordSystemAudioTitle.localized,
-                            description: LocalizationKeys.recordSystemAudioDescription.localized,
-                            isOn: $settings.recordSystemAudio
-                        )
-                        
-                        SettingsToggleOption(
-                            title: LocalizationKeys.recordMicrophoneTitle.localized,
-                            description: LocalizationKeys.recordMicrophoneDescription.localized,
-                            isOn: $settings.recordMicrophone
-                        )
-                        
-                        SettingsPickerOption(
-                            title: LocalizationKeys.audioQualityTitle.localized + " *",
-                            description: LocalizationKeys.audioQualityDescription.localized,
-                            isLast: true,
-                            selection: .constant("High"),
-                            options: [("High", "Wysoka"), ("Medium", "Średnia"), ("Low", "Niska")]
-                        )
-                    }
+
+                SettingsSection(
+                    title: LocalizationKeys.audioTitle.localized,
+                    subtitle: "Audio options that are currently wired to recording.",
+                    systemImage: "speaker.wave.2"
+                ) {
+                    SettingsToggleOption(
+                        title: LocalizationKeys.recordSystemAudioTitle.localized,
+                        description: LocalizationKeys.recordSystemAudioDescription.localized,
+                        isLast: true,
+                        isOn: $settings.recordSystemAudio
+                    )
                 }
-                
-                // Recording Behavior Section
-                GroupBox(LocalizationKeys.recordingBehaviorTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsToggleOption(
-                            title: LocalizationKeys.showRecordingTimerTitle.localized + " *",
-                            description: LocalizationKeys.showRecordingTimerDescription.localized,
-                            isOn: .constant(true)
-                        )
-                        
-                        SettingsToggleOption(
-                            title: LocalizationKeys.showMouseCursorVideoTitle.localized,
-                            description: LocalizationKeys.showMouseCursorVideoDescription.localized,
-                            isOn: $settings.showMouseCursor
-                        )
-                        
-                        SettingsToggleOption(
-                            title: LocalizationKeys.autoStopAfterTimeTitle.localized + " *",
-                            description: LocalizationKeys.autoStopAfterTimeDescription.localized,
-                            isOn: .constant(false)
-                        )
-                        
-                        SettingsPickerOption(
-                            title: LocalizationKeys.maxTimeTitle.localized + " *",
-                            description: LocalizationKeys.maxTimeDescription.localized,
-                            isLast: true,
-                            selection: .constant("10min"),
-                            options: [("5min", "5 min"), ("10min", "10 min"), ("30min", "30 min"), ("unlimited", "Bez limitu")]
-                        )
-                    }
+
+                SettingsSection(
+                    title: LocalizationKeys.recordingBehaviorTitle.localized,
+                    subtitle: "Recording behavior applied before capture starts.",
+                    systemImage: "record.circle"
+                ) {
+                    SettingsToggleOption(
+                        title: LocalizationKeys.showMouseCursorVideoTitle.localized,
+                        description: LocalizationKeys.showMouseCursorVideoDescription.localized,
+                        isLast: true,
+                        isOn: $settings.showMouseCursor
+                    )
                 }
-                
-                // File Settings Section
-                GroupBox(LocalizationKeys.filesTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        // Video Save Directory
-                        SettingsOptionView(isLast: false) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Video Save Location")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                }
-                                
-                                HStack {
-                                    Text(settings.videoSaveDirectory.path)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Choose...") {
-                                        selectVideoSaveDirectory()
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                            }
-                        }
-                        
-                        // Video File Name Template
-                        SettingsOptionView(isLast: false) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("File Name Template")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                }
-                                
-                                TextField("Video-{datetime}", text: $settings.videoFileNameTemplate)
-                                    .textFieldStyle(.roundedBorder)
-                                
-                                Text("Available placeholders: {datetime}, {date}")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        SettingsOptionView(isLast: false) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text(LocalizationKeys.formatTitle.localized)
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                }
-                                
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Picker("Format", selection: $settings.videoFormat) {
-                                        Text("MP4").tag("MP4")
-                                        Text("MOV").tag("MOV")
-                                        Text("WebM").tag("WebM")
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    
-                                    Picker("Codec", selection: $settings.videoCodec) {
-                                        Text("H.264").tag("H.264")
-                                        Text("H.265 (HEVC)").tag("H.265")
-                                    }
-                                    .pickerStyle(.segmented)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                }
-                            }
-                        }
-                        
-                        SettingsToggleOption(
-                            title: LocalizationKeys.compressAfterRecordingTitle.localized + " *",
-                            description: LocalizationKeys.compressAfterRecordingDescription.localized,
-                            isOn: .constant(true)
-                        )
-                        
-                        SettingsToggleOption(
-                            title: LocalizationKeys.deleteAfterRecordingTitle.localized + " *",
-                            description: LocalizationKeys.deleteAfterRecordingDescription.localized,
-                            isLast: false,
-                            isOn: .constant(false)
-                        )
-                        
-                        // Reset to Defaults Button
-                        SettingsOptionView(isLast: true) {
-                            HStack {
-                                Button("Reset to Defaults") {
-                                    settings.resetToDefaults()
-                                }
-                                .buttonStyle(.borderedProminent)
-                                
-                                Spacer()
-                                
-                                Text("Restore all video settings to safe defaults")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
+
+                SettingsSection(
+                    title: LocalizationKeys.filesTitle.localized,
+                    subtitle: "Video file destination and container format.",
+                    systemImage: "folder"
+                ) {
+                    SettingsPathOption(
+                        title: "Video folder",
+                        path: settings.videoSaveDirectory.path,
+                        description: "Where screen recordings are saved.",
+                        action: selectVideoSaveDirectory
+                    )
+
+                    SettingsTextOption(
+                        title: "Filename template",
+                        description: "Preview: \(settings.formattedVideoFileName).\(settings.videoFormat.lowercased())",
+                        infoText: "Use {datetime} for date and time or {date} for the date.",
+                        text: $settings.videoFileNameTemplate,
+                        placeholder: "Video-{datetime}"
+                    )
+
+                    SettingsPickerOption(
+                        title: LocalizationKeys.formatTitle.localized,
+                        description: "WebM is hidden because the writer currently exports MP4 or MOV only.",
+                        selection: $settings.videoFormat,
+                        options: [
+                            ("MP4", "MP4"),
+                            ("MOV", "QuickTime MOV")
+                        ]
+                    )
+
+                    SettingsPickerOption(
+                        title: "Codec",
+                        description: "H.264 is safest. HEVC can create smaller files on newer Macs.",
+                        isLast: true,
+                        selection: $settings.videoCodec,
+                        options: [
+                            ("H.264", "H.264"),
+                            ("H.265", "HEVC (H.265)")
+                        ]
+                    )
                 }
-                
-                // Permissions Section
-                GroupBox("Permissions") {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsOptionView(isLast: false) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Screen Recording Permission")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Grant Permission") {
-                                        requestScreenRecordingPermission()
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                                
-                                Text("Required for video recording functionality")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        SettingsOptionView(isLast: false) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("Microphone Permission")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Grant Permission") {
-                                        requestMicrophonePermission()
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                                
-                                Text("Required for microphone recording")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        
-                        SettingsOptionView(isLast: true) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("File Access Permission")
-                                        .font(.body)
-                                        .foregroundColor(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    Button("Choose Folder") {
-                                        selectVideoSaveDirectory()
-                                    }
-                                    .buttonStyle(.bordered)
-                                }
-                                
-                                Text("Required for saving videos to custom locations")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                }
+
+                SettingsNote(
+                    title: "Hidden until fully wired",
+                    message: "Microphone mixing, audio quality, recording timer, auto-stop, max recording time, post-compression, and delete-after-recording were placeholder controls. They are removed from Settings until the recording pipeline supports them.",
+                    systemImage: "exclamationmark.triangle"
+                )
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 24) // Add bottom spacing
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, 28)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .frame(minWidth: 600, maxWidth: .infinity, minHeight: 400, maxHeight: .infinity)
+        .onAppear(perform: normalizeUnsupportedValues)
     }
-    
+
     private func selectVideoSaveDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
         panel.title = "Select Video Save Directory"
         panel.message = "Choose a directory where video recordings will be saved."
-        
-        if panel.runModal() == .OK {
-            if let url = panel.url {
-                settings.videoSaveDirectory = url
-            }
+        panel.directoryURL = settings.videoSaveDirectory
+
+        if panel.runModal() == .OK, let url = panel.url {
+            settings.videoSaveDirectory = url
         }
     }
-    
-    private func requestScreenRecordingPermission() {
-        // This will trigger the system permission dialog
-        // The actual permission request happens when we try to use ScreenCaptureKit
-        let alert = NSAlert()
-        alert.messageText = "Screen Recording Permission"
-        alert.informativeText = "To record your screen, Fluttro needs screen recording permission. This permission will be requested when you first try to record a video."
-        alert.addButton(withTitle: "OK")
-        alert.alertStyle = .informational
-        alert.runModal()
+
+    private func normalizeUnsupportedValues() {
+        if settings.videoFormat == "WebM" {
+            settings.videoFormat = "MP4"
+        }
     }
-    
-    private func requestMicrophonePermission() {
-        // This will trigger the system permission dialog
-        let alert = NSAlert()
-        alert.messageText = "Microphone Permission"
-        alert.informativeText = "To record microphone audio, Fluttro needs microphone permission. This permission will be requested when you first try to record with microphone enabled."
-        alert.addButton(withTitle: "OK")
-        alert.alertStyle = .informational
-        alert.runModal()
+
+    private var expectedRecordingSize: CGSize {
+        switch settings.videoResolution {
+        case "Source":
+            return ScreenPixelGeometry.captureSize(
+                for: NSScreen.main,
+                mode: settings.capturePixelMode
+            )
+        case "1080p":
+            return CGSize(width: 1920, height: 1080)
+        case "720p":
+            return CGSize(width: 1280, height: 720)
+        case "480p":
+            return CGSize(width: 854, height: 480)
+        default:
+            return CGSize(width: 1920, height: 1080)
+        }
+    }
+
+    private var expectedRecordingDescription: String {
+        if settings.videoResolution == "Source" {
+            return settings.capturePixelMode == .realPixels
+                ? "Pixel-perfect physical display size."
+                : "macOS scaled logical display size."
+        }
+
+        return "Fixed preset selected instead of source size."
+    }
+}
+
+private extension CapturePixelMode {
+    var videoDisplayName: String {
+        switch self {
+        case .realPixels:
+            return "Real screen size"
+        case .scaledScreenSize:
+            return "Scaled screen size"
+        }
     }
 }
 

@@ -53,10 +53,12 @@ protocol VideoCaptureService: CaptureService where ResultType == VideoRecording 
 // MARK: - Capture Type Enum
 
 /// Enum representing different types of capture operations
-enum CaptureType: CaseIterable {
+enum CaptureType: String, CaseIterable, Identifiable {
     case fullScreen
     case area
     case window
+
+    var id: String { rawValue }
     
     var iconName: String {
         switch self {
@@ -68,9 +70,9 @@ enum CaptureType: CaseIterable {
     
     var title: String {
         switch self {
-        case .fullScreen: return "Cały ekran"
-        case .area: return "Wycinek"
-        case .window: return "Okno"
+        case .fullScreen: return LocalizationKeys.captureTypeFullScreen.localized
+        case .area: return LocalizationKeys.captureTypeArea.localized
+        case .window: return LocalizationKeys.captureTypeWindow.localized
         }
     }
     
@@ -104,8 +106,8 @@ enum CaptureMode: CaseIterable {
     
     var title: String {
         switch self {
-        case .image: return "Obraz"
-        case .video: return "Video"
+        case .image: return LocalizationKeys.captureModeImage.localized
+        case .video: return LocalizationKeys.captureModeVideo.localized
         }
     }
 }

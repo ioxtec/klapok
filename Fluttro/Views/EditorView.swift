@@ -47,7 +47,7 @@ import SwiftUI
                     if let image = viewModel.image {
                         GeometryReader { geometry in
                             let availableSize = geometry.size
-                            let imageSize = image.size
+                            let imageSize = image.pixelSize
                             
                             // Calculate background size based on aspect ratio and padding
                             let backgroundSize = viewModel.calculateBackgroundSize(for: imageSize, in: availableSize)
@@ -402,22 +402,28 @@ import SwiftUI
         var body: some View {
             ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 0) {
-                    EditorSidebarSection(
+                    SidebarDisclosureSection(
+                        id: "image.profiles",
                         title: "Profiles",
+                        systemImage: "slider.horizontal.3",
                         subtitle: "Presets for canvas size, spacing, corners, and shadow."
                     ) {
                         profileControl
                     }
 
-                    EditorSidebarSection(
+                    SidebarDisclosureSection(
+                        id: "image.background",
                         title: "Background",
+                        systemImage: "paintpalette",
                         subtitle: "Fill behind the screenshot."
                     ) {
                         BackgroundEditorView(backgroundManager: backgroundManager)
                     }
 
-                    EditorSidebarSection(
+                    SidebarDisclosureSection(
+                        id: "image.canvas",
                         title: "Canvas",
+                        systemImage: "rectangle.dashed",
                         subtitle: "Outer frame, aspect ratio, and spacing."
                     ) {
                         if backgroundManager.collections.backgroundType == .none {
@@ -443,14 +449,24 @@ import SwiftUI
                         }
                     }
 
-                    EditorSidebarSection(
+                    SidebarDisclosureSection(
+                        id: "image.screenshot",
                         title: "Screenshot",
+                        systemImage: "photo",
                         subtitle: "Source image corners and shadow."
                     ) {
                         if let image = viewModel.image {
+                            let sourceSize = image.pixelSize
+                            let outputSize = viewModel.calculateOutputSize(for: image)
+
                             SidebarValueRow(
                                 title: "Source size",
-                                value: "\(Int(image.size.width)) x \(Int(image.size.height)) px"
+                                value: "\(Int(sourceSize.width)) x \(Int(sourceSize.height)) px"
+                            )
+
+                            SidebarValueRow(
+                                title: "Output size",
+                                value: "\(Int(outputSize.width)) x \(Int(outputSize.height)) px"
                             )
                         }
 
@@ -481,7 +497,7 @@ import SwiftUI
                 }
                 .padding(.leading, 16)
                 .padding(.trailing, 24)
-                .padding(.vertical, 8)
+                .padding(.vertical, 10)
             }
             .scrollIndicators(.visible)
             .frame(width: 300)
@@ -541,45 +557,6 @@ import SwiftUI
                 updatedProfile.name = newName
                 updatedProfile.modifiedAt = Date()
                 profileManager.updateImageProfile(updatedProfile)
-            }
-        }
-    }
-
-    private struct EditorSidebarSection<Content: View>: View {
-        let title: String
-        let subtitle: String
-        let content: Content
-
-        init(
-            title: String,
-            subtitle: String,
-            @ViewBuilder content: () -> Content
-        ) {
-            self.title = title
-            self.subtitle = subtitle
-            self.content = content()
-        }
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(title)
-                        .font(.headline)
-
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(alignment: .leading, spacing: 12) {
-                    content
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 14)
-            .overlay(alignment: .bottom) {
-                Divider()
             }
         }
     }

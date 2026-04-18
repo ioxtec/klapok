@@ -16,7 +16,7 @@ import SwiftUI
     final class WindowSelectionManager: ObservableObject {
         // MARK: - Properties
 
-        private var overlayWindow: NSWindow?
+        private var overlayWindows: [NSWindow] = []
         private var onSelectionCallback: ((SCWindow?) -> Void)?
         private var isHiding = false
 
@@ -24,7 +24,7 @@ import SwiftUI
 
         deinit {
             // Clean up synchronously in deinit - avoid close() to prevent deadlock
-            if let window = overlayWindow {
+            for window in overlayWindows {
                 Task { @MainActor in
                     window.orderOut(nil)
                 }
@@ -61,13 +61,11 @@ import SwiftUI
             Logger.d("WindowSelectionManager: Hiding window selection overlay")
 
             // Safely hide window - avoid close() to prevent deadlock
-            if let window = overlayWindow {
+            for window in overlayWindows {
                 // Just hide the window, don't close it to avoid deadlock
                 window.orderOut(nil)
-
-                // Clear reference and let garbage collection handle cleanup
-                overlayWindow = nil
             }
+            overlayWindows.removeAll()
 
             onSelectionCallback = nil
             isHiding = false
@@ -76,48 +74,46 @@ import SwiftUI
         // MARK: - Private Methods
 
         private func createOverlayWindow() {
-            guard let screen = NSScreen.main else {
-                Logger.e("WindowSelectionManager: No main screen found")
+            let screens = NSScreen.screens
+            guard !screens.isEmpty else {
+                Logger.e("WindowSelectionManager: No screens found")
                 return
             }
 
-            let screenFrame = screen.frame
+            overlayWindows = screens.map { screen in
+                let screenFrame = screen.frame
+                let window = NSWindow(
+                    contentRect: screenFrame,
+                    styleMask: [.borderless, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
 
-            // Create window that covers the entire screen
-            overlayWindow = NSWindow(
-                contentRect: screenFrame,
-                styleMask: [.borderless, .fullSizeContentView],
-                backing: .buffered,
-                defer: false
-            )
+                WindowDepthManager.shared.setLevel(for: window, type: .windowSelectionOverlay)
+                window.backgroundColor = NSColor.clear
+                window.isOpaque = false
+                window.hasShadow = false
+                window.ignoresMouseEvents = false
+                window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
-            guard let window = overlayWindow else { return }
+                let contentView = WindowSelectionOverlayView(
+                    screenFrame: screenFrame,
+                    onSelection: { [weak self] selectedWindow in
+                        self?.handleWindowSelection(selectedWindow)
+                    },
+                    onCancel: { [weak self] in
+                        self?.handleCancel()
+                    }
+                )
 
-            // Configure window using WindowDepthManager
-            WindowDepthManager.shared.setLevel(for: window, type: .windowSelectionOverlay)
-            window.backgroundColor = NSColor.clear
-            window.isOpaque = false
-            window.hasShadow = false
-            window.ignoresMouseEvents = false
-            window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+                let hostingView = NSHostingView(rootView: contentView)
+                hostingView.frame = CGRect(origin: .zero, size: screenFrame.size)
+                window.contentView = hostingView
+                window.orderFront(nil)
+                return window
+            }
 
-            // Create SwiftUI view
-            let contentView = WindowSelectionOverlayView(
-                onSelection: { [weak self] selectedWindow in
-                    self?.handleWindowSelection(selectedWindow)
-                },
-                onCancel: { [weak self] in
-                    self?.handleCancel()
-                }
-            )
-
-            // Set up hosting view
-            let hostingView = NSHostingView(rootView: contentView)
-            hostingView.frame = screenFrame
-            window.contentView = hostingView
-
-            // Show window
-            window.makeKeyAndOrderFront(nil)
+            overlayWindows.first?.makeKeyAndOrderFront(nil)
 
             Logger.s("WindowSelectionManager: Window selection overlay created and shown")
         }

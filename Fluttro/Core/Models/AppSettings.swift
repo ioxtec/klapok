@@ -24,15 +24,31 @@ import Foundation
         var displayName: String {
             switch self {
             case .bottomRight:
-                return "Prawy dolny"
+                return LocalizationKeys.reviewPositionBottomRight.localized
             case .bottomLeft:
-                return "Lewy dolny"
+                return LocalizationKeys.reviewPositionBottomLeft.localized
             case .topRight:
-                return "Prawy górny"
+                return LocalizationKeys.reviewPositionTopRight.localized
             case .topLeft:
-                return "Lewy górny"
+                return LocalizationKeys.reviewPositionTopLeft.localized
             case .bottomCenter:
-                return "Dół środek"
+                return LocalizationKeys.reviewPositionBottomCenter.localized
+            }
+        }
+    }
+
+    enum CapturePixelMode: String, CaseIterable, Identifiable {
+        case realPixels
+        case scaledScreenSize
+
+        var id: String { rawValue }
+
+        var displayName: String {
+            switch self {
+            case .realPixels:
+                return LocalizationKeys.capturePixelModeReal.localized
+            case .scaledScreenSize:
+                return LocalizationKeys.capturePixelModeScaled.localized
             }
         }
     }
@@ -57,6 +73,18 @@ import Foundation
         @Published var screenshotReviewPosition: ScreenshotReviewPosition {
             didSet {
                 UserDefaults.standard.set(screenshotReviewPosition.rawValue, forKey: "screenshotReviewPosition")
+            }
+        }
+
+        @Published var capturePixelMode: CapturePixelMode {
+            didSet {
+                UserDefaults.standard.set(capturePixelMode.rawValue, forKey: "capturePixelMode")
+            }
+        }
+
+        @Published var defaultCaptureType: CaptureType {
+            didSet {
+                UserDefaults.standard.set(defaultCaptureType.rawValue, forKey: "defaultCaptureType")
             }
         }
 
@@ -257,6 +285,12 @@ import Foundation
             self.screenshotReviewPosition = ScreenshotReviewPosition(
                 rawValue: UserDefaults.standard.string(forKey: "screenshotReviewPosition") ?? ""
             ) ?? .bottomRight
+            self.capturePixelMode = CapturePixelMode(
+                rawValue: UserDefaults.standard.string(forKey: "capturePixelMode") ?? ""
+            ) ?? .realPixels
+            self.defaultCaptureType = CaptureType(
+                rawValue: UserDefaults.standard.string(forKey: "defaultCaptureType") ?? ""
+            ) ?? .fullScreen
             self.videoFileNameTemplate =
                 UserDefaults.standard.string(forKey: "videoFileNameTemplate") ?? "Video-{datetime}"
             
@@ -299,6 +333,8 @@ import Foundation
             saveDirectory = defaultSaveDirectory
             fileNameTemplate = "Screenshot-{datetime}"
             screenshotReviewPosition = .bottomRight
+            capturePixelMode = .realPixels
+            defaultCaptureType = .fullScreen
             videoSaveDirectory = defaultVideoSaveDirectory
             videoFileNameTemplate = "Video-{datetime}"
             
@@ -323,6 +359,10 @@ import Foundation
             hotkeyKeyCode = 0x1A
             showInDock = true
             launchAtLogin = false
+        }
+
+        func applyDockVisibility() {
+            updateDockVisibility()
         }
 
         func saveScreenshot(_ image: NSImage) -> URL? {
@@ -496,10 +536,17 @@ import Foundation
 
         private func updateDockVisibility() {
             DispatchQueue.main.async {
+                let visibleWindows = NSApp.windows.filter { $0.isVisible }
+
                 if self.showInDock {
                     NSApp.setActivationPolicy(.regular)
                 } else {
                     NSApp.setActivationPolicy(.accessory)
+                }
+
+                visibleWindows.forEach { window in
+                    window.makeKeyAndOrderFront(nil)
+                    window.orderFrontRegardless()
                 }
             }
         }

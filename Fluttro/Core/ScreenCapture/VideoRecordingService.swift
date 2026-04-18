@@ -24,6 +24,7 @@ class VideoRecordingService: VideoCaptureService {
     private var isRecording = false
     private var recordingStartTime: Date?
     private var recordingURL: URL?
+    private var currentRecordingSize: CGSize?
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
@@ -67,7 +68,10 @@ class VideoRecordingService: VideoCaptureService {
         let recording = VideoRecording(
             url: URL(fileURLWithPath: "/tmp/placeholder.mov"),
             duration: 0.0,
-            size: NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080),
+            size: ScreenPixelGeometry.captureSize(
+                for: NSScreen.main,
+                mode: AppSettings.shared.capturePixelMode
+            ),
             frameRate: 30.0
         )
         
@@ -76,7 +80,10 @@ class VideoRecordingService: VideoCaptureService {
     
     // MARK: - Recording Control Methods
     
-    func startRecording(excludingWindows: [NSWindow] = []) async throws {
+    func startRecording(
+        displayID: CGDirectDisplayID? = nil,
+        excludingWindows: [NSWindow] = []
+    ) async throws {
         guard !isRecording else {
             print("❌ Already recording, cannot start again")
             throw CaptureError.alreadyRecording
@@ -89,7 +96,7 @@ class VideoRecordingService: VideoCaptureService {
         recordingURL = tempDir.appendingPathComponent("fluttro_recording_\(Date().timeIntervalSince1970).\(fileExtension)")
         
         // Setup screen capture stream
-        try await setupScreenCapture(excludingWindows: excludingWindows)
+        try await setupScreenCapture(displayID: displayID, excludingWindows: excludingWindows)
         
         isRecording = true
         recordingStartTime = Date()
@@ -191,7 +198,10 @@ class VideoRecordingService: VideoCaptureService {
         let recording = VideoRecording(
             url: recordingURL,
             duration: duration,
-            size: NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080),
+            size: currentRecordingSize ?? ScreenPixelGeometry.captureSize(
+                for: NSScreen.main,
+                mode: AppSettings.shared.capturePixelMode
+            ),
             frameRate: 30.0
         )
         
@@ -208,6 +218,7 @@ class VideoRecordingService: VideoCaptureService {
         }
         
         self.recordingURL = nil
+        self.currentRecordingSize = nil
         return recording
     }
 
@@ -229,6 +240,7 @@ class VideoRecordingService: VideoCaptureService {
         streamOutput = nil
         recordingStartTime = nil
         recordingURL = nil
+        currentRecordingSize = nil
 
         if let urlToRemove {
             try? FileManager.default.removeItem(at: urlToRemove)
@@ -243,16 +255,20 @@ class VideoRecordingService: VideoCaptureService {
     
     // MARK: - Private Methods
     
-    private func setupScreenCapture(excludingWindows: [NSWindow] = []) async throws {
+    private func setupScreenCapture(
+        displayID: CGDirectDisplayID? = nil,
+        excludingWindows: [NSWindow] = []
+    ) async throws {
         guard let recordingURL = recordingURL else {
             throw CaptureError.invalidRequest("No recording URL set")
         }
         
         // Get screen content
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
-        guard let display = content.displays.first else {
+        guard let display = CaptureDisplayResolver.scDisplay(for: displayID, in: content) else {
             throw CaptureError.unavailable
         }
+        let screen = ScreenPixelGeometry.screen(for: display.displayID) ?? NSScreen.main
         
         // Convert NSWindow objects to SCWindow objects for exclusion
         let windowsToExclude = await MainActor.run {
@@ -279,14 +295,22 @@ class VideoRecordingService: VideoCaptureService {
         
         // Set resolution
         if settings.videoResolution == "Source" {
-            streamConfig.width = Int(display.width)
-            streamConfig.height = Int(display.height)
+            let captureSize = ScreenPixelGeometry.captureSize(
+                for: display,
+                screen: screen,
+                mode: settings.capturePixelMode
+            )
+            streamConfig.width = Int(captureSize.width)
+            streamConfig.height = Int(captureSize.height)
         } else {
             // Parse resolution (e.g., "1080p" -> 1920x1080)
             let (width, height) = parseResolution(settings.videoResolution)
             streamConfig.width = width
             streamConfig.height = height
         }
+
+        let outputSize = CGSize(width: streamConfig.width, height: streamConfig.height)
+        currentRecordingSize = outputSize
         
         // Set frame rate
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
@@ -299,7 +323,7 @@ class VideoRecordingService: VideoCaptureService {
         
         // Use proven AVAssetWriter approach (SCRecordingOutput has issues)
         print("🎥 Using proven VideoStreamOutput approach with improved settings")
-        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: nil) // Full screen
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: outputSize)
         stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
         
@@ -347,16 +371,21 @@ class VideoRecordingService: VideoCaptureService {
         
         // Set resolution based on window size or user preference
         if settings.videoResolution == "Source" {
-            // Use window's actual size multiplied by 2 (as per Apple documentation)
-            // This is crucial for proper window recording with SCContentFilter(desktopIndependentWindow:)
-            streamConfig.width = Int(window.frame.width) * 2
-            streamConfig.height = Int(window.frame.height) * 2
+            let captureSize = ScreenPixelGeometry.captureSize(
+                for: window,
+                mode: settings.capturePixelMode
+            )
+            streamConfig.width = Int(captureSize.width)
+            streamConfig.height = Int(captureSize.height)
         } else {
             // Parse resolution (e.g., "1080p" -> 1920x1080)
             let (width, height) = parseResolution(settings.videoResolution)
             streamConfig.width = width
             streamConfig.height = height
         }
+
+        let outputSize = CGSize(width: streamConfig.width, height: streamConfig.height)
+        currentRecordingSize = outputSize
         
         // Set frame rate
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
@@ -382,9 +411,7 @@ class VideoRecordingService: VideoCaptureService {
         
         // Use proven AVAssetWriter approach
         print("🎥 Using VideoStreamOutput for window recording")
-        // Use window size multiplied by 2 to match SCStreamConfiguration
-        let windowSize = CGSize(width: window.frame.width * 2, height: window.frame.height * 2)
-        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: windowSize)
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: outputSize)
         stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
         
@@ -424,37 +451,45 @@ class VideoRecordingService: VideoCaptureService {
         // Get settings from AppSettings
         let settings = AppSettings.shared
         
+        guard let sourceScreen = ScreenPixelGeometry.screen(containing: areaRect) else {
+            throw CaptureError.unavailable
+        }
+        guard let display = CaptureDisplayResolver.scDisplay(for: ScreenPixelGeometry.displayID(for: sourceScreen), in: content) else {
+            throw CaptureError.unavailable
+        }
+
+        let convertedRect = CGRect(
+            x: areaRect.minX - sourceScreen.frame.minX,
+            y: sourceScreen.frame.maxY - areaRect.maxY,
+            width: areaRect.width,
+            height: areaRect.height
+        )
+
         // Set resolution based on area size or user preference
         if settings.videoResolution == "Source" {
-            // Use area's actual size
-            streamConfig.width = Int(areaRect.width)
-            streamConfig.height = Int(areaRect.height)
+            let captureSize = ScreenPixelGeometry.captureSize(
+                for: areaRect,
+                on: sourceScreen,
+                mode: settings.capturePixelMode
+            )
+            streamConfig.width = Int(captureSize.width)
+            streamConfig.height = Int(captureSize.height)
         } else {
             // Parse resolution (e.g., "1080p" -> 1920x1080)
             let (width, height) = parseResolution(settings.videoResolution)
             streamConfig.width = width
             streamConfig.height = height
         }
-        
-        // Convert coordinates from SwiftUI (top-left origin) to ScreenCaptureKit (bottom-left origin)
-        guard let screen = content.displays.first else {
-            throw CaptureError.unavailable
-        }
-        let screenHeight = screen.frame.height
-        
-        let convertedRect = CGRect(
-            x: areaRect.minX,
-            y: screenHeight - areaRect.maxY,  // Convert Y from top-left to bottom-left origin
-            width: areaRect.width,
-            height: areaRect.height
-        )
+
+        let outputSize = CGSize(width: streamConfig.width, height: streamConfig.height)
+        currentRecordingSize = outputSize
         
         // Set the source rectangle to record only the selected area
         streamConfig.sourceRect = convertedRect
         
         print("🎥 Original area rect: \(areaRect)")
         print("🎥 Converted source rect: \(convertedRect)")
-        print("🎥 Screen height: \(screenHeight)")
+        print("🎥 Source screen frame: \(sourceScreen.frame)")
         
         // Set frame rate
         streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
@@ -465,17 +500,11 @@ class VideoRecordingService: VideoCaptureService {
         print("🎥 Stream resolution configured: \(streamConfig.width)x\(streamConfig.height)")
         print("🎥 Source rectangle: \(streamConfig.sourceRect)")
         
-        // Create filter for display (full screen, but we'll use sourceRect to limit the area)
-        guard let display = content.displays.first else {
-            throw CaptureError.unavailable
-        }
-        
         let filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
         
         // Use proven AVAssetWriter approach
         print("🎥 Using VideoStreamOutput for area recording")
-        let areaSize = CGSize(width: areaRect.width, height: areaRect.height)
-        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: areaSize)
+        streamOutput = VideoStreamOutput(recordingURL: recordingURL, windowSize: outputSize)
         stream = SCStream(filter: filter, configuration: streamConfig, delegate: nil)
         try stream?.addStreamOutput(streamOutput!, type: .screen, sampleHandlerQueue: DispatchQueue.global())
         
@@ -686,8 +715,11 @@ class VideoStreamOutput: NSObject, SCStreamOutput {
             print("🎥 File type: \(fileType.rawValue)")
             assetWriter = try AVAssetWriter(outputURL: recordingURL, fileType: fileType)
             
-            // Use window size if available, otherwise use screen size
-            let videoSize = windowSize ?? NSScreen.main?.frame.size ?? CGSize(width: 1920, height: 1080)
+            // Use explicit capture output size if available, otherwise respect the selected pixel mode.
+            let videoSize = windowSize ?? ScreenPixelGeometry.captureSize(
+                for: NSScreen.main,
+                mode: settings.capturePixelMode
+            )
             
             // Determine codec based on settings
             let codec: AVVideoCodecType

@@ -163,6 +163,12 @@ struct VideoExportSettingsView: View {
 
 struct GIFExportSettingsView: View {
     @ObservedObject var exportManager: ExportManager
+    let sourceSize: CGSize?
+
+    init(exportManager: ExportManager, sourceSize: CGSize? = nil) {
+        self.exportManager = exportManager
+        self.sourceSize = sourceSize
+    }
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -239,9 +245,38 @@ struct GIFExportSettingsView: View {
             
             // Size Settings
             VStack(alignment: .leading, spacing: 12) {
-                Text("Size Settings")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                HStack {
+                    Text("Size Settings")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    Button("Reset") {
+                        resetGIFSize()
+                    }
+                    .controlSize(.small)
+                    .disabled(sourceSize == nil)
+                    .help("Restore original video size")
+                }
+
+                if let sourceSize {
+                    Text("Original \(Int(sourceSize.width.rounded())) x \(Int(sourceSize.height.rounded())) px")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Toggle("Keep proportions", isOn: Binding(
+                    get: { exportManager.settings.gifSettings.maintainAspectRatio },
+                    set: { newValue in
+                        exportManager.updateGIFMaintainAspectRatio(newValue)
+
+                        if newValue {
+                            updateGIFWidth(exportManager.settings.gifSettings.maxWidth)
+                        }
+                    }
+                ))
+                .toggleStyle(.switch)
                 
                 HStack {
                     Text("Max Width")
@@ -254,15 +289,10 @@ struct GIFExportSettingsView: View {
                 Slider(
                     value: Binding(
                         get: { Double(exportManager.settings.gifSettings.maxWidth) },
-                        set: { newValue in
-                            exportManager.updateGIFMaxSize(
-                                width: Int(newValue),
-                                height: exportManager.settings.gifSettings.maxHeight
-                            )
-                        }
+                        set: { updateGIFWidth(Int($0.rounded())) }
                     ),
-                    in: 200...1920,
-                    step: 100
+                    in: widthRange,
+                    step: 10
                 )
                 
                 HStack {
@@ -276,15 +306,10 @@ struct GIFExportSettingsView: View {
                 Slider(
                     value: Binding(
                         get: { Double(exportManager.settings.gifSettings.maxHeight) },
-                        set: { newValue in
-                            exportManager.updateGIFMaxSize(
-                                width: exportManager.settings.gifSettings.maxWidth,
-                                height: Int(newValue)
-                            )
-                        }
+                        set: { updateGIFHeight(Int($0.rounded())) }
                     ),
-                    in: 200...1080,
-                    step: 100
+                    in: heightRange,
+                    step: 10
                 )
             }
             
@@ -358,6 +383,80 @@ struct GIFExportSettingsView: View {
                 .toggleStyle(.switch)
             }
         }
+    }
+
+    private var widthRange: ClosedRange<Double> {
+        Double(min(200, sourceWidth))...Double(max(1920, sourceWidth))
+    }
+
+    private var heightRange: ClosedRange<Double> {
+        Double(min(200, sourceHeight))...Double(max(1080, sourceHeight))
+    }
+
+    private var sourceWidth: Int {
+        guard let sourceSize else { return 800 }
+        return max(1, Int(sourceSize.width.rounded()))
+    }
+
+    private var sourceHeight: Int {
+        guard let sourceSize else { return 600 }
+        return max(1, Int(sourceSize.height.rounded()))
+    }
+
+    private var aspectRatio: Double? {
+        if sourceWidth > 0, sourceHeight > 0 {
+            return Double(sourceWidth) / Double(sourceHeight)
+        }
+
+        let settings = exportManager.settings.gifSettings
+        guard settings.maxHeight > 0 else { return nil }
+        return Double(settings.maxWidth) / Double(settings.maxHeight)
+    }
+
+    private func updateGIFWidth(_ width: Int) {
+        let clampedWidth = clamped(width, in: widthRange)
+        guard exportManager.settings.gifSettings.maintainAspectRatio, let aspectRatio else {
+            exportManager.updateGIFMaxSize(
+                width: clampedWidth,
+                height: exportManager.settings.gifSettings.maxHeight
+            )
+            return
+        }
+
+        let targetHeight = Int((Double(clampedWidth) / aspectRatio).rounded())
+        let pairedHeight = clamped(targetHeight, in: heightRange)
+        let pairedWidth = targetHeight == pairedHeight
+            ? clampedWidth
+            : clamped(Int((Double(pairedHeight) * aspectRatio).rounded()), in: widthRange)
+
+        exportManager.updateGIFMaxSize(width: pairedWidth, height: pairedHeight)
+    }
+
+    private func updateGIFHeight(_ height: Int) {
+        let clampedHeight = clamped(height, in: heightRange)
+        guard exportManager.settings.gifSettings.maintainAspectRatio, let aspectRatio else {
+            exportManager.updateGIFMaxSize(
+                width: exportManager.settings.gifSettings.maxWidth,
+                height: clampedHeight
+            )
+            return
+        }
+
+        let targetWidth = Int((Double(clampedHeight) * aspectRatio).rounded())
+        let pairedWidth = clamped(targetWidth, in: widthRange)
+        let pairedHeight = targetWidth == pairedWidth
+            ? clampedHeight
+            : clamped(Int((Double(pairedWidth) / aspectRatio).rounded()), in: heightRange)
+
+        exportManager.updateGIFMaxSize(width: pairedWidth, height: pairedHeight)
+    }
+
+    private func resetGIFSize() {
+        exportManager.updateGIFMaxSize(width: sourceWidth, height: sourceHeight)
+    }
+
+    private func clamped(_ value: Int, in range: ClosedRange<Double>) -> Int {
+        min(max(value, Int(range.lowerBound)), Int(range.upperBound))
     }
 }
 

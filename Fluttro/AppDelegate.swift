@@ -20,6 +20,7 @@ import SwiftUI
         private var cancellables = Set<AnyCancellable>()
 
         private var editorWindow: NSWindow?
+        private var settingsWindow: NSWindow?
         private var panelWindow: NSPanel?
         private var overlayWindow: NSWindow?  // Pre-created overlay window
         private var statusItem: NSStatusItem?
@@ -57,6 +58,8 @@ import SwiftUI
             registerHotkeys()
             createOverlayWindow()  // Create overlay window at startup
             setupStatusBarItem()
+            setupLocalizationObservation()
+            AppSettings.shared.applyDockVisibility()
             setupEditorObservation()
             setupEscapeKeyHandling()
 
@@ -74,14 +77,18 @@ import SwiftUI
                         Logger.s(
                             "AppDelegate: EditorViewModel.isPresented = true, showing editor window"
                         )
-                        self?.openEditor(with: image)
-                        // Hide floating panel when editor appears
-                        self?.hideFloatingPanelForEditor()
+                        Task { @MainActor in
+                            self?.openEditor(with: image)
+                            // Hide floating panel when editor appears
+                            self?.hideFloatingPanelForEditor()
+                        }
                     } else if !isPresented {
                         Logger.d(
                             "AppDelegate: EditorViewModel.isPresented = false, hiding editor window"
                         )
-                        self?.editorWindow?.orderOut(nil)
+                        Task { @MainActor in
+                            self?.editorWindow?.orderOut(nil)
+                        }
                     }
                 }
                 .store(in: &cancellables)
@@ -169,6 +176,7 @@ import SwiftUI
             }
         }
 
+        @MainActor
         private func openEditor(with image: NSImage) {
             Logger.d("AppDelegate: openEditor() called with image size: \(image.size)")
 
@@ -193,7 +201,7 @@ import SwiftUI
                 window.titleVisibility = .hidden
                 window.titlebarAppearsTransparent = true
                 window.minSize = NSSize(width: 1180, height: 720)
-                window.center()
+                WindowPlacement.center(window, on: panelWindow?.screen)
                 window.isReleasedWhenClosed = false
 
                 editorWindow = window
@@ -218,12 +226,14 @@ import SwiftUI
             }
         }
 
-        private func showFloatingPanel() {
+        @MainActor
+        private func showFloatingPanel(mode: CaptureMode = .image) {
             // If panel already exists, just show it
             if let existingPanel = panelWindow {
                 isPanelPresented = true
                 // Initialize current mode for existing panel
                 Task { @MainActor in
+                    floatingPanelViewModel?.prepareForPresentation(mode: mode)
                     existingPanel.hidesOnDeactivate = false
                     existingPanel.sharingType = .none
                     existingPanel.collectionBehavior = [
@@ -231,14 +241,13 @@ import SwiftUI
                     ]
                     existingPanel.orderFrontRegardless()
                     floatingPanelViewModel?.ensurePanelOnTop()
-                    floatingPanelViewModel?.initializeCurrentMode()
                 }
                 return
             }
 
-            // Panel: transparent background + no toolbar + thin border
+            // Panel: transparent carrier window; the visible glass is drawn by SwiftUI.
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 90),
                 styleMask: [.nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -256,19 +265,14 @@ import SwiftUI
             panel.isMovableByWindowBackground = true
             panel.isOpaque = false
             panel.backgroundColor = .clear
-            panel.hasShadow = true
+            panel.hasShadow = false
             panel.standardWindowButton(.closeButton)?.isHidden = true
             panel.standardWindowButton(.miniaturizeButton)?.isHidden = true
             panel.standardWindowButton(.zoomButton)?.isHidden = true
 
-            // Background blur
-            let blur = NSVisualEffectView()
-            blur.material = .hudWindow  // or .underWindowBackground / .sidebar
-            blur.blendingMode = .behindWindow
-            blur.state = .active
-
             // Create ViewModel
             let panelViewModel = FloatingPanelViewModel(editorViewModel: editorViewModel)
+            panelViewModel.prepareForPresentation(mode: mode)
             panelViewModel.onPanelVisibilityChanged = { [weak self] isVisible in
                 self?.isPanelPresented = isVisible
             }
@@ -282,26 +286,11 @@ import SwiftUI
 
             // Content (SwiftUI)
             let content = NSHostingView(rootView: FloatingPanelView(viewModel: panelViewModel))
-
-            // Container with rounded corners and border
-            let container = NSView(frame: panel.contentView?.bounds ?? .zero)
-            container.autoresizingMask = [.width, .height]
-            container.wantsLayer = true
-            container.layer?.cornerRadius = 10
-            container.layer?.masksToBounds = true
-
-            // Dodaj cienki border
-            container.layer?.borderWidth = 0.5
-            container.layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.2).cgColor
-
-            blur.frame = container.bounds
-            blur.autoresizingMask = [.width, .height]
-            content.frame = container.bounds
+            content.frame = panel.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 480, height: 90)
             content.autoresizingMask = [.width, .height]
-
-            container.addSubview(blur)
-            container.addSubview(content)
-            panel.contentView = container
+            content.wantsLayer = true
+            content.layer?.backgroundColor = NSColor.clear.cgColor
+            panel.contentView = content
 
             // setting panel start position
             let screen = NSScreen.main?.visibleFrame ?? .zero
@@ -338,23 +327,51 @@ import SwiftUI
             if let button = statusItem?.button {
                 button.image = NSImage(
                     systemSymbolName: "camera.fill", accessibilityDescription: "Fluttro")
-                button.toolTip = "Fluttro - Screenshot Tool"
+                button.toolTip = LocalizationKeys.statusItemTooltip.localized
             }
 
+            rebuildStatusBarMenu()
+        }
+
+        private func setupLocalizationObservation() {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(rebuildStatusBarMenuFromNotification),
+                name: .languageChanged,
+                object: nil
+            )
+        }
+
+        @objc private func rebuildStatusBarMenuFromNotification() {
+            if let button = statusItem?.button {
+                button.toolTip = LocalizationKeys.statusItemTooltip.localized
+            }
+            rebuildStatusBarMenu()
+        }
+
+        private func rebuildStatusBarMenu() {
             let menu = NSMenu()
 
             let takeScreenshotItem = NSMenuItem(
-                title: "Take Screenshot",
+                title: LocalizationKeys.takeScreenshotMenu.localized,
                 action: #selector(takeScreenshotFromMenu),
                 keyEquivalent: ""
             )
             takeScreenshotItem.target = self
             menu.addItem(takeScreenshotItem)
 
+            let recordScreenItem = NSMenuItem(
+                title: LocalizationKeys.recordScreenMenu.localized,
+                action: #selector(recordScreenFromMenu),
+                keyEquivalent: ""
+            )
+            recordScreenItem.target = self
+            menu.addItem(recordScreenItem)
+
             menu.addItem(NSMenuItem.separator())
 
             let settingsItem = NSMenuItem(
-                title: "Settings...",
+                title: LocalizationKeys.settingsMenu.localized,
                 action: #selector(openSettings),
                 keyEquivalent: ","
             )
@@ -364,7 +381,7 @@ import SwiftUI
             menu.addItem(NSMenuItem.separator())
 
             let quitItem = NSMenuItem(
-                title: "Quit Fluttro",
+                title: LocalizationKeys.quitMenu.localized,
                 action: #selector(NSApplication.terminate(_:)),
                 keyEquivalent: "q"
             )
@@ -373,18 +390,27 @@ import SwiftUI
             statusItem?.menu = menu
         }
 
+        @MainActor
         @objc private func takeScreenshotFromMenu() {
-            showFloatingPanel()
+            showFloatingPanel(mode: .image)
         }
 
+        @MainActor
+        @objc private func recordScreenFromMenu() {
+            showFloatingPanel(mode: .video)
+        }
+
+        @MainActor
         @objc private func openSettings() {
             openSettingsWindow()
         }
 
+        @MainActor
         private func openSettingsWindow() {
             // If settings window already exists, just show it
-            if let existingWindow = NSApp.windows.first(where: { $0.title == "Fluttro Settings" }) {
+            if let existingWindow = settingsWindow ?? NSApp.windows.first(where: { $0.title == "Fluttro Settings" }) {
                 existingWindow.makeKeyAndOrderFront(nil)
+                existingWindow.orderFrontRegardless()
                 NSApp.activate(ignoringOtherApps: true)
                 return
             }
@@ -394,7 +420,7 @@ import SwiftUI
             let hostingController = NSHostingController(rootView: settingsView)
 
             let window = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 600, height: 500),
+                contentRect: NSRect(x: 0, y: 0, width: 900, height: 640),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered,
                 defer: false
@@ -402,9 +428,13 @@ import SwiftUI
 
             window.contentViewController = hostingController
             window.title = "Fluttro Settings"
-            window.center()
+            window.minSize = NSSize(width: 820, height: 560)
+            window.collectionBehavior = [.moveToActiveSpace]
+            WindowPlacement.center(window)
             window.isReleasedWhenClosed = false
+            settingsWindow = window
             window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
             NSApp.activate(ignoringOtherApps: true)
         }
     }

@@ -87,8 +87,11 @@ final class CaptureManager: ObservableObject {
     /// Captures full screen image
     /// - Parameter configuration: Image capture configuration
     /// - Returns: Captured full screen image
-    func captureFullScreen(configuration: ImageCaptureConfiguration = .default) async throws -> NSImage {
-        let request = ImageCaptureRequest.fullScreen(configuration: configuration)
+    func captureFullScreen(
+        displayID: CGDirectDisplayID? = nil,
+        configuration: ImageCaptureConfiguration = .default
+    ) async throws -> NSImage {
+        let request = ImageCaptureRequest.fullScreen(displayID: displayID, configuration: configuration)
         return try await captureImage(request: request)
     }
     

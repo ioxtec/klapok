@@ -41,7 +41,10 @@ final class FullScreenCaptureService: ImageCaptureService {
         let startTime = Date()
         
         do {
-            let image = try await performFullScreenCapture(configuration: request.configuration)
+            let image = try await performFullScreenCapture(
+                displayID: request.displayID,
+                configuration: request.configuration
+            )
             
             // Update statistics
             let duration = Date().timeIntervalSince(startTime)
@@ -78,7 +81,10 @@ final class FullScreenCaptureService: ImageCaptureService {
     /// Performs the actual full screen capture
     /// - Parameter configuration: Image capture configuration
     /// - Returns: Captured image
-    private func performFullScreenCapture(configuration: ImageCaptureConfiguration) async throws -> NSImage {
+    private func performFullScreenCapture(
+        displayID: CGDirectDisplayID?,
+        configuration: ImageCaptureConfiguration
+    ) async throws -> NSImage {
         Logger.d("FullScreenCaptureService: Starting full screen capture")
         
         // Get shareable content
@@ -89,16 +95,10 @@ final class FullScreenCaptureService: ImageCaptureService {
             throw CaptureError.permissionDenied
         }
         
-        // Find main display
-        guard let mainNSScreen = NSScreen.main else {
+        guard let display = CaptureDisplayResolver.scDisplay(for: displayID, in: content) else {
             throw CaptureError.noDisplays
         }
-        
-        // Match SCDisplay to NSScreen by displayID
-        let displays = content.displays
-        guard let display = displays.first(where: { $0.displayID == mainNSScreen.displayID }) ?? displays.first else {
-            throw CaptureError.noDisplays
-        }
+        let screen = ScreenPixelGeometry.screen(for: display.displayID) ?? NSScreen.main
         
         Logger.d("FullScreenCaptureService: Using display: \(display.displayID)")
         
@@ -110,7 +110,7 @@ final class FullScreenCaptureService: ImageCaptureService {
         )
         
         // Create stream configuration
-        let config = createStreamConfiguration(for: display, configuration: configuration)
+        let config = createStreamConfiguration(for: display, screen: screen, configuration: configuration)
         
         // Create and configure stream
         let stream = SCStream(filter: filter, configuration: config, delegate: nil)
@@ -149,13 +149,19 @@ final class FullScreenCaptureService: ImageCaptureService {
     /// - Returns: Configured SCStreamConfiguration
     private func createStreamConfiguration(
         for display: SCDisplay,
+        screen: NSScreen?,
         configuration: ImageCaptureConfiguration
     ) -> SCStreamConfiguration {
         let config = SCStreamConfiguration()
         
-        // Set resolution to match display
-        config.width = Int(display.width)
-        config.height = Int(display.height)
+        // Set resolution to the physical display pixel size, not macOS logical points.
+        let captureSize = ScreenPixelGeometry.captureSize(
+            for: display,
+            screen: screen,
+            mode: AppSettings.shared.capturePixelMode
+        )
+        config.width = Int(captureSize.width)
+        config.height = Int(captureSize.height)
         
         // Apply configuration settings
         config.pixelFormat = configuration.pixelFormat
@@ -166,7 +172,7 @@ final class FullScreenCaptureService: ImageCaptureService {
         config.scalesToFit = configuration.scalesToFit
         config.preservesAspectRatio = configuration.preservesAspectRatio
         
-        Logger.d("FullScreenCaptureService: Stream config - \(config.width)x\(config.height)")
+        Logger.d("FullScreenCaptureService: Stream config - \(config.width)x\(config.height), mode: \(AppSettings.shared.capturePixelMode.rawValue), display: \(display.width)x\(display.height), screen: \(String(describing: screen?.frame.size))")
         
         return config
     }

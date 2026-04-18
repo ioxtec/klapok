@@ -12,147 +12,97 @@ import SwiftUI
 struct ImageSettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @StateObject private var profileManager = ProfileManager.shared
-    
+
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                
-                // Image Profiles Section
-                GroupBox("Image Profiles") {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Manage your image editing profiles. Profiles save all your editing settings for quick access.")
-                            .font(.subheadline)
-                            .foregroundColor(.secondary)
-                            .padding(.horizontal, 16)
-                            .padding(.top, 12)
-                        
-                        Divider()
-                            .background(Color.gray.opacity(0.08))
-                            .padding(.leading, 16)
-                        
-                        // Profile list
-                        ForEach(profileManager.imageProfiles.profiles, id: \.id) { profile in
-                            ProfileInfoView(profile: profile)
-                                .padding(.horizontal, 16)
-                            
-                            if profile.id != profileManager.imageProfiles.profiles.last?.id {
-                                Divider()
-                                    .background(Color.gray.opacity(0.08))
-                                    .padding(.leading, 16)
+            VStack(alignment: .leading, spacing: 22) {
+                SettingsSection(
+                    title: "Image profiles",
+                    subtitle: "Profiles are edited in the screenshot editor. Settings only manages the stored set.",
+                    systemImage: "square.stack"
+                ) {
+                    SettingsProfilesSummary(
+                        profiles: profileManager.imageProfiles.profiles,
+                        activeProfile: profileManager.imageProfiles.activeProfile,
+                        resetAction: profileManager.resetImageProfilesToDefaults,
+                        exportAction: { _ = profileManager.exportImageProfiles() },
+                        importAction: { _ = profileManager.importImageProfiles() }
+                    )
+                }
+
+                SettingsSection(
+                    title: "Capture",
+                    subtitle: "Real screenshot preferences used by the capture pipeline.",
+                    systemImage: "camera"
+                ) {
+                    SettingsPickerOption(
+                        title: "Screenshot size",
+                        description: "Real screen size writes physical pixels. Scaled screen size uses the macOS logical size.",
+                        selection: Binding(
+                            get: { viewModel.capturePixelMode.rawValue },
+                            set: {
+                                if let mode = CapturePixelMode(rawValue: $0) {
+                                    viewModel.capturePixelMode = mode
+                                }
                             }
+                        ),
+                        options: CapturePixelMode.allCases.map {
+                            ($0.rawValue, $0.displayName)
                         }
-                        
-                        // Profile management buttons
-                        HStack {
-                            Button("Reset to Defaults") {
-                                profileManager.resetImageProfilesToDefaults()
+                    )
+
+                    SettingsPickerOption(
+                        title: "Review position",
+                        description: "Where the quick preview appears after taking a screenshot.",
+                        isLast: true,
+                        selection: Binding(
+                            get: { viewModel.screenshotReviewPosition.rawValue },
+                            set: {
+                                if let position = ScreenshotReviewPosition(rawValue: $0) {
+                                    viewModel.screenshotReviewPosition = position
+                                }
                             }
-                            .buttonStyle(.bordered)
-                            
-                            Spacer()
-                            
-                            Button("Export Profiles") {
-                                _ = profileManager.exportImageProfiles()
-                            }
-                            .buttonStyle(.bordered)
-                            
-                            Button("Import Profiles") {
-                                _ = profileManager.importImageProfiles()
-                            }
-                            .buttonStyle(.bordered)
+                        ),
+                        options: ScreenshotReviewPosition.allCases.map {
+                            ($0.rawValue, $0.displayName)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                    }
+                    )
                 }
-                
-                // Image Quality Section
-                GroupBox(LocalizationKeys.imageQualityTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsPickerOption(
-                            title: LocalizationKeys.formatTitle.localized + " *",
-                            description: LocalizationKeys.formatDescription.localized,
-                            selection: .constant("PNG"),
-                            options: [("PNG", "PNG"), ("JPEG", "JPEG")]
-                        )
-                        
-                        SettingsSliderOption(
-                            title: LocalizationKeys.qualityTitle.localized + " *",
-                            description: LocalizationKeys.qualityDescription.localized,
-                            isLast: true,
-                            value: .constant(0.9),
-                            in: 0.1...1.0,
-                            step: 0.1,
-                            formatter: { "\(Int($0 * 100))%" }
-                        )
-                    }
+
+                SettingsSection(
+                    title: "Save",
+                    subtitle: "Where screenshots are written before or after editing.",
+                    systemImage: "folder"
+                ) {
+                    SettingsPathOption(
+                        title: "Screenshot folder",
+                        path: viewModel.saveDirectory.path,
+                        description: "Used by direct saves and exported screenshots.",
+                        action: viewModel.selectSaveDirectory
+                    )
+
+                    SettingsTextOption(
+                        title: "Filename template",
+                        description: "Preview: \(viewModel.previewFileName)",
+                        infoText: "Use {datetime} for date and time or {date} for the date.",
+                        isLast: true,
+                        text: $viewModel.fileNameTemplate,
+                        placeholder: "Screenshot-{datetime}"
+                    )
                 }
-                
-                // Editor Settings Section
-                GroupBox(LocalizationKeys.editorTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsPickerOption(
-                            title: LocalizationKeys.defaultGradientTitle.localized + " *",
-                            description: LocalizationKeys.defaultGradientDescription.localized,
-                            selection: .constant("Cool"),
-                            options: [("Cool", "Cool"), ("Warm", "Warm"), ("Violet", "Violet"), ("None", "None")]
-                        )
-                        
-                        SettingsSliderOption(
-                            title: LocalizationKeys.defaultPaddingTitle.localized + " *",
-                            description: LocalizationKeys.defaultPaddingDescription.localized,
-                            isLast: false,
-                            value: .constant(30.0),
-                            in: 10...100,
-                            step: 5,
-                            formatter: { "\(Int($0))px" }
-                        )
-                        
-                        SettingsPickerOption(
-                            title: "Domyślny aspect ratio *",
-                            description: "Proporcje tła dla nowych zrzutów",
-                            isLast: true,
-                            selection: .constant("Auto"),
-                            options: [("Auto", "Auto"), ("16:9", "16:9"), ("4:3", "4:3"), ("1:1", "1:1")]
-                        )
-                    }
-                }
-                
-                // Capture Behavior Section
-                GroupBox(LocalizationKeys.captureBehaviorTitle.localized) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        SettingsToggleOption(
-                            title: "Pokaż kursor myszy",
-                            description: "Dołącz kursor myszy do zrzutów",
-                            isOn: $viewModel.showMouseCursor
-                        )
-                        
-                        SettingsToggleOption(
-                            title: "Automatycznie otwórz edytor *",
-                            description: "Otwórz edytor po zrobieniu zrzutu",
-                            isOn: .constant(true)
-                        )
-                        
-                        SettingsToggleOption(
-                            title: "Kopiuj do schowka po zapisie *",
-                            description: "Automatycznie kopiuj zrzut do schowka",
-                            isOn: .constant(false)
-                        )
-                        
-                        SettingsToggleOption(
-                            title: "Pokaż powiadomienie po zapisie *",
-                            description: "Wyświetl powiadomienie po zapisaniu zrzutu",
-                            isLast: true,
-                            isOn: .constant(true)
-                        )
-                    }
-                }
+
+                SettingsNote(
+                    title: "Editor defaults are handled in profiles",
+                    message: "Format, quality, padding, gradients, clipboard behavior, and notifications were previously shown here as mock controls. They are hidden until they are wired to real profile or export settings.",
+                    systemImage: "wrench.and.screwdriver"
+                )
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 16)
-            .padding(.bottom, 24) // Add bottom spacing
+            .padding(.horizontal, 28)
+            .padding(.top, 24)
+            .padding(.bottom, 28)
+            .frame(maxWidth: 760, alignment: .leading)
+            .frame(maxWidth: .infinity)
         }
-        .frame(minWidth: 600, maxWidth: .infinity, minHeight: 400, maxHeight: .infinity)
     }
 }
 

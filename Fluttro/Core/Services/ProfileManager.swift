@@ -181,8 +181,19 @@ final class ProfileManager: ObservableObject {
             do {
                 let data = try Data(contentsOf: videoProfilesURL)
                 let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: data)
-                self.videoProfiles = collection
-                print("ProfileManager: Loaded \(collection.profiles.count) video profiles")
+                let normalizedProfiles = normalizeBuiltInVideoProfiles(collection)
+                self.videoProfiles = normalizedProfiles.collection
+
+                if normalizedProfiles.didUpdateProfiles {
+                    saveVideoProfiles()
+                }
+
+                if normalizedProfiles.didUpdateActiveProfileResolution,
+                   AppSettings.shared.videoResolution == "1080p" {
+                    AppSettings.shared.videoResolution = "Source"
+                }
+
+                print("ProfileManager: Loaded \(normalizedProfiles.collection.profiles.count) video profiles")
             } catch {
                 print("ProfileManager: Failed to load video profiles: \(error)")
                 resetVideoProfilesToDefaults()
@@ -191,6 +202,32 @@ final class ProfileManager: ObservableObject {
             print("ProfileManager: No video profiles file found, creating defaults")
             resetVideoProfilesToDefaults()
         }
+    }
+
+    private func normalizeBuiltInVideoProfiles(
+        _ collection: ProfileCollection<VideoEditingProfile>
+    ) -> (collection: ProfileCollection<VideoEditingProfile>, didUpdateProfiles: Bool, didUpdateActiveProfileResolution: Bool) {
+        var normalized = collection
+        var didUpdateProfiles = false
+        var didUpdateActiveProfileResolution = false
+
+        for index in normalized.profiles.indices {
+            guard normalized.profiles[index].isDefault,
+                  normalized.profiles[index].name == "High Quality",
+                  normalized.profiles[index].resolution == "1080p" else {
+                continue
+            }
+
+            normalized.profiles[index].resolution = "Source"
+            normalized.profiles[index].modifiedAt = Date()
+            didUpdateProfiles = true
+
+            if normalized.activeProfileId == normalized.profiles[index].id {
+                didUpdateActiveProfileResolution = true
+            }
+        }
+
+        return (normalized, didUpdateProfiles, didUpdateActiveProfileResolution)
     }
     
     private func saveImageProfiles() {

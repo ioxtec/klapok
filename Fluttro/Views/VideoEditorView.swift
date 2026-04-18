@@ -137,15 +137,19 @@ private struct VideoEditorSidebarView: View {
     private var sidebarContent: some View {
         ScrollView(.vertical, showsIndicators: true) {
             VStack(alignment: .leading, spacing: 0) {
-                VideoSidebarSection(
+                SidebarDisclosureSection(
+                    id: "video.profiles",
                     title: "Profiles",
+                    systemImage: "slider.horizontal.3",
                     subtitle: "Presets for export format, quality, size, and audio."
                 ) {
                     profileControl
                 }
 
-                VideoSidebarSection(
+                SidebarDisclosureSection(
+                    id: "video.source",
                     title: "Video",
+                    systemImage: "film",
                     subtitle: "Source file, duration, and capture details."
                 ) {
                     if let video {
@@ -165,8 +169,10 @@ private struct VideoEditorSidebarView: View {
                     }
                 }
 
-                VideoSidebarSection(
+                SidebarDisclosureSection(
+                    id: "video.export",
                     title: "Export",
+                    systemImage: "square.and.arrow.up",
                     subtitle: "Trimmed video or GIF output settings."
                 ) {
                     ExportTypeSelector(exportManager: exportManager)
@@ -174,13 +180,16 @@ private struct VideoEditorSidebarView: View {
                     if exportManager.settings.exportType == .video {
                         VideoExportSettingsView(exportManager: exportManager)
                     } else {
-                        GIFExportSettingsView(exportManager: exportManager)
+                        GIFExportSettingsView(
+                            exportManager: exportManager,
+                            sourceSize: video?.size
+                        )
                     }
                 }
             }
             .padding(.leading, 16)
             .padding(.trailing, 24)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
         }
         .scrollIndicators(.visible)
         .frame(width: 300)
@@ -282,45 +291,6 @@ private struct RoundedSidebarHost<Content: View>: NSViewRepresentable {
         view.layer?.masksToBounds = true
         view.needsLayout = true
         view.needsDisplay = true
-    }
-}
-
-private struct VideoSidebarSection<Content: View>: View {
-    let title: String
-    let subtitle: String
-    let content: Content
-
-    init(
-        title: String,
-        subtitle: String,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.subtitle = subtitle
-        self.content = content()
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.headline)
-
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: 12) {
-                content
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 14)
-        .overlay(alignment: .bottom) {
-            Divider()
-        }
     }
 }
 
@@ -443,18 +413,20 @@ struct VideoPlayerView: NSViewRepresentable {
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
         print("🔍 VideoPlayerView: updateNSView called for URL: \(videoURL)")
 
-        guard context.coordinator.videoURL != videoURL || context.coordinator.player == nil else {
-            return
+        if context.coordinator.videoURL != videoURL || context.coordinator.player == nil {
+            let player = AVPlayer(url: videoURL)
+            print("🔍 VideoPlayerView: AVPlayer created")
+            context.coordinator.player = player
+            context.coordinator.videoURL = videoURL
         }
 
-        let player = AVPlayer(url: videoURL)
-        print("🔍 VideoPlayerView: AVPlayer created")
-        context.coordinator.player = player
-        context.coordinator.videoURL = videoURL
-        nsView.player = player
-        print("🔍 VideoPlayerView: Player set on AVPlayerView")
-        
-        // Pass player to view model for time tracking
+        guard let player = context.coordinator.player else { return }
+
+        if nsView.player !== player {
+            nsView.player = player
+            print("🔍 VideoPlayerView: Player set on AVPlayerView")
+        }
+
         viewModel.setPlayer(player)
     }
 }
@@ -518,6 +490,7 @@ class VideoEditorViewModel: ObservableObject {
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var thumbnailRequestID = UUID()
+    private var timelineThumbnailURL: URL?
     
     init(video: VideoRecording? = nil) {
         self.video = video
@@ -533,6 +506,7 @@ class VideoEditorViewModel: ObservableObject {
         self.currentTime = 0
         self.timelineThumbnails = []
         self.isLoadingTimelineThumbnails = false
+        self.timelineThumbnailURL = nil
         self.timelineCutSelection = nil
         self.cutSegments = []
     }
@@ -634,7 +608,7 @@ class VideoEditorViewModel: ObservableObject {
         guard let video, width > 0 else { return }
 
         let targetCount = max(6, min(36, Int(width / 72)))
-        if timelineThumbnails.count == targetCount {
+        if timelineThumbnailURL == video.url, timelineThumbnails.count == targetCount {
             return
         }
 
@@ -648,18 +622,20 @@ class VideoEditorViewModel: ObservableObject {
         }
 
         let asset = AVURLAsset(url: video.url)
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.maximumSize = CGSize(width: 144, height: 82)
-        generator.requestedTimeToleranceBefore = CMTime(seconds: 0.5, preferredTimescale: 600)
-        generator.requestedTimeToleranceAfter = CMTime(seconds: 0.5, preferredTimescale: 600)
-
-        var thumbnails: [TimelineThumbnail] = []
         let assetDuration = (try? await asset.load(.duration).seconds) ?? video.duration
         let duration = assetDuration.isFinite && assetDuration > 0 ? assetDuration : video.duration
         guard duration > 0 else { return }
 
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.maximumSize = CGSize(width: 144, height: 82)
+
         let step = duration / Double(targetCount)
+        let tolerance = CMTime(seconds: max(0.25, step), preferredTimescale: 600)
+        generator.requestedTimeToleranceBefore = tolerance
+        generator.requestedTimeToleranceAfter = tolerance
+
+        var thumbnails: [TimelineThumbnail] = []
 
         for index in 0..<targetCount {
             guard thumbnailRequestID == requestID else { return }
@@ -689,6 +665,7 @@ class VideoEditorViewModel: ObservableObject {
 
         guard thumbnailRequestID == requestID else { return }
         timelineThumbnails = thumbnails
+        timelineThumbnailURL = video.url
     }
 
     private func fallbackTimelineThumbnails(
@@ -711,6 +688,22 @@ class VideoEditorViewModel: ObservableObject {
                 break
             } catch {
                 print("⚠️ Fallback timeline thumbnail failed at \(seconds)s: \(error)")
+            }
+        }
+
+        if fallbackImage == nil {
+            let times = fallbackTimes.map {
+                CMTime(seconds: max(0, min(duration, $0)), preferredTimescale: 600)
+            }
+
+            for await result in generator.images(for: times) {
+                if case .success(_, let cgImage, _) = result {
+                    fallbackImage = NSImage(
+                        cgImage: cgImage,
+                        size: CGSize(width: cgImage.width, height: cgImage.height)
+                    )
+                    break
+                }
             }
         }
 
@@ -1536,7 +1529,7 @@ struct TrimHandle: View {
                 }
         }
         .frame(width: 18, height: height)
-        .position(x: width * position, y: 32)
+        .position(x: width * position, y: (height / 2) + 5)
         .contentShape(Rectangle())
     }
 }

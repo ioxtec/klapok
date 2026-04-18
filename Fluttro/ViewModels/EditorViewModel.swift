@@ -46,7 +46,7 @@ import UniformTypeIdentifiers
 
         @MainActor
         func show(image: NSImage) {
-            Logger.s("EditorViewModel: Showing editor with image: \(image.size)")
+            Logger.s("EditorViewModel: Showing editor with image size: \(image.size), pixel size: \(image.pixelSize)")
             annotationManager.resetForNewImage()
             self.image = image
             self.isPresented = true
@@ -186,6 +186,18 @@ import UniformTypeIdentifiers
             let y = (backgroundSize.height - imageSize.height) / 2
             return CGPoint(x: x, y: y)
         }
+
+        /// Calculates the pixel size that would be written by the current export settings.
+        func calculateOutputSize(for image: NSImage) -> CGSize {
+            let sourceSize = image.pixelSize
+
+            guard backgroundManager.collections.backgroundType != .none else {
+                return roundedPixelSize(sourceSize)
+            }
+
+            let exportSize = calculateExportSize(for: sourceSize)
+            return roundedPixelSize(calculateBackgroundSize(for: sourceSize, in: exportSize))
+        }
         
         /// Calculates appropriate export size based on aspect ratio
         private func calculateExportSize(for imageSize: CGSize) -> CGSize {
@@ -216,6 +228,13 @@ import UniformTypeIdentifiers
                 return CGSize(width: baseSize, height: baseSize)
             }
         }
+
+        private func roundedPixelSize(_ size: CGSize) -> CGSize {
+            CGSize(
+                width: max(1, size.width.rounded()),
+                height: max(1, size.height.rounded())
+            )
+        }
         
         /// Renders the complete composition (screenshot + background) as NSImage
         private func renderCompositeImage() -> NSImage {
@@ -224,8 +243,8 @@ import UniformTypeIdentifiers
                 return NSImage(size: CGSize(width: 100, height: 100)) // Return a small placeholder image instead of empty
             }
             
-            let imageSize = originalImage.size
-            print("EditorViewModel: Rendering composite image - original size: \(imageSize)")
+            let imageSize = originalImage.pixelSize
+            print("EditorViewModel: Rendering composite image - original size: \(originalImage.size), pixel size: \(imageSize)")
             print("EditorViewModel: Settings - background type: \(backgroundManager.collections.backgroundType), aspect ratio: \(selectedAspectRatio), padding: \(backgroundPadding)")
             
             // If background is disabled, return original image

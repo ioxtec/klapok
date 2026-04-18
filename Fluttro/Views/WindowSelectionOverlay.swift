@@ -43,6 +43,7 @@ import SwiftUI
     // MARK: - Window Selection View
 
     struct WindowSelectionOverlayView: View {
+        let screenFrame: CGRect
         let onSelection: (SCWindow?) -> Void
         let onCancel: () -> Void
         @State private var availableWindows: [WindowSelectionItem] = []
@@ -62,14 +63,24 @@ import SwiftUI
 
                 // Selected window (red frame)
                 if let selectedWindow = selectedWindow {
-                    WindowFrameHighlight(item: selectedWindow, color: .red, label: "SELECTED")
+                    WindowFrameHighlight(
+                        item: selectedWindow,
+                        screenFrame: screenFrame,
+                        color: .red,
+                        label: "SELECTED"
+                    )
                 }
 
                 // Hovered window (blue frame) - only if different from selected
                 if let hoveredWindow = hoveredWindow,
                     hoveredWindow.id != selectedWindow?.id
                 {
-                    WindowFrameHighlight(item: hoveredWindow, color: .blue, label: nil)
+                    WindowFrameHighlight(
+                        item: hoveredWindow,
+                        screenFrame: screenFrame,
+                        color: .blue,
+                        label: nil
+                    )
                 }
 
                 // Instructions
@@ -288,11 +299,6 @@ import SwiftUI
         }
 
         private func convertToScreenCoordinates(_ point: CGPoint) -> CGPoint {
-            guard let screen = NSScreen.main else {
-                return point
-            }
-
-            let screenFrame = screen.frame
             let screenHeight = screenFrame.height
 
             return CGPoint(
@@ -306,19 +312,21 @@ import SwiftUI
 
     private struct WindowFrameHighlight: View {
         let item: WindowSelectionItem
+        let screenFrame: CGRect
         let color: Color
         let label: String?
 
         var body: some View {
             let windowFrame = item.frame
-            let screenFrame = NSScreen.main?.frame ?? .zero
+            let localFrame = windowFrame.intersection(screenFrame)
+            let frameToDraw = localFrame.isNull ? windowFrame : localFrame
 
             // Convert window coordinates to SwiftUI coordinates
             let swiftUIFrame = CGRect(
-                x: windowFrame.minX,
-                y: screenFrame.height - windowFrame.maxY,
-                width: windowFrame.width,
-                height: windowFrame.height
+                x: frameToDraw.minX - screenFrame.minX,
+                y: screenFrame.maxY - frameToDraw.maxY,
+                width: frameToDraw.width,
+                height: frameToDraw.height
             )
 
             RoundedRectangle(cornerRadius: 8)
@@ -357,12 +365,14 @@ import SwiftUI
                 )
                 .frame(width: swiftUIFrame.width, height: swiftUIFrame.height)
                 .position(x: swiftUIFrame.midX, y: swiftUIFrame.midY)
+                .opacity(swiftUIFrame.isEmpty ? 0 : 1)
                 .allowsHitTesting(false)  // Don't interfere with mouse events
         }
     }
 
     #Preview {
         WindowSelectionOverlayView(
+            screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
             onSelection: { window in
                 print("Selected window: \(String(describing: window))")
             },

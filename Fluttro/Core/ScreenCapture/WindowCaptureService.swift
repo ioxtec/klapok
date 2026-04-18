@@ -152,9 +152,13 @@ final class WindowCaptureService: ImageCaptureService {
     ) -> SCStreamConfiguration {
         let config = SCStreamConfiguration()
         
-        // Set resolution to match window size
-        config.width = Int(window.frame.width)
-        config.height = Int(window.frame.height)
+        // Set resolution to the window's physical pixel size, not its logical point size.
+        let captureSize = ScreenPixelGeometry.captureSize(
+            for: window,
+            mode: AppSettings.shared.capturePixelMode
+        )
+        config.width = Int(captureSize.width)
+        config.height = Int(captureSize.height)
         
         // Apply configuration settings
         config.pixelFormat = configuration.pixelFormat

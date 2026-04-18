@@ -162,6 +162,7 @@ struct GIFExportSettings: Codable {
     var dithering: GIFDithering
     var maxWidth: Int
     var maxHeight: Int
+    var maintainAspectRatio: Bool
     var quality: Double // 0.0 - 1.0
     var optimizeForWeb: Bool
     var includeMetadata: Bool
@@ -175,6 +176,7 @@ struct GIFExportSettings: Codable {
         dithering: GIFDithering = .floydSteinberg,
         maxWidth: Int = 800,
         maxHeight: Int = 600,
+        maintainAspectRatio: Bool = true,
         quality: Double = 0.8,
         optimizeForWeb: Bool = true,
         includeMetadata: Bool = false
@@ -187,9 +189,41 @@ struct GIFExportSettings: Codable {
         self.dithering = dithering
         self.maxWidth = maxWidth
         self.maxHeight = maxHeight
+        self.maintainAspectRatio = maintainAspectRatio
         self.quality = quality
         self.optimizeForWeb = optimizeForWeb
         self.includeMetadata = includeMetadata
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case colorDepth
+        case frameFormat
+        case frameRate
+        case loopMode
+        case loopCount
+        case dithering
+        case maxWidth
+        case maxHeight
+        case maintainAspectRatio
+        case quality
+        case optimizeForWeb
+        case includeMetadata
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        colorDepth = try container.decodeIfPresent(GIFColorDepth.self, forKey: .colorDepth) ?? .colors256
+        frameFormat = try container.decodeIfPresent(GIFFrameFormat.self, forKey: .frameFormat) ?? .optimized
+        frameRate = try container.decodeIfPresent(Int.self, forKey: .frameRate) ?? 15
+        loopMode = try container.decodeIfPresent(GIFLoopMode.self, forKey: .loopMode) ?? .infinite
+        loopCount = try container.decodeIfPresent(Int.self, forKey: .loopCount) ?? 0
+        dithering = try container.decodeIfPresent(GIFDithering.self, forKey: .dithering) ?? .floydSteinberg
+        maxWidth = try container.decodeIfPresent(Int.self, forKey: .maxWidth) ?? 800
+        maxHeight = try container.decodeIfPresent(Int.self, forKey: .maxHeight) ?? 600
+        maintainAspectRatio = try container.decodeIfPresent(Bool.self, forKey: .maintainAspectRatio) ?? true
+        quality = try container.decodeIfPresent(Double.self, forKey: .quality) ?? 0.8
+        optimizeForWeb = try container.decodeIfPresent(Bool.self, forKey: .optimizeForWeb) ?? true
+        includeMetadata = try container.decodeIfPresent(Bool.self, forKey: .includeMetadata) ?? false
     }
 }
 
@@ -206,5 +240,4 @@ struct ExportSettings: Codable {
         self.gifSettings = GIFExportSettings()
     }
 }
-
 

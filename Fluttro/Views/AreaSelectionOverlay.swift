@@ -32,12 +32,27 @@ import SwiftUI
         case idle
     }
 
+    // MARK: - Shared Selection State
+
+    final class AreaSelectionCoordinator: ObservableObject {
+        @Published var activeScreenID: CGDirectDisplayID?
+        @Published var currentSelection: NSRect = .zero
+        @Published var isRecording = false
+
+        func reset() {
+            activeScreenID = nil
+            currentSelection = .zero
+            isRecording = false
+        }
+    }
+
     // MARK: - Area Selection View
 
     struct AreaSelectionView: View {
+        let screenID: CGDirectDisplayID
+        let screenFrame: CGRect
         let onSelection: (NSRect?) -> Void
-        @Binding var currentSelection: NSRect
-        @Binding var isRecording: Bool
+        @ObservedObject var coordinator: AreaSelectionCoordinator
 
         @State private var startPoint: CGPoint = .zero
         @State private var currentPoint: CGPoint = .zero
@@ -61,8 +76,7 @@ import SwiftUI
         }
         
         private var screenBounds: CGRect {
-            guard let screen = NSScreen.main else { return .zero }
-            return CGRect(origin: .zero, size: screen.frame.size)
+            CGRect(origin: .zero, size: screenFrame.size)
         }
 
         var body: some View {
@@ -101,7 +115,7 @@ import SwiftUI
                 .padding(.top, 50)
 
                 // Selection rectangle with dashed border (hidden during recording)
-                if !selectionRect.isEmpty && !isRecording {
+                if !selectionRect.isEmpty && !coordinator.isRecording {
                     SelectionRectangleView(
                         rect: selectionRect,
                         onModeChange: { newMode in
@@ -118,12 +132,12 @@ import SwiftUI
                     SelectionDimensionsView(
                         rect: selectionRect,
                         isEditing: isEditingSelection,
-                        showActions: !isRecording,
+                        showActions: !coordinator.isRecording,
                         onCapture: captureSelection,
                         onEdit: startSelectionEdit
                     )
 
-                    if isEditingSelection && !isRecording {
+                    if isEditingSelection && !coordinator.isRecording {
                         SelectionCoordinateEditorView(
                             x: $draftX,
                             y: $draftY,
@@ -138,7 +152,7 @@ import SwiftUI
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
-                if !isRecording && !isEditingSelection {
+                if !coordinator.isRecording && !isEditingSelection {
                     switch phase {
                     case .active(let location):
                         updateCursor(at: location)
@@ -147,7 +161,11 @@ import SwiftUI
                     }
                 }
             }
-            .gesture((isRecording || isEditingSelection) ? nil : mainDragGesture)
+            .gesture((coordinator.isRecording || isEditingSelection) ? nil : mainDragGesture)
+            .onChange(of: coordinator.activeScreenID) { _, activeScreenID in
+                guard activeScreenID != nil, activeScreenID != screenID else { return }
+                clearLocalSelection()
+            }
             .onKeyPress(.escape) {
                 cancelSelection()
                 return .handled
@@ -192,6 +210,7 @@ import SwiftUI
         private func handleDragChanged(_ value: DragGesture.Value) {
             // On first drag, determine what we're doing based on start location
             if case .idle = mode {
+                activateCurrentScreen()
                 let startLocation = value.startLocation
 
                 if selectionRect.isEmpty {
@@ -237,13 +256,13 @@ import SwiftUI
                 let constrainedRect = constrainRectToScreen(proposedRect)
                 selectionRect = constrainedRect
                 // Update currentSelection immediately during move
-                currentSelection = convertToScreenCoordinates(constrainedRect)
+                coordinator.currentSelection = convertToScreenCoordinates(constrainedRect)
                 updateSelectionDraft(from: constrainedRect)
 
             case .resizing(let handle):
                 resizeSelection(handle: handle, to: value.location)
                 // Update currentSelection immediately during resize
-                currentSelection = convertToScreenCoordinates(selectionRect)
+                coordinator.currentSelection = convertToScreenCoordinates(selectionRect)
 
             case .idle:
                 break
@@ -255,7 +274,7 @@ import SwiftUI
                 if selectionRect.width > 10 && selectionRect.height > 10 {
                     mode = .idle
                     // Update currentSelection with final coordinates
-                    currentSelection = convertToScreenCoordinates(selectionRect)
+                    coordinator.currentSelection = convertToScreenCoordinates(selectionRect)
                     updateSelectionDraft(from: selectionRect)
                 } else {
                     selectionRect = .zero
@@ -264,7 +283,7 @@ import SwiftUI
             } else {
                 // For moving and resizing, ensure final coordinates are set
                 if !selectionRect.isEmpty {
-                    currentSelection = convertToScreenCoordinates(selectionRect)
+                    coordinator.currentSelection = convertToScreenCoordinates(selectionRect)
                     updateSelectionDraft(from: selectionRect)
                 }
                 mode = .idle
@@ -303,9 +322,27 @@ import SwiftUI
 
             // Update currentSelection during creation as well
             if selectionRect.width > 0 && selectionRect.height > 0 {
-                currentSelection = convertToScreenCoordinates(selectionRect)
+                coordinator.currentSelection = convertToScreenCoordinates(selectionRect)
                 updateSelectionDraft(from: selectionRect)
             }
+        }
+
+        private func activateCurrentScreen() {
+            guard coordinator.activeScreenID != screenID else { return }
+
+            coordinator.activeScreenID = screenID
+            coordinator.currentSelection = .zero
+        }
+
+        private func clearLocalSelection() {
+            selectionRect = .zero
+            startPoint = .zero
+            currentPoint = .zero
+            moveAnchorRect = .zero
+            moveStartPoint = .zero
+            mode = .idle
+            isEditingSelection = false
+            updateSelectionDraft(from: .zero)
         }
 
         private func resizeSelection(handle: SelectionResizeHandle, to point: CGPoint) {
@@ -674,9 +711,6 @@ import SwiftUI
         }
 
         private func convertToScreenCoordinates(_ rect: CGRect) -> NSRect {
-            guard let screen = NSScreen.main else { return NSRect.zero }
-
-            let screenFrame = screen.frame
             let screenHeight = screenFrame.height
 
             return NSRect(
@@ -720,7 +754,8 @@ import SwiftUI
 
             let proposedRect = CGRect(x: x, y: y, width: width, height: height)
             selectionRect = constrainRectToScreen(proposedRect)
-            currentSelection = convertToScreenCoordinates(selectionRect)
+            activateCurrentScreen()
+            coordinator.currentSelection = convertToScreenCoordinates(selectionRect)
             updateSelectionDraft(from: selectionRect)
             isEditingSelection = false
         }
@@ -980,11 +1015,12 @@ import SwiftUI
 
     #Preview {
         AreaSelectionView(
+            screenID: NSScreen.main.map(ScreenPixelGeometry.displayID(for:)) ?? CGMainDisplayID(),
+            screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
             onSelection: { rect in
                 print("Selected: \(String(describing: rect))")
             },
-            currentSelection: .constant(.zero),
-            isRecording: .constant(false)
+            coordinator: AreaSelectionCoordinator()
         )
     }
 

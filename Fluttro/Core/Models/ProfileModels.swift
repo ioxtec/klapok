@@ -197,7 +197,7 @@ struct VideoEditingProfile: Profile {
             VideoEditingProfile(
                 name: "High Quality",
                 isDefault: true,
-                resolution: "1080p",
+                resolution: "Source",
                 frameRate: 60,
                 bitrate: 10000000, // 10 Mbps
                 codec: "H.264",

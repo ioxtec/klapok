@@ -13,7 +13,6 @@ enum AppLanguage: String, CaseIterable {
     case system = "system"
     case english = "en"
     case polish = "pl"
-    case german = "de"
     
     var displayName: String {
         switch self {
@@ -23,8 +22,6 @@ enum AppLanguage: String, CaseIterable {
             return "English"
         case .polish:
             return "Polski"
-        case .german:
-            return "Deutsch"
         }
     }
     
@@ -36,8 +33,6 @@ enum AppLanguage: String, CaseIterable {
             return Locale(identifier: "en")
         case .polish:
             return Locale(identifier: "pl")
-        case .german:
-            return Locale(identifier: "de")
         }
     }
 }
@@ -145,4 +140,3 @@ extension String {
         return NSLocalizedString(self, comment: "")
     }
 }
-

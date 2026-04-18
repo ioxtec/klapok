@@ -101,21 +101,17 @@ final class AreaCaptureService: ImageCaptureService {
             throw CaptureError.permissionDenied
         }
         
-        // Find main display
-        guard let mainNSScreen = NSScreen.main else {
+        guard let screen = ScreenPixelGeometry.screen(containing: area) else {
             throw CaptureError.noDisplays
         }
-        
-        // Match SCDisplay to NSScreen by displayID
-        let displays = content.displays
-        guard let display = displays.first(where: { $0.displayID == mainNSScreen.displayID }) ?? displays.first else {
+        guard let display = CaptureDisplayResolver.scDisplay(for: ScreenPixelGeometry.displayID(for: screen), in: content) else {
             throw CaptureError.noDisplays
         }
-        
+
         Logger.d("AreaCaptureService: Using display: \(display.displayID)")
         
         // Convert screen coordinates to display coordinates
-        let displayRect = convertScreenRectToDisplayRect(area, screen: mainNSScreen)
+        let displayRect = convertScreenRectToDisplayRect(area, screen: screen)
         Logger.d("AreaCaptureService: Converted displayRect: \(displayRect)")
         
         // Create content filter for full display
@@ -129,7 +125,7 @@ final class AreaCaptureService: ImageCaptureService {
         let config = createStreamConfiguration(
             for: area,
             display: display,
-            screen: mainNSScreen,
+            screen: screen,
             configuration: configuration
         )
         
@@ -171,8 +167,8 @@ final class AreaCaptureService: ImageCaptureService {
     private func convertScreenRectToDisplayRect(_ screenRect: NSRect, screen: NSScreen) -> NSRect {
         let screenFrame = screen.frame
         return NSRect(
-            x: screenRect.minX,
-            y: screenFrame.height - screenRect.maxY,  // Flip Y coordinate
+            x: screenRect.minX - screenFrame.minX,
+            y: screenFrame.maxY - screenRect.maxY,
             width: screenRect.width,
             height: screenRect.height
         )
@@ -196,10 +192,14 @@ final class AreaCaptureService: ImageCaptureService {
         // Convert screen coordinates to display coordinates
         let displayRect = convertScreenRectToDisplayRect(area, screen: screen)
         
-        // Use physical resolution for high quality capture on Retina displays
-        let backingScaleFactor = screen.backingScaleFactor
-        config.width = Int(area.width * backingScaleFactor)
-        config.height = Int(area.height * backingScaleFactor)
+        // Use physical pixels for the output image while keeping sourceRect in display points.
+        let captureSize = ScreenPixelGeometry.captureSize(
+            for: area,
+            on: screen,
+            mode: AppSettings.shared.capturePixelMode
+        )
+        config.width = Int(captureSize.width)
+        config.height = Int(captureSize.height)
         
         // Set source rectangle in logical coordinates
         config.sourceRect = CGRect(
@@ -273,14 +273,8 @@ final class AreaCaptureService: ImageCaptureService {
         guard area.width > 10 && area.height > 10 else {
             return false
         }
-        
-        guard let screen = NSScreen.main else {
-            return false
-        }
-        
-        // Check if area is within screen bounds
-        let screenFrame = screen.frame
-        return area.intersects(screenFrame)
+
+        return ScreenPixelGeometry.screen(containing: area) != nil
     }
 }
 

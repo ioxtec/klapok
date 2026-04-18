@@ -31,6 +31,29 @@ struct LocalizationKeys {
     
     // MARK: - App
     static let appName = "app_name"
+    static let takeScreenshotMenu = "take_screenshot_menu"
+    static let recordScreenMenu = "record_screen_menu"
+    static let settingsMenu = "settings_menu"
+    static let quitMenu = "quit_menu"
+    static let statusItemTooltip = "status_item_tooltip"
+
+    // MARK: - Capture
+    static let captureModeImage = "capture_mode_image"
+    static let captureModeVideo = "capture_mode_video"
+    static let captureTypeFullScreen = "capture_type_full_screen"
+    static let captureTypeArea = "capture_type_area"
+    static let captureTypeWindow = "capture_type_window"
+    static let defaultCaptureTargetTitle = "default_capture_target_title"
+    static let defaultCaptureTargetDescription = "default_capture_target_description"
+    static let captureModeToggleHelp = "capture_mode_toggle_help"
+    static let closePanelHelp = "close_panel_help"
+    static let recordFullScreenHelp = "record_full_screen_help"
+    static let recordAreaHelp = "record_area_help"
+    static let recordWindowHelp = "record_window_help"
+    static let stopRecordingHelp = "stop_recording_help"
+    static let fullScreenCaptureHelp = "full_screen_capture_help"
+    static let areaCaptureHelp = "area_capture_help"
+    static let windowCaptureHelp = "window_capture_help"
     
     // MARK: - Language
     static let languageTitle = "language_title"
@@ -38,7 +61,6 @@ struct LocalizationKeys {
     static let languageOptionSystem = "language_option_system"
     static let languageOptionEnglish = "language_option_english"
     static let languageOptionPolish = "language_option_polish"
-    static let languageOptionGerman = "language_option_german"
     
     // MARK: - Image Settings
     static let imageQualityTitle = "image_quality_title"
@@ -107,6 +129,18 @@ struct LocalizationKeys {
     static let filenameTemplateOptionTitle = "filename_template_option_title"
     
     static let appBehaviorTitle = "app_behavior_title"
+    static let appBehaviorDescription = "app_behavior_description"
+    static let capturePixelModeTitle = "capture_pixel_mode_title"
+    static let capturePixelModeDescription = "capture_pixel_mode_description"
+    static let capturePixelModeReal = "capture_pixel_mode_real"
+    static let capturePixelModeScaled = "capture_pixel_mode_scaled"
+    static let reviewPositionTitle = "review_position_title"
+    static let reviewPositionDescription = "review_position_description"
+    static let reviewPositionBottomRight = "review_position_bottom_right"
+    static let reviewPositionBottomLeft = "review_position_bottom_left"
+    static let reviewPositionTopRight = "review_position_top_right"
+    static let reviewPositionTopLeft = "review_position_top_left"
+    static let reviewPositionBottomCenter = "review_position_bottom_center"
     
     static let showInDockTitle = "show_in_dock_title"
     static let showInDockDescription = "show_in_dock_description"

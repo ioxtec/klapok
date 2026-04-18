@@ -35,6 +35,18 @@ import Foundation
             }
         }
 
+        @Published var capturePixelMode: CapturePixelMode {
+            didSet {
+                appSettings.capturePixelMode = capturePixelMode
+            }
+        }
+
+        @Published var defaultCaptureType: CaptureType {
+            didSet {
+                appSettings.defaultCaptureType = defaultCaptureType
+            }
+        }
+
         @Published var hotkeyModifiers: NSEvent.ModifierFlags {
             didSet {
                 appSettings.hotkeyModifiers = hotkeyModifiers
@@ -59,9 +71,6 @@ import Foundation
             }
         }
 
-        // Legacy settings
-        @Published var showMouseCursor: Bool = false
-
         // MARK: - Computed Properties
 
         var hotkeyDisplayString: String {
@@ -79,6 +88,8 @@ import Foundation
             self.saveDirectory = appSettings.saveDirectory
             self.fileNameTemplate = appSettings.fileNameTemplate
             self.screenshotReviewPosition = appSettings.screenshotReviewPosition
+            self.capturePixelMode = appSettings.capturePixelMode
+            self.defaultCaptureType = appSettings.defaultCaptureType
             self.hotkeyModifiers = appSettings.hotkeyModifiers
             self.hotkeyKeyCode = appSettings.hotkeyKeyCode
             self.showInDock = appSettings.showInDock
@@ -108,6 +119,8 @@ import Foundation
             saveDirectory = appSettings.saveDirectory
             fileNameTemplate = appSettings.fileNameTemplate
             screenshotReviewPosition = appSettings.screenshotReviewPosition
+            capturePixelMode = appSettings.capturePixelMode
+            defaultCaptureType = appSettings.defaultCaptureType
             hotkeyModifiers = appSettings.hotkeyModifiers
             hotkeyKeyCode = appSettings.hotkeyKeyCode
             showInDock = appSettings.showInDock

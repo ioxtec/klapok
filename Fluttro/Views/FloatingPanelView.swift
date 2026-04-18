@@ -22,41 +22,55 @@ import SwiftUI
         }
 
         var body: some View {
-            ZStack {
-                // Main controls - centered
-                HStack(spacing: 20) {
+            ZStack(alignment: .bottom) {
+                HStack(spacing: 12) {
                     CaptureModeToggle(viewModel: viewModel)
+
+                    Divider()
+                        .frame(height: 34)
+                        .opacity(0.35)
+
                     CaptureTypeSelector(viewModel: viewModel)
                     CaptureButton(viewModel: viewModel)
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                
-                // Overlay controls
-                VStack(spacing: 0) {
-                    // Top controls
-                    HStack {
-                        // Recording indicator (top-left)
-                        if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
-                            RecordingIndicator(viewModel: viewModel)
-                        }
-                        
-                        Spacer()
-                        
-                        // Panel controls (top-right)
-                        PanelControlButtons(viewModel: viewModel)
+
+                    if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
+                        RecordingIndicator(viewModel: viewModel)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    
-                    Spacer()
+
+                    PanelControlButtons(viewModel: viewModel)
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .background {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .stroke(.white.opacity(0.22), lineWidth: 0.8)
+                        )
+                        .shadow(color: .black.opacity(0.18), radius: 10, x: 0, y: 5)
+                }
+
+                if viewModel.isDisplayPickerPresented {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            viewModel.cancelDisplayPicker()
+                        }
+                        .zIndex(1)
+
+                    DisplayPickerView(viewModel: viewModel)
+                        .offset(y: -86)
+                        .transition(.scale(scale: 0.94, anchor: .bottom).combined(with: .opacity))
+                        .zIndex(2)
                 }
             }
-            .frame(minHeight: 80)
+            .padding(8)
+            .frame(minWidth: 450, minHeight: viewModel.isDisplayPickerPresented ? 240 : 74)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+            .animation(.easeInOut(duration: 0.18), value: viewModel.isDisplayPickerPresented)
             .onKeyPress(.space) {
-                Task {
-                    await viewModel.captureScreenshot()
-                }
+                viewModel.performPrimaryCaptureAction()
                 return .handled
             }
             .onKeyPress("1") {
@@ -77,6 +91,72 @@ import SwiftUI
                 }
                 return .handled
             }
+            .onKeyPress(.escape) {
+                if viewModel.isDisplayPickerPresented {
+                    viewModel.cancelDisplayPicker()
+                    return .handled
+                }
+                return .ignored
+            }
+        }
+    }
+
+    private struct DisplayPickerView: View {
+        @ObservedObject var viewModel: FloatingPanelViewModel
+
+        var body: some View {
+            HStack(spacing: 10) {
+                ForEach(viewModel.availableDisplays) { display in
+                    Button {
+                        viewModel.selectDisplay(display)
+                    } label: {
+                        VStack(spacing: 6) {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(display.isMain ? Color.blue.opacity(0.32) : Color.primary.opacity(0.12))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(display.isMain ? Color.blue : Color.primary.opacity(0.22), lineWidth: display.isMain ? 1.4 : 0.9)
+                                )
+                                .aspectRatio(display.aspectRatio, contentMode: .fit)
+                                .frame(width: displayTileWidth(for: display), height: 38)
+                                .overlay(
+                                    Text("\(display.index)")
+                                        .font(.caption.weight(.bold))
+                                        .foregroundStyle(.primary)
+                                )
+
+                            VStack(spacing: 1) {
+                                Text(display.title)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(display.subtitle)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(width: 96)
+                        .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.plain)
+                    .help(display.subtitle)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(.white.opacity(0.22), lineWidth: 0.8)
+                    )
+                    .shadow(color: .black.opacity(0.22), radius: 16, x: 0, y: 8)
+            }
+        }
+
+        private func displayTileWidth(for display: CaptureDisplay) -> CGFloat {
+            max(44, min(76, 38 * display.aspectRatio))
         }
     }
 

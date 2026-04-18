@@ -98,11 +98,15 @@ class ExportManager: ObservableObject {
         settings.gifSettings.maxHeight = height
         saveSettings()
     }
+
+    func updateGIFMaintainAspectRatio(_ maintainAspectRatio: Bool) {
+        settings.gifSettings.maintainAspectRatio = maintainAspectRatio
+        saveSettings()
+    }
     
     func updateGIFQuality(_ quality: Double) {
         settings.gifSettings.quality = quality
         saveSettings()
     }
 }
-
 

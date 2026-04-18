@@ -51,18 +51,29 @@ struct ImageCaptureRequest {
     let baseRequest: CaptureRequest
     let area: NSRect?
     let window: SCWindow?
+    let displayID: CGDirectDisplayID?
     let configuration: ImageCaptureConfiguration
     
-    init(type: CaptureType, area: NSRect? = nil, window: SCWindow? = nil, configuration: ImageCaptureConfiguration = .default) {
+    init(
+        type: CaptureType,
+        area: NSRect? = nil,
+        window: SCWindow? = nil,
+        displayID: CGDirectDisplayID? = nil,
+        configuration: ImageCaptureConfiguration = .default
+    ) {
         self.baseRequest = CaptureRequest(type: type, mode: .image)
         self.area = area
         self.window = window
+        self.displayID = displayID
         self.configuration = configuration
     }
     
     // Convenience initializers for different capture types
-    static func fullScreen(configuration: ImageCaptureConfiguration = .default) -> ImageCaptureRequest {
-        return ImageCaptureRequest(type: .fullScreen, configuration: configuration)
+    static func fullScreen(
+        displayID: CGDirectDisplayID? = nil,
+        configuration: ImageCaptureConfiguration = .default
+    ) -> ImageCaptureRequest {
+        return ImageCaptureRequest(type: .fullScreen, displayID: displayID, configuration: configuration)
     }
     
     static func area(_ rect: NSRect, configuration: ImageCaptureConfiguration = .default) -> ImageCaptureRequest {
