@@ -136,18 +136,9 @@ struct VideoEditingProfile: Profile {
     
     // Audio settings
     var recordSystemAudio: Bool
-    var recordMicrophone: Bool
-    var audioQuality: String
     
     // Recording behavior
     var showMouseCursor: Bool
-    var showRecordingTimer: Bool
-    var autoStopAfterTime: Bool
-    var maxTime: String
-    
-    // File settings
-    var compressAfterRecording: Bool
-    var deleteAfterRecording: Bool
     
     init(
         id: UUID = UUID(),
@@ -161,14 +152,7 @@ struct VideoEditingProfile: Profile {
         codec: String = "H.264",
         format: String = "MP4",
         recordSystemAudio: Bool = false,
-        recordMicrophone: Bool = false,
-        audioQuality: String = "High",
-        showMouseCursor: Bool = false,
-        showRecordingTimer: Bool = true,
-        autoStopAfterTime: Bool = false,
-        maxTime: String = "10min",
-        compressAfterRecording: Bool = true,
-        deleteAfterRecording: Bool = false
+        showMouseCursor: Bool = false
     ) {
         self.id = id
         self.name = name
@@ -181,14 +165,7 @@ struct VideoEditingProfile: Profile {
         self.codec = codec
         self.format = format
         self.recordSystemAudio = recordSystemAudio
-        self.recordMicrophone = recordMicrophone
-        self.audioQuality = audioQuality
         self.showMouseCursor = showMouseCursor
-        self.showRecordingTimer = showRecordingTimer
-        self.autoStopAfterTime = autoStopAfterTime
-        self.maxTime = maxTime
-        self.compressAfterRecording = compressAfterRecording
-        self.deleteAfterRecording = deleteAfterRecording
     }
     
     // Create default profiles
@@ -237,9 +214,7 @@ struct VideoEditingProfile: Profile {
                 codec: "H.264",
                 format: "MP4",
                 recordSystemAudio: true,
-                recordMicrophone: true,
-                showMouseCursor: true,
-                showRecordingTimer: true
+                showMouseCursor: true
             )
         ]
     }
@@ -402,7 +377,6 @@ extension VideoEditingProfile {
         settings.videoCodec = codec
         settings.videoFormat = format
         settings.recordSystemAudio = recordSystemAudio
-        settings.recordMicrophone = recordMicrophone
         settings.showMouseCursor = showMouseCursor
     }
     
@@ -415,7 +389,6 @@ extension VideoEditingProfile {
             codec: settings.videoCodec,
             format: settings.videoFormat,
             recordSystemAudio: settings.recordSystemAudio,
-            recordMicrophone: settings.recordMicrophone,
             showMouseCursor: settings.showMouseCursor
         )
     }

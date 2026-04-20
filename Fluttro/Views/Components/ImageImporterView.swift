@@ -144,11 +144,10 @@ struct ImageImporterView: View {
     private func importImage() {
         guard let image = selectedImage else { return }
         
-        // Convert NSImage to Data
         guard let tiffData = image.tiffRepresentation,
               let bitmapRep = NSBitmapImageRep(data: tiffData),
               let imageData = bitmapRep.representation(using: .png, properties: [:]) else {
-            print("Failed to convert image to data")
+            Logger.e("ImageImporterView: Failed to convert image to PNG data")
             return
         }
         

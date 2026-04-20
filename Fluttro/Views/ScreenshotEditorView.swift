@@ -1,5 +1,5 @@
 //
-//  EditorView.swift
+//  ScreenshotEditorView.swift
 //  Fluttro
 //
 
@@ -8,7 +8,7 @@ import SwiftUI
 #if os(macOS)
     import AppKit
 
-    struct EditorView: View {
+    struct ScreenshotEditorView: View {
         @ObservedObject var viewModel: EditorViewModel
         @StateObject private var settings = AppSettings.shared
         @StateObject private var profileManager = ProfileManager.shared
@@ -16,7 +16,7 @@ import SwiftUI
 
         var body: some View {
             NavigationSplitView {
-                EditorSidebarView(
+                ScreenshotEditorSidebarView(
                     viewModel: viewModel,
                     profileManager: profileManager,
                     backgroundManager: backgroundManager
@@ -189,7 +189,7 @@ import SwiftUI
                 }
             }
             .toolbar {
-                EditorCommandToolbar(
+                ScreenshotEditorCommandToolbar(
                     viewModel: viewModel,
                     annotationManager: viewModel.annotationManager
                 )
@@ -335,7 +335,7 @@ import SwiftUI
         }
     }
 
-    private struct EditorCommandToolbar: ToolbarContent {
+    private struct ScreenshotEditorCommandToolbar: ToolbarContent {
         @ObservedObject var viewModel: EditorViewModel
         @ObservedObject var annotationManager: AnnotationManager
 
@@ -392,271 +392,8 @@ import SwiftUI
         }
     }
 
-    // MARK: - Sidebar
-
-    private struct EditorSidebarView: View {
-        @ObservedObject var viewModel: EditorViewModel
-        @ObservedObject var profileManager: ProfileManager
-        @ObservedObject var backgroundManager: BackgroundManager
-
-        var body: some View {
-            ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 0) {
-                    SidebarDisclosureSection(
-                        id: "image.profiles",
-                        title: "Profiles",
-                        systemImage: "slider.horizontal.3",
-                        subtitle: "Presets for canvas size, spacing, corners, and shadow."
-                    ) {
-                        profileControl
-                    }
-
-                    SidebarDisclosureSection(
-                        id: "image.background",
-                        title: "Background",
-                        systemImage: "paintpalette",
-                        subtitle: "Fill behind the screenshot."
-                    ) {
-                        BackgroundEditorView(backgroundManager: backgroundManager)
-                    }
-
-                    SidebarDisclosureSection(
-                        id: "image.canvas",
-                        title: "Canvas",
-                        systemImage: "rectangle.dashed",
-                        subtitle: "Outer frame, aspect ratio, and spacing."
-                    ) {
-                        if backgroundManager.collections.backgroundType == .none {
-                            SidebarHintText("Turn on Gradient or Image to edit canvas settings.")
-                        } else {
-                            SidebarAspectRatioGrid(selectedRatio: $viewModel.selectedAspectRatio)
-
-                            SidebarSliderControl(
-                                title: "Outer padding",
-                                valueText: "\(Int(viewModel.backgroundPadding)) px",
-                                value: $viewModel.backgroundPadding,
-                                range: 10...100,
-                                step: 5
-                            )
-
-                            SidebarSliderControl(
-                                title: "Canvas corner radius",
-                                valueText: "\(Int(viewModel.backgroundCornerRadius)) px",
-                                value: $viewModel.backgroundCornerRadius,
-                                range: 0...50,
-                                step: 1
-                            )
-                        }
-                    }
-
-                    SidebarDisclosureSection(
-                        id: "image.screenshot",
-                        title: "Screenshot",
-                        systemImage: "photo",
-                        subtitle: "Source image corners and shadow."
-                    ) {
-                        if let image = viewModel.image {
-                            let sourceSize = image.pixelSize
-                            let outputSize = viewModel.calculateOutputSize(for: image)
-
-                            SidebarValueRow(
-                                title: "Source size",
-                                value: "\(Int(sourceSize.width)) x \(Int(sourceSize.height)) px"
-                            )
-
-                            SidebarValueRow(
-                                title: "Output size",
-                                value: "\(Int(outputSize.width)) x \(Int(outputSize.height)) px"
-                            )
-                        }
-
-                        Toggle("Round screenshot corners", isOn: $viewModel.enableRoundedCorners)
-                            .toggleStyle(.switch)
-                            .controlSize(.small)
-
-                        if viewModel.enableRoundedCorners {
-                            SidebarSliderControl(
-                                title: "Screenshot corner radius",
-                                valueText: "\(Int(viewModel.cornerRadius)) px",
-                                value: $viewModel.cornerRadius,
-                                range: 0...50,
-                                step: 1
-                            )
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-
-                        SidebarSliderControl(
-                            title: "Screenshot shadow",
-                            valueText: "\(Int(viewModel.shadowIntensity))%",
-                            value: $viewModel.shadowIntensity,
-                            range: 0...50,
-                            step: 1
-                        )
-                    }
-                    .animation(.easeInOut(duration: 0.2), value: viewModel.enableRoundedCorners)
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 24)
-                .padding(.vertical, 10)
-            }
-            .scrollIndicators(.visible)
-            .frame(width: 300)
-            .background(Color(NSColor.windowBackgroundColor))
-        }
-
-        private var profileControl: some View {
-            ProfileControlView<ImageEditingProfile>(
-                profileManager: profileManager,
-                profiles: profileManager.imageProfiles.profiles,
-                activeProfile: profileManager.getActiveImageProfile(),
-                profileTypeName: "Image",
-                showsHeader: false,
-                usesContainer: false,
-                onProfileSelected: { profile in
-                    profileManager.applyImageProfile(profile, to: viewModel)
-                },
-                onProfileAdded: { name in
-                    let newProfile = profileManager.createImageProfileFromCurrentSettings(
-                        name: name,
-                        from: viewModel
-                    )
-                    profileManager.setActiveImageProfile(newProfile)
-                },
-                onProfileEdited: updateProfile,
-                onProfileDeleted: { profile in
-                    profileManager.removeImageProfile(withId: profile.id)
-                },
-                onImportProfiles: {
-                    _ = profileManager.importImageProfiles()
-                },
-                onExportProfiles: {
-                    _ = profileManager.exportImageProfiles()
-                },
-                onResetProfiles: {
-                    profileManager.resetImageProfilesToDefaults()
-                }
-            )
-        }
-
-        private func updateProfile(_ profile: ImageEditingProfile, newName: String) {
-            if newName == profile.name {
-                let updatedProfile = ImageEditingProfile(
-                    id: profile.id,
-                    name: profile.name,
-                    isDefault: profile.isDefault,
-                    createdAt: profile.createdAt,
-                    modifiedAt: Date(),
-                    backgroundAspectRatio: viewModel.selectedAspectRatio,
-                    backgroundPadding: viewModel.backgroundPadding,
-                    backgroundCornerRadius: viewModel.backgroundCornerRadius,
-                    shadowIntensity: viewModel.shadowIntensity
-                )
-                profileManager.updateImageProfile(updatedProfile)
-            } else {
-                var updatedProfile = profile
-                updatedProfile.name = newName
-                updatedProfile.modifiedAt = Date()
-                profileManager.updateImageProfile(updatedProfile)
-            }
-        }
-    }
-
-    private struct SidebarAspectRatioGrid: View {
-        @Binding var selectedRatio: BackgroundAspectRatio
-
-        private let columns = Array(repeating: GridItem(.flexible(), spacing: 6), count: 3)
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Aspect ratio")
-                    .font(.callout)
-
-                LazyVGrid(columns: columns, spacing: 6) {
-                    ForEach(BackgroundAspectRatio.allCases, id: \.id) { ratio in
-                        Button {
-                            selectedRatio = ratio
-                        } label: {
-                            Text(ratio.displayName)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(selectedRatio == ratio ? .white : .primary)
-                                .frame(maxWidth: .infinity, minHeight: 28)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .fill(
-                                            selectedRatio == ratio
-                                                ? Color.accentColor
-                                                : Color(NSColor.controlBackgroundColor)
-                                        )
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    private struct SidebarSliderControl: View {
-        let title: String
-        let valueText: String
-        @Binding var value: Double
-        let range: ClosedRange<Double>
-        let step: Double
-
-        var body: some View {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .firstTextBaseline) {
-                    Text(title)
-                        .font(.callout)
-
-                    Spacer()
-
-                    Text(valueText)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                Slider(value: $value, in: range, step: step)
-            }
-        }
-    }
-
-    private struct SidebarValueRow: View {
-        let title: String
-        let value: String
-
-        var body: some View {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(.callout)
-
-                Spacer()
-
-                Text(value)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-            }
-        }
-    }
-
-    private struct SidebarHintText: View {
-        let text: String
-
-        init(_ text: String) {
-            self.text = text
-        }
-
-        var body: some View {
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
     #Preview {
-        EditorView(viewModel: EditorViewModel())
+        ScreenshotEditorView(viewModel: EditorViewModel())
     }
 
 #endif

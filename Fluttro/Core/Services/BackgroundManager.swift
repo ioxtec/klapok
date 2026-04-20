@@ -61,7 +61,7 @@ class BackgroundManager: ObservableObject {
             let data = try JSONEncoder().encode(collections)
             try data.write(to: url)
         } catch {
-            print("BackgroundManager: Failed to save collections: \(error)")
+            Logger.e("BackgroundManager: Failed to save collections: \(error)")
         }
     }
     
@@ -73,7 +73,7 @@ class BackgroundManager: ObservableObject {
             let data = try Data(contentsOf: url)
             collections = try JSONDecoder().decode(BackgroundCollections.self, from: data)
         } catch {
-            print("BackgroundManager: Failed to load collections: \(error)")
+            Logger.e("BackgroundManager: Failed to load collections: \(error)")
         }
     }
     
@@ -151,7 +151,7 @@ class BackgroundManager: ObservableObject {
             collections.backgroundImages.append(image)
             saveCollections()
         } catch {
-            print("BackgroundManager: Failed to save background image: \(error)")
+            Logger.e("BackgroundManager: Failed to save background image: \(error)")
         }
     }
     
@@ -204,7 +204,7 @@ class BackgroundManager: ObservableObject {
             addBackgroundImage(backgroundImage, imageData: imageData)
             return true
         } catch {
-            print("BackgroundManager: Failed to import background image: \(error)")
+            Logger.e("BackgroundManager: Failed to import background image: \(error)")
             return false
         }
     }
@@ -216,7 +216,7 @@ class BackgroundManager: ObservableObject {
             try data.write(to: url)
             return url
         } catch {
-            print("BackgroundManager: Failed to export collections: \(error)")
+            Logger.e("BackgroundManager: Failed to export collections: \(error)")
             return nil
         }
     }
@@ -233,7 +233,7 @@ class BackgroundManager: ObservableObject {
             saveCollections()
             return true
         } catch {
-            print("BackgroundManager: Failed to import collections: \(error)")
+            Logger.e("BackgroundManager: Failed to import collections: \(error)")
             return false
         }
     }

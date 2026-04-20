@@ -68,7 +68,6 @@ final class AnnotationManager: ObservableObject {
     // MARK: Tool Selection
     
     func selectTool(_ tool: DrawingTool) {
-        print("AnnotationManager: Selecting tool: \(tool)")
         currentTool = tool
         // Deselect any annotation when changing tools
         if tool != .select {
@@ -395,8 +394,6 @@ final class AnnotationManager: ObservableObject {
     }
     
     func createTextAnnotation(at point: CGPoint) {
-        print("🆕 AnnotationManager: Creating text annotation at \(point)")
-        
         var annotation = Annotation(
             type: .text,
             startPoint: point, // This will be the top-left corner of the text field
@@ -409,17 +406,9 @@ final class AnnotationManager: ObservableObject {
             fillOpacity: defaultFillOpacity
         )
         fitTextAnnotation(&annotation)
-        
-        print("🆕 AnnotationManager: Created annotation:")
-        print("   startPoint: \(annotation.startPoint)")
-        print("   endPoint: \(annotation.endPoint)")
-        print("   bounds: \(annotation.bounds)")
-        print("   size: width=\(annotation.bounds.width), height=\(annotation.bounds.height)")
-        
+
         addAnnotation(annotation)
-        print("🆕 AnnotationManager: Text annotation added, total annotations: \(annotations.count)")
         startEditingText(annotationId: annotation.id)
-        print("🆕 AnnotationManager: Started editing text annotation \(annotation.id)")
     }
 
     private func fitTextAnnotation(_ annotation: inout Annotation) {

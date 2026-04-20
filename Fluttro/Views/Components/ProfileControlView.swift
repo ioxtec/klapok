@@ -15,6 +15,7 @@ struct ProfileControlView<T: Profile>: View {
     @ObservedObject var profileManager: ProfileManager
     @State private var showingAddProfile = false
     @State private var showingDeleteAlert = false
+    @State private var showingProfileOptions = false
     @State private var selectedProfile: T?
     @State private var newProfileName = ""
     
@@ -102,114 +103,210 @@ struct ProfileControlView<T: Profile>: View {
     private var controlContent: some View {
         VStack(alignment: .leading, spacing: 8) {
             if showsHeader {
-                HStack {
-                    Text("Profiles")
-                        .font(.headline)
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    optionsMenu
-                }
+                SidebarSubheading("Profiles")
             }
-            
-            // Profile controls
-            HStack(spacing: 6) {
-                // Profile dropdown
-                Picker("", selection: Binding(
-                    get: { activeProfile?.id ?? UUID() },
-                    set: { id in
-                        if let profile = profiles.first(where: { $0.id == id }) {
-                            onProfileSelected(profile)
-                        }
-                    }
-                )) {
-                    ForEach(profiles, id: \.id) { profile in
-                        HStack {
-                            Text(profile.name)
-                            if profile.isDefault {
-                                Text("(Default)")
-                                    .foregroundColor(.secondary)
-                                    .font(.caption)
-                            }
-                        }
-                        .tag(profile.id)
-                    }
-                }
-                .pickerStyle(.menu)
-                .labelsHidden()
-                .frame(maxWidth: .infinity)
-                
-                Spacer()
-                
-                // Add profile button
-                Button(action: {
+
+            HStack(spacing: 9) {
+                Text("Profile")
+                    .font(SidebarStyle.bodyFont)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+
+                Spacer(minLength: 10)
+
+                profilePicker
+                    .frame(width: 150)
+            }
+            .frame(minHeight: 29)
+
+            HStack(spacing: 7) {
+                ProfileActionButton(title: "Add", systemImage: "plus") {
                     showingAddProfile = true
-                }) {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .medium))
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
                 .help("Add new profile")
-                
-                // Save profile button (only show if there's an active profile)
+
                 if let activeProfile = activeProfile {
-                    Button(action: {
+                    ProfileActionButton(title: "Save", systemImage: "square.and.arrow.down") {
                         onProfileEdited(activeProfile, activeProfile.name)
-                    }) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 12, weight: .medium))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
                     .help("Save changes to current profile")
                 }
-                
-                // Delete profile button (only show if there's an active profile and it's not default)
+
                 if let activeProfile = activeProfile, !activeProfile.isDefault {
-                    Button(action: {
+                    ProfileActionButton(
+                        title: "Delete",
+                        systemImage: "trash",
+                        role: .destructive
+                    ) {
                         selectedProfile = activeProfile
                         showingDeleteAlert = true
-                    }) {
-                        Image(systemName: "trash")
-                            .font(.system(size: 12, weight: .medium))
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .foregroundColor(.red)
                     .help("Delete profile")
                 }
 
-                if !showsHeader {
-                    optionsMenu
+                Spacer(minLength: 0)
+
+                Button {
+                    showingProfileOptions.toggle()
+                } label: {
+                    SidebarChevronButtonLabel()
+                }
+                .buttonStyle(.plain)
+                .help("More profile actions")
+                .popover(isPresented: $showingProfileOptions, arrowEdge: .trailing) {
+                    ProfileOptionsPopover(
+                        onImportProfiles: {
+                            showingProfileOptions = false
+                            onImportProfiles()
+                        },
+                        onExportProfiles: {
+                            showingProfileOptions = false
+                            onExportProfiles()
+                        },
+                        onResetProfiles: {
+                            showingProfileOptions = false
+                            onResetProfiles()
+                        }
+                    )
                 }
             }
+            .frame(minHeight: 29)
         }
     }
 
-    private var optionsMenu: some View {
-        Menu {
-            Button("Import Profiles") {
+    private var profilePicker: some View {
+        Picker("", selection: Binding(
+            get: { activeProfile?.id ?? UUID() },
+            set: { id in
+                if let profile = profiles.first(where: { $0.id == id }) {
+                    onProfileSelected(profile)
+                }
+            }
+        )) {
+            ForEach(profiles, id: \.id) { profile in
+                HStack {
+                    Text(profile.name)
+                    if profile.isDefault {
+                        Text("(Default)")
+                            .foregroundColor(.secondary)
+                            .font(.caption)
+                    }
+                }
+                .tag(profile.id)
+            }
+        }
+        .pickerStyle(.menu)
+        .labelsHidden()
+        .controlSize(.small)
+        .font(SidebarStyle.bodyFont)
+    }
+}
+
+private struct ProfileActionButton: View {
+    let title: String
+    let systemImage: String
+    let role: ButtonRole?
+    let action: () -> Void
+
+    init(
+        title: String,
+        systemImage: String,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.role = role
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: role, action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(role == .destructive ? .red : .primary)
+                .frame(
+                    width: SidebarStyle.actionButtonSize.width,
+                    height: SidebarStyle.actionButtonSize.height
+                )
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(role == .destructive ? Color.red.opacity(0.16) : Color.primary.opacity(0.055))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .stroke(role == .destructive ? Color.red.opacity(0.18) : Color.primary.opacity(0.06), lineWidth: 0.7)
+                }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+private struct ProfileOptionsPopover: View {
+    let onImportProfiles: () -> Void
+    let onExportProfiles: () -> Void
+    let onResetProfiles: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ProfileOptionButton(title: "Import Profiles", systemImage: "square.and.arrow.down") {
                 onImportProfiles()
             }
 
-            Button("Export Profiles") {
+            ProfileOptionButton(title: "Export Profiles", systemImage: "square.and.arrow.up") {
                 onExportProfiles()
             }
 
             Divider()
+                .opacity(0.55)
 
-            Button("Reset to Defaults") {
+            ProfileOptionButton(
+                title: "Reset to Defaults",
+                systemImage: "arrow.counterclockwise",
+                role: .destructive
+            ) {
                 onResetProfiles()
             }
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.secondary)
         }
-        .menuStyle(.borderlessButton)
-        .frame(width: 22, height: 22)
+        .padding(10)
+        .frame(width: 190)
+    }
+}
+
+private struct ProfileOptionButton: View {
+    let title: String
+    let systemImage: String
+    let role: ButtonRole?
+    let action: () -> Void
+
+    init(
+        title: String,
+        systemImage: String,
+        role: ButtonRole? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.role = role
+        self.action = action
+    }
+
+    var body: some View {
+        Button(role: role, action: action) {
+            Label(title, systemImage: systemImage)
+                .font(SidebarStyle.bodyFont)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .foregroundColor(role == .destructive ? .red : .primary)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background {
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.primary.opacity(0.001))
+        }
     }
 }
 

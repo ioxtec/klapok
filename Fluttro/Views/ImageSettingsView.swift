@@ -91,11 +91,6 @@ struct ImageSettingsView: View {
                     )
                 }
 
-                SettingsNote(
-                    title: "Editor defaults are handled in profiles",
-                    message: "Format, quality, padding, gradients, clipboard behavior, and notifications were previously shown here as mock controls. They are hidden until they are wired to real profile or export settings.",
-                    systemImage: "wrench.and.screwdriver"
-                )
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)

@@ -8,6 +8,187 @@
 import SwiftUI
 
 #if os(macOS)
+import AppKit
+
+struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
+    private let content: Content
+    private let fillsAvailableWidth: Bool
+    private let leadingInset: CGFloat
+    private let trailingInset: CGFloat
+
+    init(
+        fillsAvailableWidth: Bool = false,
+        leadingInset: CGFloat = SidebarStyle.sidebarLeadingInset,
+        trailingInset: CGFloat = SidebarStyle.sidebarTrailingInset,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.fillsAvailableWidth = fillsAvailableWidth
+        self.leadingInset = leadingInset
+        self.trailingInset = trailingInset
+        self.content = content()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> SidebarScrollHostView {
+        let view = SidebarScrollHostView(
+            rootView: AnyView(paddedContent),
+            fillsAvailableWidth: fillsAvailableWidth
+        )
+        context.coordinator.hostView = view
+        return view
+    }
+
+    func updateNSView(_ nsView: SidebarScrollHostView, context: Context) {
+        nsView.update(rootView: AnyView(paddedContent), fillsAvailableWidth: fillsAvailableWidth)
+    }
+
+    private var paddedContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content
+        }
+        .padding(.leading, leadingInset)
+        .padding(.trailing, trailingInset)
+        .padding(.top, SidebarStyle.sidebarTopInset)
+        .padding(.bottom, SidebarStyle.sidebarBottomInset)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    final class Coordinator {
+        var hostView: SidebarScrollHostView?
+    }
+}
+
+final class SidebarScrollHostView: NSView {
+    private let scrollView = NSScrollView()
+    private let hostingView: NSHostingView<AnyView>
+    private var rootContent: AnyView
+    private var fillsAvailableWidth: Bool
+    private var appliedContentWidth: CGFloat = 0
+
+    init(rootView: AnyView, fillsAvailableWidth: Bool) {
+        self.rootContent = rootView
+        self.fillsAvailableWidth = fillsAvailableWidth
+        self.hostingView = NSHostingView(rootView: rootView)
+        super.init(frame: .zero)
+        setup()
+    }
+
+    required init?(coder: NSCoder) {
+        self.rootContent = AnyView(EmptyView())
+        self.fillsAvailableWidth = false
+        self.hostingView = NSHostingView(rootView: AnyView(EmptyView()))
+        super.init(coder: coder)
+        setup()
+    }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(width: NSView.noIntrinsicMetric, height: NSView.noIntrinsicMetric)
+    }
+
+    func update(rootView: AnyView, fillsAvailableWidth: Bool) {
+        rootContent = rootView
+        self.fillsAvailableWidth = fillsAvailableWidth
+        appliedContentWidth = 0
+        if fillsAvailableWidth {
+            applyRootContent(width: scrollView.contentView.bounds.width)
+        } else {
+            hostingView.rootView = rootView
+        }
+        hostingView.invalidateIntrinsicContentSize()
+        hostingView.needsLayout = true
+        needsLayout = true
+        layoutSubtreeIfNeeded()
+    }
+
+    override func layout() {
+        super.layout()
+        layoutDocument()
+    }
+
+    private func setup() {
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+        setContentHuggingPriority(.defaultLow, for: .horizontal)
+        setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+
+        configure(scrollView)
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(scrollView)
+
+        hostingView.translatesAutoresizingMaskIntoConstraints = true
+        hostingView.autoresizingMask = []
+        hostingView.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        hostingView.setContentHuggingPriority(.defaultHigh, for: .vertical)
+        scrollView.documentView = hostingView
+
+        NSLayoutConstraint.activate([
+            scrollView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            scrollView.topAnchor.constraint(equalTo: topAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: bottomAnchor)
+        ])
+    }
+
+    private func configure(_ scrollView: NSScrollView) {
+        scrollView.drawsBackground = false
+        scrollView.borderType = .noBorder
+        scrollView.hasHorizontalScroller = false
+        scrollView.hasVerticalScroller = true
+        scrollView.autohidesScrollers = false
+        scrollView.scrollerStyle = .legacy
+        scrollView.scrollerKnobStyle = .default
+        scrollView.verticalScrollElasticity = .allowed
+        scrollView.horizontalScrollElasticity = .none
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 0, right: 0)
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollView.needsLayout = true
+        scrollView.needsDisplay = true
+    }
+
+    private func layoutDocument() {
+        let viewportSize = scrollView.contentView.bounds.size
+        guard viewportSize.width > 0 else {
+            return
+        }
+
+        let width = max(1, viewportSize.width)
+        if fillsAvailableWidth {
+            applyRootContent(width: width)
+        }
+
+        hostingView.frame = NSRect(
+            x: 0,
+            y: 0,
+            width: width,
+            height: max(1, hostingView.frame.height)
+        )
+        hostingView.layoutSubtreeIfNeeded()
+
+        let fittingHeight = hostingView.fittingSize.height
+        let height = max(viewportSize.height, fittingHeight)
+        hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
+        scrollView.documentView = hostingView
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+    }
+
+    private func applyRootContent(width: CGFloat) {
+        guard width > 0, abs(appliedContentWidth - width) > 0.5 else {
+            return
+        }
+
+        appliedContentWidth = width
+        hostingView.rootView = AnyView(
+            rootContent
+                .frame(width: width, alignment: .topLeading)
+        )
+        hostingView.invalidateIntrinsicContentSize()
+    }
+}
 
 struct SidebarDisclosureSection<Content: View>: View {
     private let id: String
@@ -39,7 +220,7 @@ struct SidebarDisclosureSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: isExpanded ? 12 : 0) {
+        VStack(alignment: .leading, spacing: isExpanded ? 8 : 0) {
             Button {
                 withAnimation(.easeInOut(duration: 0.18)) {
                     isExpanded.toggle()
@@ -48,13 +229,13 @@ struct SidebarDisclosureSection<Content: View>: View {
                 HStack(spacing: 8) {
                     if let systemImage {
                         Image(systemName: systemImage)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.tertiary)
                             .frame(width: 16)
                     }
 
                     Text(title)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
 
                     Spacer()
@@ -64,48 +245,303 @@ struct SidebarDisclosureSection<Content: View>: View {
                         .foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
                 .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
                         .fill(headerBackground)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
+            .help(subtitle ?? title)
             .onHover { hovering in
                 isHovering = hovering
             }
 
             if isExpanded {
-                VStack(alignment: .leading, spacing: 12) {
-                    if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-
+                SidebarContentCard {
                     content
                 }
+                .padding(.horizontal, 6)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 10)
+        .padding(.vertical, 8)
     }
 
     private var headerBackground: Color {
         if isHovering {
-            return Color(NSColor.controlAccentColor).opacity(0.12)
-        }
-
-        if isExpanded {
-            return Color(NSColor.controlBackgroundColor).opacity(0.45)
+            return Color.primary.opacity(0.055)
         }
 
         return .clear
     }
+}
+
+struct SidebarContentCard<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 9)
+        .background {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(SidebarStyle.sectionFill)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(SidebarStyle.sectionStroke, lineWidth: 0.7)
+        }
+    }
+}
+
+struct SidebarDivider: View {
+    var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.075))
+            .frame(height: 0.7)
+            .padding(.leading, 28)
+            .padding(.vertical, 2)
+    }
+}
+
+struct SidebarControlRow<Accessory: View>: View {
+    let title: String
+    let systemImage: String?
+    let accessory: Accessory
+
+    init(
+        title: String,
+        systemImage: String? = nil,
+        @ViewBuilder accessory: () -> Accessory
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 9) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 18)
+            }
+
+            Text(title)
+                .font(SidebarStyle.bodyFont)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .layoutPriority(1)
+
+            Spacer(minLength: 10)
+
+            accessory
+                .font(SidebarStyle.bodyFont)
+                .controlSize(.small)
+                .layoutPriority(0)
+        }
+        .frame(minHeight: 29)
+    }
+}
+
+struct SidebarValueRow: View {
+    let title: String
+    let value: String
+    let systemImage: String?
+
+    init(title: String, value: String, systemImage: String? = nil) {
+        self.title = title
+        self.value = value
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        SidebarControlRow(title: title, systemImage: systemImage) {
+            SidebarValuePill(value)
+                .textSelection(.enabled)
+        }
+    }
+}
+
+struct SidebarStackedValueRow: View {
+    let title: String
+    let value: String
+    let systemImage: String?
+
+    init(title: String, value: String, systemImage: String? = nil) {
+        self.title = title
+        self.value = value
+        self.systemImage = systemImage
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 9) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18)
+                }
+
+                Text(title)
+                    .font(SidebarStyle.bodyFont)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+            }
+
+            HStack {
+                Spacer(minLength: 0)
+                SidebarValuePill(value, minWidth: 0)
+            }
+                .padding(.leading, systemImage == nil ? 0 : 27)
+                .textSelection(.enabled)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct SidebarSliderControl: View {
+    let title: String
+    let valueText: String
+    let systemImage: String?
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let step: Double
+
+    init(
+        title: String,
+        valueText: String,
+        systemImage: String? = nil,
+        value: Binding<Double>,
+        range: ClosedRange<Double>,
+        step: Double
+    ) {
+        self.title = title
+        self.valueText = valueText
+        self.systemImage = systemImage
+        self._value = value
+        self.range = range
+        self.step = step
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            SidebarControlRow(title: title, systemImage: systemImage) {
+                SidebarValuePill(valueText)
+            }
+
+            Slider(value: $value, in: range, step: step)
+                .controlSize(.small)
+                .padding(.leading, systemImage == nil ? 0 : 27)
+        }
+    }
+}
+
+struct SidebarValuePill: View {
+    let value: String
+    let minWidth: CGFloat
+
+    init(_ value: String, minWidth: CGFloat = 54) {
+        self.value = value
+        self.minWidth = minWidth
+    }
+
+    var body: some View {
+        Text(value)
+            .font(SidebarStyle.valueFont)
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .minimumScaleFactor(0.88)
+            .allowsTightening(true)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .frame(minWidth: minWidth, maxWidth: 150, alignment: .trailing)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+            }
+    }
+}
+
+struct SidebarSubheading: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .textCase(.uppercase)
+            .tracking(0.4)
+            .padding(.top, 2)
+    }
+}
+
+struct SidebarHintText: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(SidebarStyle.bodyFont)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 2)
+    }
+}
+
+struct SidebarChevronButtonLabel: View {
+    var width: CGFloat = SidebarStyle.actionButtonSize.width
+    var height: CGFloat = SidebarStyle.actionButtonSize.height
+
+    var body: some View {
+        Image(systemName: "chevron.down")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .frame(width: width, height: height)
+            .background {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.7)
+            }
+    }
+}
+
+enum SidebarStyle {
+    static let bodyFont = Font.system(size: 13, weight: .medium)
+    static let valueFont = Font.system(size: 12, weight: .semibold, design: .monospaced)
+    static let sectionFill = Color.primary.opacity(0.055)
+    static let sectionStroke = Color.primary.opacity(0.07)
+    static let actionButtonSize = CGSize(width: 34, height: 24)
+    static let sidebarLeadingInset: CGFloat = 20
+    static let sidebarTrailingInset: CGFloat = 18
+    static let sidebarTopInset: CGFloat = 10
+    static let sidebarBottomInset: CGFloat = 38
 }
 
 #endif

@@ -55,6 +55,8 @@ import Foundation
 
     final class AppSettings: ObservableObject {
         static let shared = AppSettings()
+        private static let screenshotsDirectoryName = "Fluttro Screenshots"
+        private static let videosDirectoryName = "Fluttro Videos"
 
         // MARK: - Published Properties
 
@@ -169,12 +171,6 @@ import Foundation
                 UserDefaults.standard.set(recordSystemAudio, forKey: "recordSystemAudio")
             }
         }
-        
-        @Published var recordMicrophone: Bool {
-            didSet {
-                UserDefaults.standard.set(recordMicrophone, forKey: "recordMicrophone")
-            }
-        }
 
         // MARK: - Computed Properties
 
@@ -245,40 +241,14 @@ import Foundation
         // MARK: - Initialization
 
         private init() {
-            // Load saved settings or use defaults
-            // Use container's Documents directory for sandboxed apps
-            let documentsPath = FileManager.default.urls(
-                for: .documentDirectory, in: .userDomainMask
-            ).first!
-            
-            print("AppSettings: Documents path: \(documentsPath.path)")
-            
-            let defaultSaveDirectory = documentsPath.appendingPathComponent("Fluttro Screenshots")
-            let defaultVideoSaveDirectory = documentsPath.appendingPathComponent("Fluttro Videos")
-
-            // For sandboxed apps, always use paths within the container
-            // Check if we have a saved path and if it's within the container
-            if let savedPath = UserDefaults.standard.string(forKey: "saveDirectory"),
-               let savedURL = URL(string: savedPath),
-               savedURL.path.contains("/Library/Containers/") {
-                self.saveDirectory = savedURL
-            } else {
-                // Use default path within container
-                self.saveDirectory = defaultSaveDirectory
-                // Clear old invalid path
-                UserDefaults.standard.removeObject(forKey: "saveDirectory")
-            }
-            
-            if let savedPath = UserDefaults.standard.string(forKey: "videoSaveDirectory"),
-               let savedURL = URL(string: savedPath),
-               savedURL.path.contains("/Library/Containers/") {
-                self.videoSaveDirectory = savedURL
-            } else {
-                // Use default path within container
-                self.videoSaveDirectory = defaultVideoSaveDirectory
-                // Clear old invalid path
-                UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
-            }
+            self.saveDirectory = Self.storedDirectory(
+                forKey: "saveDirectory",
+                fallback: Self.defaultSaveDirectory
+            )
+            self.videoSaveDirectory = Self.storedDirectory(
+                forKey: "videoSaveDirectory",
+                fallback: Self.defaultVideoSaveDirectory
+            )
             
             self.fileNameTemplate =
                 UserDefaults.standard.string(forKey: "fileNameTemplate") ?? "Screenshot-{datetime}"
@@ -304,7 +274,6 @@ import Foundation
             // Initialize video behavior settings
             self.showMouseCursor = UserDefaults.standard.object(forKey: "showMouseCursor") as? Bool ?? false
             self.recordSystemAudio = UserDefaults.standard.object(forKey: "recordSystemAudio") as? Bool ?? false
-            self.recordMicrophone = UserDefaults.standard.object(forKey: "recordMicrophone") as? Bool ?? false
             self.hotkeyModifiers = NSEvent.ModifierFlags(
                 rawValue: UserDefaults.standard.object(forKey: "hotkeyModifiers") as? UInt
                     ?? (NSEvent.ModifierFlags.command.rawValue
@@ -315,27 +284,19 @@ import Foundation
             self.showInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
             self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
 
-            // Create save directories if they don't exist
-            createSaveDirectoryIfNeeded()
-            createVideoSaveDirectoryIfNeeded()
+            try? CaptureFileStore.ensureDirectory(saveDirectory)
+            try? CaptureFileStore.ensureDirectory(videoSaveDirectory, securityScoped: true)
         }
 
         // MARK: - Public Methods
 
         func resetToDefaults() {
-            // Use container's Documents directory for sandboxed apps
-            let documentsPath = FileManager.default.urls(
-                for: .documentDirectory, in: .userDomainMask
-            ).first!
-            let defaultSaveDirectory = documentsPath.appendingPathComponent("Fluttro Screenshots")
-            let defaultVideoSaveDirectory = documentsPath.appendingPathComponent("Fluttro Videos")
-
-            saveDirectory = defaultSaveDirectory
+            saveDirectory = Self.defaultSaveDirectory
             fileNameTemplate = "Screenshot-{datetime}"
             screenshotReviewPosition = .bottomRight
             capturePixelMode = .realPixels
             defaultCaptureType = .fullScreen
-            videoSaveDirectory = defaultVideoSaveDirectory
+            videoSaveDirectory = Self.defaultVideoSaveDirectory
             videoFileNameTemplate = "Video-{datetime}"
             
             // Clear any saved paths from UserDefaults
@@ -353,7 +314,6 @@ import Foundation
             // Reset video behavior settings
             showMouseCursor = false
             recordSystemAudio = false
-            recordMicrophone = false
             
             hotkeyModifiers = [.command, .shift]
             hotkeyKeyCode = 0x1A
@@ -366,172 +326,61 @@ import Foundation
         }
 
         func saveScreenshot(_ image: NSImage) -> URL? {
-            print("AppSettings: Current saveDirectory: \(saveDirectory.path)")
-            
-            // Try to save to the current directory first
-            if let result = trySaveScreenshot(to: saveDirectory, image: image) {
-                return result
-            }
-            
-            // If that fails, try to save to the default directory inside sandbox
-            print("AppSettings: Failed to save to current directory, trying default directory...")
-            let documentsPath = FileManager.default.urls(
-                for: .documentDirectory, in: .userDomainMask
-            ).first!
-            let defaultSaveDirectory = documentsPath.appendingPathComponent("Fluttro Screenshots")
-            
-            if let result = trySaveScreenshot(to: defaultSaveDirectory, image: image) {
-                // Update the saved directory to the working one
-                saveDirectory = defaultSaveDirectory
-                print("AppSettings: Updated saveDirectory to default: \(defaultSaveDirectory.path)")
-                return result
-            }
-            
-            print("AppSettings: Failed to save screenshot to both directories")
-            return nil
-        }
-        
-        private func trySaveScreenshot(to directory: URL, image: NSImage) -> URL? {
-            createSaveDirectoryIfNeeded(for: directory)
-            
             let fileName = formattedFileName + ".png"
-            let fileURL = directory.appendingPathComponent(fileName)
-            print("AppSettings: Trying to save to: \(fileURL.path)")
-
-            guard let tiffData = image.tiffRepresentation,
-                let bitmapRep = NSBitmapImageRep(data: tiffData),
-                let pngData = bitmapRep.representation(using: .png, properties: [:])
-            else {
-                print("AppSettings: Failed to convert image to PNG")
+            guard let result = CaptureFileStore.saveScreenshot(
+                image,
+                fileName: fileName,
+                primaryDirectory: saveDirectory,
+                fallbackDirectory: Self.defaultSaveDirectory
+            ) else {
                 return nil
             }
 
-            do {
-                try pngData.write(to: fileURL)
-                print("AppSettings: Screenshot saved to: \(fileURL.path)")
-                return fileURL
-            } catch {
-                print("AppSettings: Failed to save screenshot to \(directory.path): \(error)")
-                return nil
-            }
+            saveDirectory = result.directory
+            return result.url
         }
 
         func saveVideo(_ videoURL: URL) -> URL? {
-            print("AppSettings: Current videoSaveDirectory: \(videoSaveDirectory.path)")
-            
-            // Try to save to the current directory first
-            if let result = trySaveVideo(to: videoSaveDirectory, videoURL: videoURL) {
-                return result
-            }
-            
-            // If that fails, try to save to the default directory inside sandbox
-            print("AppSettings: Failed to save to current directory, trying default directory...")
-            let documentsPath = FileManager.default.urls(
-                for: .documentDirectory, in: .userDomainMask
-            ).first!
-            let defaultVideoSaveDirectory = documentsPath.appendingPathComponent("Fluttro Videos")
-            
-            if let result = trySaveVideo(to: defaultVideoSaveDirectory, videoURL: videoURL) {
-                // Update the saved directory to the working one
-                videoSaveDirectory = defaultVideoSaveDirectory
-                print("AppSettings: Updated videoSaveDirectory to default: \(defaultVideoSaveDirectory.path)")
-                return result
-            }
-            
-            print("AppSettings: Failed to save video to both directories")
-            return nil
-        }
-        
-        private func trySaveVideo(to directory: URL, videoURL: URL) -> URL? {
-            createVideoSaveDirectoryIfNeeded(for: directory)
-            
-            // Get file extension based on video format
-            let fileExtension = videoFormat.lowercased()
-            let fileName = formattedVideoFileName + ".\(fileExtension)"
-            let destinationURL = directory.appendingPathComponent(fileName)
-            print("AppSettings: Trying to save video to: \(destinationURL.path)")
-            
-            do {
-                // If destination exists, remove it first
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
-                }
-                
-                // Check if we need to access security-scoped resource
-                let needsSecurityScopedAccess = !directory.startAccessingSecurityScopedResource()
-                
-                // Copy the video file to the destination
-                try FileManager.default.copyItem(at: videoURL, to: destinationURL)
-                
-                // Stop accessing security-scoped resource if we started it
-                if !needsSecurityScopedAccess {
-                    directory.stopAccessingSecurityScopedResource()
-                }
-                
-                print("AppSettings: Video saved to: \(destinationURL.path)")
-                return destinationURL
-            } catch {
-                // Stop accessing security-scoped resource on error
-                if directory.startAccessingSecurityScopedResource() {
-                    directory.stopAccessingSecurityScopedResource()
-                }
-                
-                print("AppSettings: Failed to save video to \(directory.path): \(error)")
+            let fileName = formattedVideoFileName + ".\(videoFormat.lowercased())"
+            guard let result = CaptureFileStore.saveVideo(
+                videoURL,
+                fileName: fileName,
+                primaryDirectory: videoSaveDirectory,
+                fallbackDirectory: Self.defaultVideoSaveDirectory
+            ) else {
                 return nil
             }
+
+            videoSaveDirectory = result.directory
+            return result.url
         }
 
         // MARK: - Private Methods
 
-        private func createSaveDirectoryIfNeeded() {
-            createSaveDirectoryIfNeeded(for: saveDirectory)
-        }
-        
-        private func createSaveDirectoryIfNeeded(for directory: URL) {
-            print("AppSettings: Checking if directory exists: \(directory.path)")
-            if !FileManager.default.fileExists(atPath: directory.path) {
-                print("AppSettings: Directory does not exist, creating...")
-                do {
-                    try FileManager.default.createDirectory(
-                        at: directory, withIntermediateDirectories: true)
-                    print("AppSettings: Successfully created save directory: \(directory.path)")
-                } catch {
-                    print("AppSettings: Failed to create save directory: \(error)")
-                }
-            } else {
-                print("AppSettings: Directory already exists: \(directory.path)")
-            }
+        private static var documentsDirectory: URL {
+            FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         }
 
-        private func createVideoSaveDirectoryIfNeeded() {
-            createVideoSaveDirectoryIfNeeded(for: videoSaveDirectory)
+        private static var defaultSaveDirectory: URL {
+            documentsDirectory.appendingPathComponent(screenshotsDirectoryName)
         }
-        
-        private func createVideoSaveDirectoryIfNeeded(for directory: URL) {
-            print("AppSettings: Checking if video directory exists: \(directory.path)")
-            
-            // Check if we need to access security-scoped resource
-            let needsSecurityScopedAccess = !directory.startAccessingSecurityScopedResource()
-            
-            defer {
-                // Stop accessing security-scoped resource if we started it
-                if !needsSecurityScopedAccess {
-                    directory.stopAccessingSecurityScopedResource()
-                }
+
+        private static var defaultVideoSaveDirectory: URL {
+            documentsDirectory.appendingPathComponent(videosDirectoryName)
+        }
+
+        private static func storedDirectory(forKey key: String, fallback: URL) -> URL {
+            guard let savedPath = UserDefaults.standard.string(forKey: key) else {
+                return fallback
             }
-            
-            if !FileManager.default.fileExists(atPath: directory.path) {
-                print("AppSettings: Video directory does not exist, creating...")
-                do {
-                    try FileManager.default.createDirectory(
-                        at: directory, withIntermediateDirectories: true)
-                    print("AppSettings: Successfully created video save directory: \(directory.path)")
-                } catch {
-                    print("AppSettings: Failed to create video save directory: \(error)")
-                }
-            } else {
-                print("AppSettings: Video directory already exists: \(directory.path)")
+
+            let savedURL = URL(fileURLWithPath: savedPath)
+            guard savedURL.path.contains("/Library/Containers/") else {
+                UserDefaults.standard.removeObject(forKey: key)
+                return fallback
             }
+
+            return savedURL
         }
 
         private func updateDockVisibility() {
@@ -552,10 +401,7 @@ import Foundation
         }
 
         private func updateLaunchAtLogin() {
-            // Implementation for launch at login
-            // This would typically use LaunchServices or LoginItems
-            print("AppSettings: Launch at login set to: \(launchAtLogin)")
-            // TODO: Implement actual launch at login functionality
+            // Stored for the settings UI; login item registration is not wired yet.
         }
 
         private func keyCodeToString(_ keyCode: UInt16) -> String {

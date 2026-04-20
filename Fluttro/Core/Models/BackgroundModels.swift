@@ -258,15 +258,14 @@ struct ColorData: Codable, Equatable {
                 self.blue = Double(comps[2])
                 self.alpha = Double(comps[3])
             default:
-                print("ColorData: Unsupported color components, using default")
+                Logger.w("ColorData: Unsupported color components, using default")
                 self.red = 0.0
                 self.green = 0.0
                 self.blue = 1.0
                 self.alpha = 1.0
             }
             } else {
-                // Fallback to default color if components are nil
-                print("ColorData: Failed to get color components, using default")
+                Logger.w("ColorData: Failed to get color components, using default")
                 self.red = 0.0
                 self.green = 0.0
                 self.blue = 1.0

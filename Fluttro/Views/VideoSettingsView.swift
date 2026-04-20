@@ -163,11 +163,6 @@ struct VideoSettingsView: View {
                     )
                 }
 
-                SettingsNote(
-                    title: "Hidden until fully wired",
-                    message: "Microphone mixing, audio quality, recording timer, auto-stop, max recording time, post-compression, and delete-after-recording were placeholder controls. They are removed from Settings until the recording pipeline supports them.",
-                    systemImage: "exclamationmark.triangle"
-                )
             }
             .padding(.horizontal, 28)
             .padding(.top, 24)

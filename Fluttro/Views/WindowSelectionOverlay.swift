@@ -373,12 +373,8 @@ import SwiftUI
     #Preview {
         WindowSelectionOverlayView(
             screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
-            onSelection: { window in
-                print("Selected window: \(String(describing: window))")
-            },
-            onCancel: {
-                print("Selection cancelled")
-            }
+            onSelection: { _ in },
+            onCancel: {}
         )
     }
 

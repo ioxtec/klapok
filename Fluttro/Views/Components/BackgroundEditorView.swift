@@ -12,6 +12,7 @@ struct BackgroundEditorView: View {
     @ObservedObject var backgroundManager: BackgroundManager
     @State private var showingGradientEditor = false
     @State private var showingImageImporter = false
+    @State private var showingImageLibrary = false
     @State private var showingDeleteAlert = false
     @State private var itemToDelete: Any?
     @State private var deleteItemType: DeleteItemType?
@@ -22,11 +23,8 @@ struct BackgroundEditorView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Fill")
-                    .font(.callout)
-
+        VStack(alignment: .leading, spacing: 9) {
+            SidebarControlRow(title: "Fill", systemImage: "paintbrush") {
                 Picker("", selection: Binding(
                     get: { backgroundManager.collections.backgroundType },
                     set: { newType in
@@ -43,18 +41,22 @@ struct BackgroundEditorView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(width: 146)
             }
             
             if backgroundManager.collections.backgroundType == .gradient {
+                SidebarDivider()
                 gradientSection
             }
             
             if backgroundManager.collections.backgroundType == .image {
+                SidebarDivider()
                 imageSection
             }
 
             if backgroundManager.collections.backgroundType == .none {
-                BackgroundPanelHint("The screenshot is exported without a decorative background.")
+                SidebarDivider()
+                SidebarHintText("The screenshot is exported without a decorative background.")
             }
         }
         .sheet(isPresented: $showingGradientEditor) {
@@ -83,7 +85,7 @@ struct BackgroundEditorView: View {
     // MARK: - Gradient Section
     
     private var gradientSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 9) {
             BackgroundAssetHeader(
                 title: "Gradient presets",
                 buttonHelp: "Add new gradient",
@@ -108,7 +110,7 @@ struct BackgroundEditorView: View {
             }
 
             if backgroundManager.collections.customGradients.isEmpty {
-                BackgroundPanelHint("Add a gradient to use this background type.")
+                SidebarHintText("Add a gradient to use this background type.")
             }
         }
     }
@@ -116,43 +118,74 @@ struct BackgroundEditorView: View {
     // MARK: - Image Section
     
     private var imageSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 9) {
             BackgroundAssetHeader(
                 title: "Images",
                 buttonHelp: "Add new background image",
                 action: { showingImageImporter = true }
             )
-            
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
-                ForEach(backgroundManager.collections.backgroundImages) { image in
-                    ImageThumbnailView(
-                        backgroundImage: image,
-                        isSelected: backgroundManager.collections.selectedImageId == image.id,
-                        onSelect: {
-                            backgroundManager.selectImage(withId: image.id)
-                        },
-                        onLongPress: {
-                            itemToDelete = image
-                            deleteItemType = .image(image.id)
-                            showingDeleteAlert = true
-                        }
-                    )
-                }
-            }
 
             if backgroundManager.collections.backgroundImages.isEmpty {
-                BackgroundPanelHint("Add an image to use this background type.")
+                SidebarHintText("Add an image to use this background type.")
+            } else {
+                BackgroundImageStrip(
+                    images: backgroundManager.collections.backgroundImages,
+                    selectedImageId: backgroundManager.collections.selectedImageId,
+                    isLibraryPresented: $showingImageLibrary,
+                    onSelect: { image in
+                        backgroundManager.selectImage(withId: image.id)
+                    },
+                    onDelete: { image in
+                        itemToDelete = image
+                        deleteItemType = .image(image.id)
+                        showingDeleteAlert = true
+                    }
+                )
             }
 
             if let selectedImage = backgroundManager.collections.selectedImage {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Selected image")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                SidebarDivider()
 
-                    BackgroundSliderControl(
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .center) {
+                        SidebarSubheading("Selected image")
+
+                        Spacer()
+
+                        Button(role: .destructive) {
+                            requestDeleteImage(selectedImage)
+                        } label: {
+                            Image(systemName: "trash")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                        .foregroundStyle(.secondary)
+                        .help("Delete selected image")
+                    }
+
+                    SidebarControlRow(title: "Name", systemImage: "textformat") {
+                        TextField("", text: Binding(
+                            get: { selectedImage.name },
+                            set: { newValue in
+                                var updatedImage = selectedImage
+                                updatedImage.name = newValue
+                                updatedImage.modifiedAt = Date()
+                                backgroundManager.updateBackgroundImage(updatedImage)
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .font(SidebarStyle.bodyFont)
+                        .controlSize(.small)
+                        .frame(width: 132)
+                    }
+
+                    SidebarDivider()
+
+                    SidebarSliderControl(
                         title: "Image opacity",
                         valueText: "\(Int(selectedImage.opacity * 100))%",
+                        systemImage: "circle.lefthalf.filled",
                         value: Binding(
                             get: { selectedImage.opacity },
                             set: { newValue in
@@ -165,12 +198,9 @@ struct BackgroundEditorView: View {
                         step: 0.1
                     )
 
-                    HStack(alignment: .firstTextBaseline) {
-                        Text("Image scale")
-                            .font(.callout)
+                    SidebarDivider()
 
-                        Spacer()
-
+                    SidebarControlRow(title: "Image scale", systemImage: "arrow.up.left.and.arrow.down.right") {
                         Picker("", selection: Binding(
                             get: { selectedImage.scaleMode },
                             set: { newValue in
@@ -188,9 +218,129 @@ struct BackgroundEditorView: View {
                         .frame(width: 104)
                     }
                 }
-                .padding(.top, 2)
             }
         }
+    }
+
+    private func requestDeleteImage(_ image: BackgroundImage) {
+        itemToDelete = image
+        deleteItemType = .image(image.id)
+        showingDeleteAlert = true
+    }
+}
+
+private struct BackgroundImageStrip: View {
+    let images: [BackgroundImage]
+    let selectedImageId: UUID?
+    @Binding var isLibraryPresented: Bool
+    let onSelect: (BackgroundImage) -> Void
+    let onDelete: (BackgroundImage) -> Void
+
+    private let visibleCount = 3
+    private let thumbnailSize = CGSize(width: 58, height: 46)
+
+    private var visibleImages: [BackgroundImage] {
+        Array(images.prefix(visibleCount))
+    }
+
+    private var showsLibraryButton: Bool {
+        images.count > visibleCount
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 8) {
+            ForEach(visibleImages) { image in
+                ImageThumbnailView(
+                    backgroundImage: image,
+                    isSelected: selectedImageId == image.id,
+                    size: thumbnailSize,
+                    onSelect: {
+                        onSelect(image)
+                    },
+                    onLongPress: {
+                        onDelete(image)
+                    }
+                )
+            }
+
+            if showsLibraryButton {
+                Button {
+                    isLibraryPresented.toggle()
+                } label: {
+                    SidebarChevronButtonLabel(height: thumbnailSize.height)
+                }
+                .buttonStyle(.plain)
+                .help("Show all background images")
+                .popover(isPresented: $isLibraryPresented, arrowEdge: .trailing) {
+                    BackgroundImageLibraryPopover(
+                        images: images,
+                        selectedImageId: selectedImageId,
+                        onSelect: { image in
+                            onSelect(image)
+                            isLibraryPresented = false
+                        },
+                        onDelete: onDelete
+                    )
+                }
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 2)
+    }
+}
+
+private struct BackgroundImageLibraryPopover: View {
+    let images: [BackgroundImage]
+    let selectedImageId: UUID?
+    let onSelect: (BackgroundImage) -> Void
+    let onDelete: (BackgroundImage) -> Void
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 3)
+
+    private var popoverHeight: CGFloat {
+        let rowCount = CGFloat((images.count + 2) / 3)
+        return min(286, max(132, 52 + rowCount * 62))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Images")
+                    .font(.system(size: 13, weight: .semibold))
+
+                Spacer()
+
+                Text("\(images.count)")
+                    .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.secondary)
+            }
+
+            Divider()
+                .opacity(0.55)
+
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVGrid(columns: columns, spacing: 8) {
+                    ForEach(images) { image in
+                        ImageThumbnailView(
+                            backgroundImage: image,
+                            isSelected: selectedImageId == image.id,
+                            fillsWidth: true,
+                            size: CGSize(width: 0, height: 54),
+                            onSelect: {
+                                onSelect(image)
+                            },
+                            onLongPress: {
+                                onDelete(image)
+                            }
+                        )
+                    }
+                }
+                .padding(.trailing, 4)
+            }
+        }
+        .padding(12)
+        .frame(width: 320, height: popoverHeight)
     }
 }
 
@@ -203,9 +353,7 @@ private struct BackgroundAssetHeader: View {
 
     var body: some View {
         HStack(alignment: .center) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            SidebarSubheading(title)
 
             Spacer()
 
@@ -217,46 +365,6 @@ private struct BackgroundAssetHeader: View {
             .controlSize(.small)
             .help(buttonHelp)
         }
-    }
-}
-
-private struct BackgroundSliderControl: View {
-    let title: String
-    let valueText: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-    let step: Double
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(title)
-                    .font(.callout)
-
-                Spacer()
-
-                Text(valueText)
-                    .font(.system(size: 12, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            Slider(value: $value, in: range, step: step)
-        }
-    }
-}
-
-private struct BackgroundPanelHint: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -306,16 +414,39 @@ struct GradientThumbnailView: View {
 struct ImageThumbnailView: View {
     let backgroundImage: BackgroundImage
     let isSelected: Bool
+    let fillsWidth: Bool
+    let size: CGSize
     let onSelect: () -> Void
     let onLongPress: () -> Void
+    @State private var isHovering = false
+    @State private var showsPreview = false
+    @State private var previewTask: Task<Void, Never>?
+
+    init(
+        backgroundImage: BackgroundImage,
+        isSelected: Bool,
+        fillsWidth: Bool = false,
+        size: CGSize = CGSize(width: 58, height: 46),
+        onSelect: @escaping () -> Void,
+        onLongPress: @escaping () -> Void
+    ) {
+        self.backgroundImage = backgroundImage
+        self.isSelected = isSelected
+        self.fillsWidth = fillsWidth
+        self.size = size
+        self.onSelect = onSelect
+        self.onLongPress = onLongPress
+    }
     
     var body: some View {
         Button(action: onSelect) {
-            Group {
+            ZStack(alignment: .bottomLeading) {
                 if let image = backgroundImage.image {
                     Image(nsImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .clipped()
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.gray.opacity(0.3))
@@ -324,21 +455,38 @@ struct ImageThumbnailView: View {
                                 .foregroundColor(.gray)
                         )
                 }
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.48)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
+                Text(backgroundImage.name)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .shadow(color: .black.opacity(0.75), radius: 1)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 4)
             }
-            .frame(height: 40)
+            .frame(width: fillsWidth ? nil : size.width, height: size.height)
+            .frame(maxWidth: fillsWidth ? .infinity : nil)
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
             )
-            .overlay(
-                Text(backgroundImage.name)
-                    .font(.caption2)
-                    .foregroundColor(.white)
-                    .shadow(color: .black, radius: 1)
-                    .padding(4),
-                alignment: .bottomLeading
-            )
+            .overlay(alignment: .topTrailing) {
+                if isSelected {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(.white, Color.accentColor)
+                        .padding(4)
+                }
+            }
         }
         .buttonStyle(.plain)
         .contextMenu {
@@ -349,6 +497,92 @@ struct ImageThumbnailView: View {
         .onLongPressGesture {
             onLongPress()
         }
+        .onHover { hovering in
+            isHovering = hovering
+            previewTask?.cancel()
+
+            if hovering {
+                previewTask = Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(240))
+                    if !Task.isCancelled, isHovering {
+                        showsPreview = true
+                    }
+                }
+            } else {
+                showsPreview = false
+            }
+        }
+        .popover(isPresented: $showsPreview, arrowEdge: .trailing) {
+            ImageThumbnailPreview(backgroundImage: backgroundImage)
+        }
+    }
+}
+
+private struct ImageThumbnailPreview: View {
+    let backgroundImage: BackgroundImage
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            previewImage
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text(backgroundImage.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 8) {
+                    previewMetric(
+                        icon: "circle.lefthalf.filled",
+                        text: "\(Int(backgroundImage.opacity * 100))%"
+                    )
+
+                    previewMetric(
+                        icon: "arrow.up.left.and.arrow.down.right",
+                        text: backgroundImage.scaleMode.displayName
+                    )
+                }
+            }
+        }
+        .padding(12)
+        .frame(width: 242)
+    }
+
+    @ViewBuilder
+    private var previewImage: some View {
+        if let image = backgroundImage.image {
+            Image(nsImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: 218, height: 132)
+                .clipped()
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.7)
+                }
+        } else {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color.primary.opacity(0.06))
+                .frame(width: 218, height: 132)
+                .overlay {
+                    Image(systemName: "photo")
+                        .font(.system(size: 28, weight: .medium))
+                        .foregroundStyle(.secondary)
+                }
+        }
+    }
+
+    private func previewMetric(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(Color.primary.opacity(0.055))
+            }
     }
 }
 

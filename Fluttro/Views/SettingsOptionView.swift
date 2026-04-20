@@ -401,42 +401,6 @@ struct SettingsPathOption: View {
     }
 }
 
-// MARK: - Settings Note
-
-struct SettingsNote: View {
-    let title: String
-    let message: String
-    let systemImage: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.secondary)
-                .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
-
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-        }
-        .padding(12)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
-        }
-    }
-}
-
 // MARK: - Compact Profile Summary
 
 struct SettingsProfilesSummary<ProfileType: Profile>: View {

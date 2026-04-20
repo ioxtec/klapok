@@ -81,22 +81,6 @@ import ScreenCaptureKit
             NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!)
         }
         
-        // MARK: - Debug
-        
-        @MainActor
-        static func debugPermissions() {
-            let manager = PermissionsManager.shared
-            
-            Logger.i("=== DEBUG UPRAWNIEŃ ===")
-            Logger.i("Bundle ID: \(Bundle.main.bundleIdentifier ?? "BRAK")")
-            Logger.i("App Name: \(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") ?? "BRAK")")
-            Logger.i("Executable: \(Bundle.main.executablePath ?? "BRAK")")
-            Logger.i("======================")
-            Logger.i("Screen Capture: \(manager.hasScreenCapturePermission)")
-            Logger.i("File Access: \(manager.hasFileAccessPermission)")
-            Logger.i("Accessibility: \(manager.hasAccessibilityPermission)")
-            Logger.i("======================")
-        }
     }
 
 #endif

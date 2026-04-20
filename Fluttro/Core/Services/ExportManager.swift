@@ -37,7 +37,7 @@ class ExportManager: ObservableObject {
             let data = try JSONEncoder().encode(settings)
             try data.write(to: url)
         } catch {
-            print("ExportManager: Failed to save settings: \(error)")
+            Logger.e("ExportManager: Failed to save settings: \(error)")
         }
     }
     
@@ -47,7 +47,7 @@ class ExportManager: ObservableObject {
             let data = try Data(contentsOf: url)
             settings = try JSONDecoder().decode(ExportSettings.self, from: data)
         } catch {
-            print("ExportManager: Failed to load settings, using defaults: \(error)")
+            Logger.w("ExportManager: Failed to load settings, using defaults: \(error)")
             settings = ExportSettings()
         }
     }
@@ -109,4 +109,3 @@ class ExportManager: ObservableObject {
         saveSettings()
     }
 }
-

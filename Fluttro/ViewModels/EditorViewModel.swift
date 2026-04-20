@@ -55,7 +55,6 @@ import UniformTypeIdentifiers
 
         @MainActor
         func close() {
-            print("EditorViewModel: Closing editor")
             self.isPresented = false
             self.image = nil
             annotationManager.resetForNewImage()
@@ -64,51 +63,41 @@ import UniformTypeIdentifiers
         @MainActor
         func saveImage() {
             guard image != nil else {
-                print("EditorViewModel: No image to save")
+                Logger.w("EditorViewModel: No image to save")
                 return
             }
 
-            print("EditorViewModel: Starting saveImage process...")
-            print("EditorViewModel: Current settings - aspect: \(selectedAspectRatio), padding: \(backgroundPadding), background type: \(backgroundManager.collections.backgroundType)")
-            
-            // Render the complete composition (screenshot + background)
             let compositeImage = renderCompositeImage()
-            print("EditorViewModel: Composite image rendered, size: \(compositeImage.size)")
-            print("EditorViewModel: Composite image is valid: \(compositeImage.size.width > 0 && compositeImage.size.height > 0)")
-            
+
             if let savedURL = settings.saveScreenshot(compositeImage) {
-                print("EditorViewModel: Composite image saved to: \(savedURL.path)")
-                // Optionally show success notification
+                Logger.s("EditorViewModel: Composite image saved to: \(savedURL.path)")
             } else {
-                print("EditorViewModel: Failed to save composite image")
-                // Optionally show error notification
+                Logger.e("EditorViewModel: Failed to save composite image")
             }
         }
 
         @MainActor
         func copyToClipboard() {
             guard image != nil else {
-                print("EditorViewModel: No image to copy")
+                Logger.w("EditorViewModel: No image to copy")
                 return
             }
 
-            // Copy the complete composition (screenshot + background)
             let compositeImage = renderCompositeImage()
             
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([compositeImage])
-            print("EditorViewModel: Composite image copied to clipboard")
+            Logger.s("EditorViewModel: Composite image copied to clipboard")
         }
 
         @MainActor
         func saveImageAs() {
             guard image != nil else {
-                print("EditorViewModel: No image to save")
+                Logger.w("EditorViewModel: No image to save")
                 return
             }
 
-            // Render the complete composition (screenshot + background)
             let compositeImage = renderCompositeImage()
             
             let savePanel = NSSavePanel()
@@ -118,19 +107,8 @@ import UniformTypeIdentifiers
             savePanel.message = "Wybierz lokalizację i nazwę pliku"
 
             if savePanel.runModal() == .OK, let url = savePanel.url {
-                guard let tiffData = compositeImage.tiffRepresentation,
-                    let bitmapRep = NSBitmapImageRep(data: tiffData),
-                    let pngData = bitmapRep.representation(using: .png, properties: [:])
-                else {
-                    print("EditorViewModel: Failed to convert composite image to PNG")
-                    return
-                }
-
-                do {
-                    try pngData.write(to: url)
-                    print("EditorViewModel: Composite image saved as: \(url.path)")
-                } catch {
-                    print("EditorViewModel: Failed to save composite image as: \(error)")
+                if CaptureFileStore.writeScreenshot(compositeImage, to: url) {
+                    Logger.s("EditorViewModel: Composite image saved as: \(url.path)")
                 }
             }
         }
@@ -146,7 +124,7 @@ import UniformTypeIdentifiers
                 let image = try await captureManager.captureFullScreen()
                 show(image: image)
             } catch {
-                print("EditorViewModel: Full screen capture error: \(error)")
+                Logger.e("EditorViewModel: Full screen capture error: \(error)")
             }
         }
 
@@ -157,483 +135,39 @@ import UniformTypeIdentifiers
         
         /// Calculates the background size based on aspect ratio and padding
         func calculateBackgroundSize(for imageSize: CGSize, in availableSize: CGSize) -> CGSize {
-            let padding = backgroundPadding
-            let availableWidth = availableSize.width - (padding * 2)
-            let availableHeight = availableSize.height - (padding * 2)
-            
-            switch selectedAspectRatio {
-            case .auto:
-                // Use available space with padding
-                return CGSize(width: availableWidth, height: availableHeight)
-                
-            default:
-                let ratio = selectedAspectRatio.ratio
-                let width = availableWidth
-                let height = width / ratio
-                
-                // If height exceeds available space, scale down based on height
-                if height > availableHeight {
-                    return CGSize(width: availableHeight * ratio, height: availableHeight)
-                } else {
-                    return CGSize(width: width, height: height)
-                }
-            }
-        }
-        
-        /// Calculates the image position within the background
-        func calculateImagePosition(backgroundSize: CGSize, imageSize: CGSize) -> CGPoint {
-            let x = (backgroundSize.width - imageSize.width) / 2
-            let y = (backgroundSize.height - imageSize.height) / 2
-            return CGPoint(x: x, y: y)
+            ImageCompositeRenderer.calculateBackgroundSize(
+                for: imageSize,
+                in: availableSize,
+                padding: backgroundPadding,
+                aspectRatio: selectedAspectRatio
+            )
         }
 
         /// Calculates the pixel size that would be written by the current export settings.
         func calculateOutputSize(for image: NSImage) -> CGSize {
-            let sourceSize = image.pixelSize
-
-            guard backgroundManager.collections.backgroundType != .none else {
-                return roundedPixelSize(sourceSize)
-            }
-
-            let exportSize = calculateExportSize(for: sourceSize)
-            return roundedPixelSize(calculateBackgroundSize(for: sourceSize, in: exportSize))
-        }
-        
-        /// Calculates appropriate export size based on aspect ratio
-        private func calculateExportSize(for imageSize: CGSize) -> CGSize {
-            let baseSize: CGFloat = 1200 // Base width for export
-            
-            switch selectedAspectRatio {
-            case .auto:
-                // Use image proportions with reasonable padding
-                let imageRatio = imageSize.width / imageSize.height
-                if imageRatio > 1.0 {
-                    // Landscape
-                    return CGSize(width: baseSize, height: baseSize / imageRatio)
-                } else {
-                    // Portrait or square
-                    return CGSize(width: baseSize * imageRatio, height: baseSize)
-                }
-                
-            case .ratio16_9:
-                return CGSize(width: baseSize, height: baseSize * 9 / 16)
-                
-            case .ratio4_3:
-                return CGSize(width: baseSize, height: baseSize * 3 / 4)
-                
-            case .ratio3_2:
-                return CGSize(width: baseSize, height: baseSize * 2 / 3)
-                
-            case .ratio1_1:
-                return CGSize(width: baseSize, height: baseSize)
-            }
-        }
-
-        private func roundedPixelSize(_ size: CGSize) -> CGSize {
-            CGSize(
-                width: max(1, size.width.rounded()),
-                height: max(1, size.height.rounded())
+            ImageCompositeRenderer.calculateOutputSize(
+                for: image,
+                backgroundManager: backgroundManager,
+                padding: backgroundPadding,
+                aspectRatio: selectedAspectRatio
             )
         }
         
         /// Renders the complete composition (screenshot + background) as NSImage
         private func renderCompositeImage() -> NSImage {
             guard let originalImage = image else {
-                print("EditorViewModel: No image to render composite")
-                return NSImage(size: CGSize(width: 100, height: 100)) // Return a small placeholder image instead of empty
+                Logger.w("EditorViewModel: No image to render composite")
+                return NSImage(size: CGSize(width: 100, height: 100))
             }
-            
-            let imageSize = originalImage.pixelSize
-            print("EditorViewModel: Rendering composite image - original size: \(originalImage.size), pixel size: \(imageSize)")
-            print("EditorViewModel: Settings - background type: \(backgroundManager.collections.backgroundType), aspect ratio: \(selectedAspectRatio), padding: \(backgroundPadding)")
-            
-            // If background is disabled, return original image
-            if backgroundManager.collections.backgroundType == .none {
-                print("EditorViewModel: Background disabled, returning original image")
-                return originalImage
-            }
-            
-            // Calculate appropriate export size based on aspect ratio
-            let exportSize = calculateExportSize(for: imageSize)
-            let backgroundSize = calculateBackgroundSize(for: imageSize, in: exportSize)
-            print("EditorViewModel: Export size: \(exportSize), background size: \(backgroundSize)")
-            
-            // Calculate image scale and final size
-            let imagePadding = backgroundPadding
-            let maxImageWidth = backgroundSize.width - (imagePadding * 2)
-            let maxImageHeight = backgroundSize.height - (imagePadding * 2)
-            
-            let scaleX = imageSize.width > maxImageWidth ? maxImageWidth / imageSize.width : 1.0
-            let scaleY = imageSize.height > maxImageHeight ? maxImageHeight / imageSize.height : 1.0
-            let scale = min(scaleX, scaleY)
-            
-            let finalImageWidth = imageSize.width * scale
-            let finalImageHeight = imageSize.height * scale
-            
-            // Create the composite image
-            let compositeSize = backgroundSize
-            let compositeImage = NSImage(size: compositeSize)
-            
-            compositeImage.lockFocus()
-            
-            // Draw background
-            print("EditorViewModel: Drawing background - type: \(backgroundManager.collections.backgroundType), size: \(compositeSize)")
-            
-            if let context = NSGraphicsContext.current?.cgContext {
-                switch backgroundManager.collections.backgroundType {
-                case .gradient:
-                    if let selectedGradient = backgroundManager.collections.selectedGradient {
-                        print("EditorViewModel: Drawing custom gradient background")
-                        let gradientColors = selectedGradient.sortedStops.map {
-                            $0.color.toNSColor().withAlphaComponent(selectedGradient.opacity).cgColor
-                        }
-                        let locations = selectedGradient.sortedStops.map { CGFloat($0.location) }
-                        
-                        let colorSpace = CGColorSpaceCreateDeviceRGB()
-                        let gradient = CGGradient(
-                            colorsSpace: colorSpace,
-                            colors: gradientColors as CFArray,
-                            locations: locations
-                        )
-                        
-                        if let gradient = gradient {
-                            let points = selectedGradient.direction.cgPoints(in: compositeSize)
-                            context.drawLinearGradient(
-                                gradient,
-                                start: points.start,
-                                end: points.end,
-                                options: []
-                            )
-                        }
-                    } else {
-                        // Fallback to solid color
-                        context.setFillColor(CGColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0))
-                        context.fill(CGRect(origin: .zero, size: compositeSize))
-                    }
-                    
-                case .image:
-                    if let selectedImage = backgroundManager.collections.selectedImage,
-                       let backgroundImage = selectedImage.image {
-                        print("EditorViewModel: Drawing background image")
-                        drawBackgroundImage(backgroundImage, in: context, size: compositeSize, scaleMode: selectedImage.scaleMode, opacity: selectedImage.opacity)
-                    } else {
-                        // Fallback to solid color
-                        context.setFillColor(CGColor(red: 0.9, green: 0.9, blue: 0.9, alpha: 1.0))
-                        context.fill(CGRect(origin: .zero, size: compositeSize))
-                    }
-                    
-                case .none:
-                    // Draw transparent background
-                    print("EditorViewModel: Drawing transparent background")
-                    context.setFillColor(CGColor(red: 1.0, green: 1.0, blue: 1.0, alpha: 0.0))
-                    context.fill(CGRect(origin: .zero, size: compositeSize))
-                }
-            } else {
-                print("EditorViewModel: No graphics context available - this is the problem!")
-            }
-            
-            // Draw shadow for the image (simplified version)
-            let shadowOffset = CGSize(width: 0, height: -shadowIntensity / 2)
-            let shadowBlur = shadowIntensity
-            
-            // Draw image with shadow
-            let imageRect = NSRect(
-                x: (backgroundSize.width - finalImageWidth) / 2,
-                y: (backgroundSize.height - finalImageHeight) / 2,
-                width: finalImageWidth,
-                height: finalImageHeight
+
+            return ImageCompositeRenderer.render(
+                image: originalImage,
+                backgroundManager: backgroundManager,
+                annotations: annotationManager.annotations,
+                padding: backgroundPadding,
+                aspectRatio: selectedAspectRatio,
+                shadowIntensity: shadowIntensity
             )
-            
-            // Apply shadow
-            let shadow = NSShadow()
-            shadow.shadowOffset = shadowOffset
-            shadow.shadowBlurRadius = shadowBlur
-            shadow.shadowColor = NSColor.black.withAlphaComponent(shadowIntensity / 100.0)
-            shadow.set()
-            
-            // Draw the image
-            originalImage.draw(
-                in: imageRect,
-                from: NSRect(origin: .zero, size: originalImage.size),
-                operation: .sourceOver,
-                fraction: 1.0
-            )
-            
-            // Draw annotations on top of the image
-            if !annotationManager.annotations.isEmpty {
-                print("EditorViewModel: Drawing \(annotationManager.annotations.count) annotations")
-                drawAnnotations(in: imageRect, imageSize: imageSize)
-            }
-            
-            compositeImage.unlockFocus()
-            
-            print("EditorViewModel: Composite image created with size: \(compositeImage.size)")
-            return compositeImage
-        }
-        
-        /// Draws all annotations on the current graphics context
-        private func drawAnnotations(in imageRect: NSRect, imageSize: CGSize) {
-            guard let context = NSGraphicsContext.current?.cgContext else { return }
-            
-            // Calculate scale factor between canvas size and export size
-            let scaleX = imageRect.width / imageSize.width
-            let scaleY = imageRect.height / imageSize.height
-            
-            for annotation in annotationManager.annotations {
-                // Transform annotation coordinates to export coordinates
-                // NOTE: SwiftUI canvas uses top-left origin (y increases downward),
-                // while CoreGraphics uses bottom-left origin (y increases upward).
-                // Flip Y to match visual placement.
-                let transformedStart = CGPoint(
-                    x: imageRect.minX + annotation.startPoint.x * scaleX,
-                    y: imageRect.minY + (imageSize.height - annotation.startPoint.y) * scaleY
-                )
-                let transformedEnd = CGPoint(
-                    x: imageRect.minX + annotation.endPoint.x * scaleX,
-                    y: imageRect.minY + (imageSize.height - annotation.endPoint.y) * scaleY
-                )
-                
-                let color = annotation.color.toNSColor()
-                
-                switch annotation.type {
-                case .text:
-                    drawTextAnnotation(annotation, atTopLeft: transformedStart, scale: scaleX)
-                    
-                case .arrow:
-                    drawArrowAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
-                    
-                case .rectangle:
-                    drawRectangleAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
-                    
-                case .circle:
-                    drawCircleAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
-                    
-                case .line:
-                    drawLineAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
-                    
-                case .highlight:
-                    drawHighlightAnnotation(annotation, from: transformedStart, to: transformedEnd, color: color, context: context)
-                    
-                case .freeDraw:
-                    drawFreeDrawAnnotation(annotation, color: color, context: context, scale: scaleX, imageRect: imageRect)
-                }
-            }
-        }
-        
-        private func drawTextAnnotation(_ annotation: Annotation, atTopLeft point: CGPoint, scale: CGFloat) {
-            guard let text = annotation.text else { return }
-            
-            let font = NSFont.systemFont(ofSize: annotation.fontSize * scale, weight: annotation.fontWeight.nsWeight)
-            let color = annotation.color.toNSColor()
-            
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: color
-            ]
-            
-            let attributedString = NSAttributedString(string: text, attributes: attributes)
-            // NSAttributedString draws at text baseline. Our point is top-left.
-            // Adjust Y by font ascender to convert top-left to baseline position.
-            let baselinePoint = CGPoint(x: point.x, y: point.y - font.ascender)
-            attributedString.draw(at: baselinePoint)
-        }
-        
-        private func drawArrowAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
-            context.saveGState()
-            
-            // Draw line
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(annotation.strokeWidth)
-            context.setLineCap(.round)
-            
-            context.move(to: start)
-            context.addLine(to: end)
-            context.strokePath()
-            
-            // Draw arrowhead
-            let angle = atan2(end.y - start.y, end.x - start.x)
-            let arrowLength = annotation.arrowheadSize
-            let arrowAngle: CGFloat = .pi / 6 // 30 degrees
-            
-            let point1 = CGPoint(
-                x: end.x - arrowLength * cos(angle - arrowAngle),
-                y: end.y - arrowLength * sin(angle - arrowAngle)
-            )
-            let point2 = CGPoint(
-                x: end.x - arrowLength * cos(angle + arrowAngle),
-                y: end.y - arrowLength * sin(angle + arrowAngle)
-            )
-            
-            context.move(to: end)
-            context.addLine(to: point1)
-            context.move(to: end)
-            context.addLine(to: point2)
-            context.strokePath()
-            
-            context.restoreGState()
-        }
-        
-        private func drawRectangleAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
-            context.saveGState()
-            
-            let rect = CGRect(
-                x: min(start.x, end.x),
-                y: min(start.y, end.y),
-                width: abs(end.x - start.x),
-                height: abs(end.y - start.y)
-            )
-            
-            // Fill
-            if annotation.fillOpacity > 0 {
-                context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
-                context.fill(rect)
-            }
-            
-            if annotation.strokeWidth > 0 {
-                context.setStrokeColor(color.cgColor)
-                context.setLineWidth(annotation.strokeWidth)
-                context.stroke(rect)
-            }
-            
-            context.restoreGState()
-        }
-        
-        private func drawCircleAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
-            context.saveGState()
-            
-            let width = abs(end.x - start.x)
-            let height = abs(end.y - start.y)
-            let diameter = max(width, height)
-            let centerX = (start.x + end.x) / 2
-            let centerY = (start.y + end.y) / 2
-            
-            let rect = CGRect(
-                x: centerX - diameter / 2,
-                y: centerY - diameter / 2,
-                width: diameter,
-                height: diameter
-            )
-            
-            // Fill
-            if annotation.fillOpacity > 0 {
-                context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
-                context.fillEllipse(in: rect)
-            }
-            
-            // Stroke
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(annotation.strokeWidth)
-            context.strokeEllipse(in: rect)
-            
-            context.restoreGState()
-        }
-        
-        private func drawLineAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
-            context.saveGState()
-            
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(annotation.strokeWidth)
-            context.setLineCap(.round)
-            
-            context.move(to: start)
-            context.addLine(to: end)
-            context.strokePath()
-            
-            context.restoreGState()
-        }
-        
-        private func drawHighlightAnnotation(_ annotation: Annotation, from start: CGPoint, to end: CGPoint, color: NSColor, context: CGContext) {
-            context.saveGState()
-            
-            let rect = CGRect(
-                x: min(start.x, end.x),
-                y: min(start.y, end.y),
-                width: abs(end.x - start.x),
-                height: abs(end.y - start.y)
-            )
-            
-            context.setFillColor(color.withAlphaComponent(annotation.fillOpacity).cgColor)
-            context.fill(rect)
-            
-            context.restoreGState()
-        }
-        
-        private func drawFreeDrawAnnotation(_ annotation: Annotation, color: NSColor, context: CGContext, scale: CGFloat, imageRect: NSRect) {
-            guard annotation.pathPoints.count > 1 else { return }
-            
-            context.saveGState()
-            
-            context.setStrokeColor(color.cgColor)
-            context.setLineWidth(annotation.strokeWidth)
-            context.setLineCap(.round)
-            context.setLineJoin(.round)
-            
-            // Transform first point
-            let firstPoint = annotation.pathPoints[0]
-            let transformedFirst = CGPoint(
-                x: imageRect.minX + firstPoint.x * scale,
-                y: imageRect.minY + (imageRect.height - firstPoint.y * scale)
-            )
-            
-            context.move(to: transformedFirst)
-            
-            // Draw path through all points
-            for point in annotation.pathPoints.dropFirst() {
-                let transformedPoint = CGPoint(
-                    x: imageRect.minX + point.x * scale,
-                    y: imageRect.minY + (imageRect.height - point.y * scale)
-                )
-                context.addLine(to: transformedPoint)
-            }
-            
-            context.strokePath()
-            context.restoreGState()
-        }
-        
-        /// Draws background image with specified scale mode and opacity
-        private func drawBackgroundImage(_ image: NSImage, in context: CGContext, size: CGSize, scaleMode: BackgroundScaleMode, opacity: Double) {
-            let imageSize = image.size
-            let targetRect = CGRect(origin: .zero, size: size)
-            
-            context.setAlpha(opacity)
-            
-            switch scaleMode {
-            case .fit:
-                // Scale to fit while maintaining aspect ratio
-                let scale = min(size.width / imageSize.width, size.height / imageSize.height)
-                let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-                let x = (size.width - scaledSize.width) / 2
-                let y = (size.height - scaledSize.height) / 2
-                let rect = CGRect(x: x, y: y, width: scaledSize.width, height: scaledSize.height)
-                image.draw(in: rect)
-                
-            case .fill:
-                // Scale to fill while maintaining aspect ratio
-                let scale = max(size.width / imageSize.width, size.height / imageSize.height)
-                let scaledSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-                let x = (size.width - scaledSize.width) / 2
-                let y = (size.height - scaledSize.height) / 2
-                let rect = CGRect(x: x, y: y, width: scaledSize.width, height: scaledSize.height)
-                image.draw(in: rect)
-                
-            case .stretch:
-                // Stretch to fill entire area
-                image.draw(in: targetRect)
-                
-            case .tile:
-                // Tile the image
-                let patternRect = CGRect(origin: .zero, size: imageSize)
-                image.draw(in: targetRect, from: patternRect, operation: .sourceOver, fraction: 1.0)
-                
-            case .center:
-                // Center without scaling
-                let x = (size.width - imageSize.width) / 2
-                let y = (size.height - imageSize.height) / 2
-                let rect = CGRect(x: x, y: y, width: imageSize.width, height: imageSize.height)
-                image.draw(in: rect)
-            }
-            
-            context.setAlpha(1.0)
         }
     }
 

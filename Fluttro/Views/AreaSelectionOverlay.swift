@@ -1017,9 +1017,7 @@ import SwiftUI
         AreaSelectionView(
             screenID: NSScreen.main.map(ScreenPixelGeometry.displayID(for:)) ?? CGMainDisplayID(),
             screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
-            onSelection: { rect in
-                print("Selected: \(String(describing: rect))")
-            },
+            onSelection: { _ in },
             coordinator: AreaSelectionCoordinator()
         )
     }

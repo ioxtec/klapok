@@ -147,9 +147,8 @@ final class ProfileManager: ObservableObject {
         if !fileManager.fileExists(atPath: profilesDirectory.path) {
             do {
                 try fileManager.createDirectory(at: profilesDirectory, withIntermediateDirectories: true)
-                print("ProfileManager: Created profiles directory at \(profilesDirectory.path)")
             } catch {
-                print("ProfileManager: Failed to create profiles directory: \(error)")
+                Logger.e("ProfileManager: Failed to create profiles directory: \(error)")
             }
         }
     }
@@ -165,13 +164,11 @@ final class ProfileManager: ObservableObject {
                 let data = try Data(contentsOf: imageProfilesURL)
                 let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: data)
                 self.imageProfiles = collection
-                print("ProfileManager: Loaded \(collection.profiles.count) image profiles")
             } catch {
-                print("ProfileManager: Failed to load image profiles: \(error)")
+                Logger.e("ProfileManager: Failed to load image profiles: \(error)")
                 resetImageProfilesToDefaults()
             }
         } else {
-            print("ProfileManager: No image profiles file found, creating defaults")
             resetImageProfilesToDefaults()
         }
     }
@@ -193,13 +190,11 @@ final class ProfileManager: ObservableObject {
                     AppSettings.shared.videoResolution = "Source"
                 }
 
-                print("ProfileManager: Loaded \(normalizedProfiles.collection.profiles.count) video profiles")
             } catch {
-                print("ProfileManager: Failed to load video profiles: \(error)")
+                Logger.e("ProfileManager: Failed to load video profiles: \(error)")
                 resetVideoProfilesToDefaults()
             }
         } else {
-            print("ProfileManager: No video profiles file found, creating defaults")
             resetVideoProfilesToDefaults()
         }
     }
@@ -234,9 +229,8 @@ final class ProfileManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(imageProfiles)
             try data.write(to: imageProfilesURL)
-            print("ProfileManager: Saved \(imageProfiles.profiles.count) image profiles")
         } catch {
-            print("ProfileManager: Failed to save image profiles: \(error)")
+            Logger.e("ProfileManager: Failed to save image profiles: \(error)")
         }
     }
     
@@ -244,9 +238,8 @@ final class ProfileManager: ObservableObject {
         do {
             let data = try JSONEncoder().encode(videoProfiles)
             try data.write(to: videoProfilesURL)
-            print("ProfileManager: Saved \(videoProfiles.profiles.count) video profiles")
         } catch {
-            print("ProfileManager: Failed to save video profiles: \(error)")
+            Logger.e("ProfileManager: Failed to save video profiles: \(error)")
         }
     }
     
@@ -262,10 +255,9 @@ final class ProfileManager: ObservableObject {
             do {
                 let data = try JSONEncoder().encode(imageProfiles)
                 try data.write(to: url)
-                print("ProfileManager: Exported image profiles to \(url.path)")
                 return url
             } catch {
-                print("ProfileManager: Failed to export image profiles: \(error)")
+                Logger.e("ProfileManager: Failed to export image profiles: \(error)")
             }
         }
         return nil
@@ -281,10 +273,9 @@ final class ProfileManager: ObservableObject {
             do {
                 let data = try JSONEncoder().encode(videoProfiles)
                 try data.write(to: url)
-                print("ProfileManager: Exported video profiles to \(url.path)")
                 return url
             } catch {
-                print("ProfileManager: Failed to export video profiles: \(error)")
+                Logger.e("ProfileManager: Failed to export video profiles: \(error)")
             }
         }
         return nil
@@ -304,10 +295,9 @@ final class ProfileManager: ObservableObject {
                 let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: data)
                 self.imageProfiles = collection
                 saveImageProfiles()
-                print("ProfileManager: Imported image profiles from \(url.path)")
                 return true
             } catch {
-                print("ProfileManager: Failed to import image profiles: \(error)")
+                Logger.e("ProfileManager: Failed to import image profiles: \(error)")
                 return false
             }
         }
@@ -328,10 +318,9 @@ final class ProfileManager: ObservableObject {
                 let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: data)
                 self.videoProfiles = collection
                 saveVideoProfiles()
-                print("ProfileManager: Imported video profiles from \(url.path)")
                 return true
             } catch {
-                print("ProfileManager: Failed to import video profiles: \(error)")
+                Logger.e("ProfileManager: Failed to import video profiles: \(error)")
                 return false
             }
         }

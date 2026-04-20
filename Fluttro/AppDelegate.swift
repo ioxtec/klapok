@@ -62,9 +62,6 @@ import SwiftUI
             AppSettings.shared.applyDockVisibility()
             setupEditorObservation()
             setupEscapeKeyHandling()
-
-            // Debug informacje o aplikacji
-            PermissionsManager.debugPermissions()
         }
 
         private func setupEditorObservation() {
@@ -128,6 +125,13 @@ import SwiftUI
             isPanelPresented = false
         }
 
+        @MainActor
+        private func hideEditorWindowsForNewCapture() {
+            editorViewModel.isPresented = false
+            editorWindow?.orderOut(nil)
+            floatingPanelViewModel?.hideVideoEditorWindow()
+        }
+
         private func setupEscapeKeyHandling() {
             localEscapeMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) {
                 [weak self] event in
@@ -183,8 +187,12 @@ import SwiftUI
             if editorWindow == nil {
                 Logger.d("AppDelegate: Creating new editor window...")
 
-                let editorView = EditorView(viewModel: editorViewModel)
+                let editorView = ScreenshotEditorView(viewModel: editorViewModel)
                 let hosting = NSHostingController(rootView: editorView)
+                hosting.view.wantsLayer = true
+                hosting.view.layer?.cornerRadius = 18
+                hosting.view.layer?.cornerCurve = .continuous
+                hosting.view.layer?.masksToBounds = true
 
                 // Window without visible title but with buttons
                 let window = NSWindow(
@@ -197,9 +205,16 @@ import SwiftUI
                 )
 
                 window.contentViewController = hosting
-                window.title = "Fluttro Editor"
+                window.contentView?.wantsLayer = true
+                window.contentView?.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
+                window.contentView?.layer?.cornerRadius = 18
+                window.contentView?.layer?.cornerCurve = .continuous
+                window.contentView?.layer?.masksToBounds = true
+                window.title = "Fluttro Screenshot Editor"
                 window.titleVisibility = .hidden
                 window.titlebarAppearsTransparent = true
+                window.isOpaque = false
+                window.backgroundColor = .clear
                 window.minSize = NSSize(width: 1180, height: 720)
                 WindowPlacement.center(window, on: panelWindow?.screen)
                 window.isReleasedWhenClosed = false
@@ -210,8 +225,34 @@ import SwiftUI
 
             Logger.d("AppDelegate: Showing editor window...")
             editorWindow?.makeKeyAndOrderFront(nil)
+            if let editorWindow {
+                refreshEditorWindowLayout(editorWindow)
+
+                DispatchQueue.main.async {
+                    self.refreshEditorWindowLayout(editorWindow)
+                }
+            }
             NSApp.activate(ignoringOtherApps: true)
             Logger.s("AppDelegate: Editor window shown successfully")
+        }
+
+        @MainActor
+        private func refreshEditorWindowLayout(_ window: NSWindow) {
+            window.contentView?.needsLayout = true
+            window.contentView?.layoutSubtreeIfNeeded()
+            window.contentView?.needsDisplay = true
+            window.invalidateShadow()
+
+            let frame = window.frame
+            let nudgedFrame = NSRect(
+                x: frame.origin.x,
+                y: frame.origin.y,
+                width: frame.width + 1,
+                height: frame.height
+            )
+
+            window.setFrame(nudgedFrame, display: true, animate: false)
+            window.setFrame(frame, display: true, animate: false)
         }
 
         private func registerHotkeys() {
@@ -392,11 +433,13 @@ import SwiftUI
 
         @MainActor
         @objc private func takeScreenshotFromMenu() {
+            hideEditorWindowsForNewCapture()
             showFloatingPanel(mode: .image)
         }
 
         @MainActor
         @objc private func recordScreenFromMenu() {
+            hideEditorWindowsForNewCapture()
             showFloatingPanel(mode: .video)
         }
 
