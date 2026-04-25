@@ -9,6 +9,61 @@ import SwiftUI
 
 #if os(macOS)
 
+private enum FloatingPanelSegmentedMetrics {
+    static let itemWidth: CGFloat = 34
+    static let itemHeight: CGFloat = 34
+    static let highlightInset: CGFloat = 2
+    static let cornerRadius: CGFloat = 17
+    static let highlightCornerRadius: CGFloat = 15
+}
+
+private struct FloatingPanelSegmentedTrack: View {
+    let itemCount: Int
+    let selectedIndex: Int
+    let tint: Color
+
+    private var totalWidth: CGFloat {
+        CGFloat(itemCount) * FloatingPanelSegmentedMetrics.itemWidth
+    }
+
+    private var highlightSize: CGFloat {
+        FloatingPanelSegmentedMetrics.itemWidth - (FloatingPanelSegmentedMetrics.highlightInset * 2)
+    }
+
+    private var highlightOffset: CGFloat {
+        (CGFloat(selectedIndex) * FloatingPanelSegmentedMetrics.itemWidth)
+            + FloatingPanelSegmentedMetrics.highlightInset
+    }
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            RoundedRectangle(
+                cornerRadius: FloatingPanelSegmentedMetrics.cornerRadius,
+                style: .continuous
+            )
+            .fill(.thinMaterial)
+
+            RoundedRectangle(
+                cornerRadius: FloatingPanelSegmentedMetrics.highlightCornerRadius,
+                style: .continuous
+            )
+            .fill(tint)
+            .frame(width: highlightSize, height: highlightSize)
+            .offset(x: highlightOffset)
+        }
+        .frame(width: totalWidth, height: FloatingPanelSegmentedMetrics.itemHeight)
+        .overlay(
+            RoundedRectangle(
+                cornerRadius: FloatingPanelSegmentedMetrics.cornerRadius,
+                style: .continuous
+            )
+            .stroke(.white.opacity(0.14), lineWidth: 0.7)
+        )
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: selectedIndex)
+        .animation(.spring(response: 0.28, dampingFraction: 0.82), value: tint)
+    }
+}
+
 // MARK: - Capture Mode Toggle
 
 struct CaptureModeToggle: View {
@@ -24,9 +79,15 @@ struct CaptureModeToggle: View {
                 Image(systemName: "video.fill")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(viewModel.captureMode == .video ? .white : .secondary)
-                    .frame(width: 34, height: 34)
+                    .frame(
+                        width: FloatingPanelSegmentedMetrics.itemWidth,
+                        height: FloatingPanelSegmentedMetrics.itemHeight
+                    )
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Video mode")
+            .accessibilityIdentifier("floatingPanel.mode.video")
+            .accessibilityValue(viewModel.captureMode == .video ? "selected" : "unselected")
             
             Button(action: {
                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -36,32 +97,22 @@ struct CaptureModeToggle: View {
                 Image(systemName: "camera.fill")
                     .font(.system(size: 16, weight: .medium))
                     .foregroundColor(viewModel.captureMode == .image ? .white : .secondary)
-                    .frame(width: 34, height: 34)
+                    .frame(
+                        width: FloatingPanelSegmentedMetrics.itemWidth,
+                        height: FloatingPanelSegmentedMetrics.itemHeight
+                    )
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Image mode")
+            .accessibilityIdentifier("floatingPanel.mode.image")
+            .accessibilityValue(viewModel.captureMode == .image ? "selected" : "unselected")
         }
         .background(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .fill(.thinMaterial)
-                .frame(height: 34)
-                .overlay(
-                    HStack {
-                        if viewModel.captureMode == .image {
-                            Spacer()
-                        }
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .fill(viewModel.captureMode == .image ? .blue : .red)
-                            .frame(width: 34, height: 30)
-                            .animation(.easeInOut(duration: 0.3), value: viewModel.captureMode)
-                        if viewModel.captureMode == .video {
-                            Spacer()
-                        }
-                    }
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(.white.opacity(0.14), lineWidth: 0.7)
+            FloatingPanelSegmentedTrack(
+                itemCount: 2,
+                selectedIndex: viewModel.captureMode == .video ? 0 : 1,
+                tint: viewModel.captureMode == .image ? .blue : .red
+            )
         )
         .help(LocalizationKeys.captureModeToggleHelp.localized)
     }
@@ -87,32 +138,25 @@ struct CaptureTypeSelector: View {
                     Image(systemName: type.iconName(for: viewModel.captureMode))
                         .font(.system(size: 16, weight: .medium))
                         .foregroundColor(viewModel.screenshotType == type ? .white : .secondary)
-                        .frame(width: 34, height: 34)
+                        .frame(
+                            width: FloatingPanelSegmentedMetrics.itemWidth,
+                            height: FloatingPanelSegmentedMetrics.itemHeight
+                        )
                 }
                 .buttonStyle(PlainButtonStyle())
+                .accessibilityLabel(type.title)
+                .accessibilityIdentifier("floatingPanel.captureType.\(type.rawValue)")
+                .accessibilityValue(viewModel.screenshotType == type ? "selected" : "unselected")
                 .help(tooltipForType(type))
             }
         }
-        .frame(width: 102)
+        .frame(width: FloatingPanelSegmentedMetrics.itemWidth * CGFloat(availableCaptureTypes.count))
         .background(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .fill(.thinMaterial)
-                .frame(height: 34)
-                .overlay(
-                    HStack(spacing: 0) {
-                        Spacer()
-                            .frame(width: 34 * CGFloat(positionIndex))
-                        RoundedRectangle(cornerRadius: 15, style: .continuous)
-                            .fill(selectionColor)
-                            .frame(width: 34, height: 30)
-                            .animation(.easeInOut(duration: 0.3), value: viewModel.screenshotType)
-                        Spacer()
-                    }
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .stroke(.white.opacity(0.14), lineWidth: 0.7)
+            FloatingPanelSegmentedTrack(
+                itemCount: availableCaptureTypes.count,
+                selectedIndex: positionIndex,
+                tint: selectionColor
+            )
         )
     }
     
@@ -154,6 +198,8 @@ struct CaptureTypeSelector: View {
                 case .area: baseTooltip = LocalizationKeys.recordAreaHelp.localized
                 case .window: baseTooltip = LocalizationKeys.recordWindowHelp.localized
                 }
+            case .starting:
+                baseTooltip = LocalizationKeys.stopRecordingHelp.localized
             case .recording:
                 baseTooltip = LocalizationKeys.stopRecordingHelp.localized
             }
@@ -188,9 +234,23 @@ struct CaptureButton: View {
                     .stroke(buttonStrokeColor, lineWidth: 3)
                     .frame(width: 42, height: 42)
 
+                if viewModel.captureMode == .video && viewModel.videoRecordingState == .starting {
+                    Circle()
+                        .trim(from: 0.0, to: viewModel.currentPreparationProgress())
+                        .stroke(buttonStrokeColor, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                        .frame(width: 42, height: 42)
+                        .rotationEffect(.degrees(-90))
+                }
+
                 if viewModel.isCapturing {
                     ProgressView()
                         .scaleEffect(0.7)
+                } else if viewModel.captureMode == .video && viewModel.videoRecordingState == .starting && viewModel.recordingPreparationRemaining > 0.0 {
+                    Text("\(viewModel.currentPreparationCountdownValue())")
+                        .font(.system(size: 17, weight: .bold, design: .rounded))
+                        .monospacedDigit()
+                        .foregroundColor(.white)
+                        .transition(.opacity)
                 } else {
                     Image(systemName: buttonIconName)
                         .font(.system(size: 16, weight: .medium))
@@ -202,6 +262,9 @@ struct CaptureButton: View {
         .disabled(viewModel.isCapturing)
         .scaleEffect(viewModel.isCapturing ? 0.95 : 1.0)
         .animation(.easeInOut(duration: 0.1), value: viewModel.isCapturing)
+        .accessibilityLabel(buttonHelpText)
+        .accessibilityIdentifier("floatingPanel.primaryCapture")
+        .accessibilityValue(viewModel.isCapturing ? "capturing" : "ready")
         .help("\(buttonHelpText) (Space)")
     }
     
@@ -230,6 +293,7 @@ struct CaptureButton: View {
         case .video:
             switch viewModel.videoRecordingState {
             case .idle: return "video.fill"
+            case .starting: return "stop.circle.fill"
             case .recording: return "stop.circle.fill"
             }
         }
@@ -244,7 +308,7 @@ struct CaptureButton: View {
             case .window: return LocalizationKeys.windowCaptureHelp.localized
             }
         case .video:
-            if viewModel.videoRecordingState == .recording {
+            if viewModel.videoRecordingState.isActive {
                 return LocalizationKeys.stopRecordingHelp.localized
             }
 
@@ -269,7 +333,7 @@ struct RecordingIndicator: View {
                 .frame(width: 8, height: 8)
                 .opacity(0.8)
             
-            Text(viewModel.formattedRecordingDuration())
+            Text(statusText)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundColor(.red)
         }
@@ -283,6 +347,21 @@ struct RecordingIndicator: View {
             RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .stroke(.red.opacity(0.22), lineWidth: 0.7)
         )
+        .accessibilityIdentifier("floatingPanel.recordingIndicator")
+    }
+
+    private var statusText: String {
+        switch viewModel.videoRecordingState {
+        case .idle:
+            return "00:00"
+        case .starting:
+            if viewModel.recordingPreparationRemaining > 0.0 {
+                return "Starting in \(viewModel.currentPreparationCountdownValue())"
+            }
+            return "Starting..."
+        case .recording:
+            return viewModel.formattedRecordingDuration()
+        }
     }
 }
 
@@ -306,6 +385,8 @@ struct PanelControlButtons: View {
                     )
             }
             .buttonStyle(PlainButtonStyle())
+            .accessibilityLabel("Close floating panel")
+            .accessibilityIdentifier("floatingPanel.close")
             .help(LocalizationKeys.closePanelHelp.localized)
         }
     }

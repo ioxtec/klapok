@@ -98,6 +98,7 @@ struct ImageSettingsView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .accessibilityIdentifier("settings.content.image")
     }
 }
 

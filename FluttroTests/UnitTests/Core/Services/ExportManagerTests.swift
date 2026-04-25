@@ -70,6 +70,18 @@ final class ExportManagerTests: XCTestCase {
         exportManager.updateAudioOption(option)
         XCTAssertEqual(exportManager.settings.videoSettings.audioOption, option)
     }
+
+    func testVideoSettingUpdatesDoNotResetOtherVideoOptions() {
+        exportManager.updateVideoQuality(.maximum)
+        exportManager.updateVideoScaling(.custom)
+        exportManager.updateCustomScaleFactor(1.25)
+        exportManager.updateAudioOption(.mute)
+
+        XCTAssertEqual(exportManager.settings.videoSettings.quality, .maximum)
+        XCTAssertEqual(exportManager.settings.videoSettings.scaling, .custom)
+        XCTAssertEqual(exportManager.settings.videoSettings.customScaleFactor, 1.25)
+        XCTAssertEqual(exportManager.settings.videoSettings.audioOption, .mute)
+    }
     
     // MARK: - GIF Settings Tests
     
@@ -98,6 +110,40 @@ final class ExportManagerTests: XCTestCase {
         exportManager.updateGIFQuality(quality)
         XCTAssertEqual(exportManager.settings.gifSettings.quality, quality)
     }
+
+    func testUpdateGIFMaintainAspectRatio() {
+        exportManager.updateGIFMaintainAspectRatio(false)
+        XCTAssertFalse(exportManager.settings.gifSettings.maintainAspectRatio)
+
+        exportManager.updateGIFMaintainAspectRatio(true)
+        XCTAssertTrue(exportManager.settings.gifSettings.maintainAspectRatio)
+    }
+
+    func testGIFSettingUpdatesDoNotResetOtherGIFOptions() {
+        exportManager.updateGIFColorDepth(.colors32)
+        exportManager.updateGIFFrameRate(24)
+        exportManager.updateGIFMaxSize(width: 640, height: 360)
+        exportManager.updateGIFMaintainAspectRatio(false)
+        exportManager.updateGIFQuality(0.6)
+
+        XCTAssertEqual(exportManager.settings.gifSettings.colorDepth, .colors32)
+        XCTAssertEqual(exportManager.settings.gifSettings.frameRate, 24)
+        XCTAssertEqual(exportManager.settings.gifSettings.maxWidth, 640)
+        XCTAssertEqual(exportManager.settings.gifSettings.maxHeight, 360)
+        XCTAssertFalse(exportManager.settings.gifSettings.maintainAspectRatio)
+        XCTAssertEqual(exportManager.settings.gifSettings.quality, 0.6)
+    }
+
+    func testSetExportTypePreservesExistingExportSettings() {
+        exportManager.updateVideoQuality(.maximum)
+        exportManager.updateGIFFrameRate(12)
+
+        exportManager.setExportType(.gif)
+        exportManager.setExportType(.video)
+
+        XCTAssertEqual(exportManager.settings.videoSettings.quality, .maximum)
+        XCTAssertEqual(exportManager.settings.gifSettings.frameRate, 12)
+    }
     
     // MARK: - Persistence Tests
     
@@ -114,4 +160,3 @@ final class ExportManagerTests: XCTestCase {
 }
 
 #endif
-

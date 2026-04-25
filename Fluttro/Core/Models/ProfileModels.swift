@@ -139,6 +139,8 @@ struct VideoEditingProfile: Profile {
     
     // Recording behavior
     var showMouseCursor: Bool
+    var enableRecordingCountdown: Bool
+    var recordingCountdownSeconds: Int
     
     init(
         id: UUID = UUID(),
@@ -152,7 +154,9 @@ struct VideoEditingProfile: Profile {
         codec: String = "H.264",
         format: String = "MP4",
         recordSystemAudio: Bool = false,
-        showMouseCursor: Bool = false
+        showMouseCursor: Bool = false,
+        enableRecordingCountdown: Bool = false,
+        recordingCountdownSeconds: Int = 3
     ) {
         self.id = id
         self.name = name
@@ -166,6 +170,8 @@ struct VideoEditingProfile: Profile {
         self.format = format
         self.recordSystemAudio = recordSystemAudio
         self.showMouseCursor = showMouseCursor
+        self.enableRecordingCountdown = enableRecordingCountdown
+        self.recordingCountdownSeconds = min(max(recordingCountdownSeconds, 1), 30)
     }
     
     // Create default profiles
@@ -378,6 +384,8 @@ extension VideoEditingProfile {
         settings.videoFormat = format
         settings.recordSystemAudio = recordSystemAudio
         settings.showMouseCursor = showMouseCursor
+        settings.enableRecordingCountdown = enableRecordingCountdown
+        settings.recordingCountdownSeconds = recordingCountdownSeconds
     }
     
     static func fromAppSettings(_ settings: AppSettings, name: String) -> VideoEditingProfile {
@@ -389,7 +397,9 @@ extension VideoEditingProfile {
             codec: settings.videoCodec,
             format: settings.videoFormat,
             recordSystemAudio: settings.recordSystemAudio,
-            showMouseCursor: settings.showMouseCursor
+            showMouseCursor: settings.showMouseCursor,
+            enableRecordingCountdown: settings.enableRecordingCountdown,
+            recordingCountdownSeconds: settings.recordingCountdownSeconds
         )
     }
 }

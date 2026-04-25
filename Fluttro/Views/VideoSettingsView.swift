@@ -114,6 +114,29 @@ struct VideoSettingsView: View {
                     systemImage: "record.circle"
                 ) {
                     SettingsToggleOption(
+                        title: "Enable countdown before screen recording",
+                        description: "Adds a short delay before a new video recording starts.",
+                        isOn: $settings.enableRecordingCountdown
+                    )
+
+                    if settings.enableRecordingCountdown {
+                        SettingsPickerOption(
+                            title: "Countdown duration",
+                            description: "Choose how many seconds to wait before recording begins.",
+                            selection: Binding(
+                                get: { String(settings.recordingCountdownSeconds) },
+                                set: { newValue in
+                                    settings.recordingCountdownSeconds = Int(newValue) ?? 3
+                                }
+                            ),
+                            options: (1...30).map { value in
+                                let label = value == 1 ? "1 second" : "\(value) seconds"
+                                return (String(value), label)
+                            }
+                        )
+                    }
+
+                    SettingsToggleOption(
                         title: LocalizationKeys.showMouseCursorVideoTitle.localized,
                         description: LocalizationKeys.showMouseCursorVideoDescription.localized,
                         isLast: true,
@@ -170,6 +193,7 @@ struct VideoSettingsView: View {
             .frame(maxWidth: 760, alignment: .leading)
             .frame(maxWidth: .infinity)
         }
+        .accessibilityIdentifier("settings.content.video")
         .onAppear(perform: normalizeUnsupportedValues)
     }
 

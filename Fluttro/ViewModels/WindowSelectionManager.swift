@@ -12,12 +12,19 @@ import SwiftUI
     import AppKit
     import ScreenCaptureKit
 
+    private final class WindowSelectionOverlayPanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { true }
+    }
+
     @MainActor
     final class WindowSelectionManager: ObservableObject {
         // MARK: - Properties
 
         private var overlayWindows: [NSWindow] = []
         private var onSelectionCallback: ((SCWindow?) -> Void)?
+        private var onCancelCallback: (() -> Void)?
+        private var captureMode: CaptureMode = .image
         private var isHiding = false
 
         // MARK: - Lifecycle
@@ -33,7 +40,11 @@ import SwiftUI
 
         // MARK: - Public Methods
 
-        func show(onSelection: @escaping (SCWindow?) -> Void) {
+        func show(
+            captureMode: CaptureMode,
+            onSelection: @escaping (SCWindow?) -> Void,
+            onCancel: @escaping () -> Void
+        ) {
             Logger.d("WindowSelectionManager: Showing window selection overlay")
 
             // Hide any existing overlay first
@@ -44,7 +55,9 @@ import SwiftUI
                 try? await Task.sleep(nanoseconds: 50_000_000)  // 50ms
 
                 // Store callback
+                self.captureMode = captureMode
                 self.onSelectionCallback = onSelection
+                self.onCancelCallback = onCancel
 
                 // Create overlay window
                 self.createOverlayWindow()
@@ -68,6 +81,7 @@ import SwiftUI
             overlayWindows.removeAll()
 
             onSelectionCallback = nil
+            onCancelCallback = nil
             isHiding = false
         }
 
@@ -82,9 +96,9 @@ import SwiftUI
 
             overlayWindows = screens.map { screen in
                 let screenFrame = screen.frame
-                let window = NSWindow(
+                let window = WindowSelectionOverlayPanel(
                     contentRect: screenFrame,
-                    styleMask: [.borderless, .fullSizeContentView],
+                    styleMask: [.nonactivatingPanel, .fullSizeContentView],
                     backing: .buffered,
                     defer: false
                 )
@@ -94,9 +108,12 @@ import SwiftUI
                 window.isOpaque = false
                 window.hasShadow = false
                 window.ignoresMouseEvents = false
+                window.acceptsMouseMovedEvents = true
+                window.becomesKeyOnlyIfNeeded = false
                 window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
 
                 let contentView = WindowSelectionOverlayView(
+                    captureMode: captureMode,
                     screenFrame: screenFrame,
                     onSelection: { [weak self] selectedWindow in
                         self?.handleWindowSelection(selectedWindow)
@@ -109,7 +126,9 @@ import SwiftUI
                 let hostingView = NSHostingView(rootView: contentView)
                 hostingView.frame = CGRect(origin: .zero, size: screenFrame.size)
                 window.contentView = hostingView
+                window.initialFirstResponder = hostingView
                 window.orderFront(nil)
+                window.makeFirstResponder(hostingView)
                 return window
             }
 
@@ -130,11 +149,7 @@ import SwiftUI
         private func handleCancel() {
             Logger.d("WindowSelectionManager: Window selection cancelled")
 
-            // Call the callback with nil (anulowanie)
-            onSelectionCallback?(nil)
-
-            // Hide overlay
-            hide()
+            onCancelCallback?()
         }
     }
 

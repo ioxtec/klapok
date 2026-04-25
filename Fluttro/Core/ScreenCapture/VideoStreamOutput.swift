@@ -18,6 +18,8 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
     private let recordingURL: URL
     private var sessionStarted = false
     private let outputSize: CGSize?
+    private let stateLock = NSLock()
+    private var firstFrameArrivalDate: Date?
 
     init(recordingURL: URL, outputSize: CGSize? = nil) {
         self.recordingURL = recordingURL
@@ -96,10 +98,27 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
             if !sessionStarted {
                 assetWriter.startSession(atSourceTime: presentationTime)
                 sessionStarted = true
+                stateLock.lock()
+                if firstFrameArrivalDate == nil {
+                    firstFrameArrivalDate = Date()
+                }
+                stateLock.unlock()
             }
         }
 
         videoInput.append(sampleBuffer)
+    }
+
+    var hasReceivedFirstFrame: Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return firstFrameArrivalDate != nil
+    }
+
+    var firstFrameDate: Date? {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        return firstFrameArrivalDate
     }
 
     func finishWriting() async {

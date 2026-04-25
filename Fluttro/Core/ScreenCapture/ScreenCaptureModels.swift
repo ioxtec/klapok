@@ -17,15 +17,22 @@ import CoreMedia
 /// States for video recording operations
 enum VideoRecordingState {
     case idle
+    case starting
     case recording
     
     var displayName: String {
         switch self {
         case .idle:
             return "Idle"
+        case .starting:
+            return "Starting"
         case .recording:
             return "Recording"
         }
+    }
+
+    var isActive: Bool {
+        self != .idle
     }
 }
 

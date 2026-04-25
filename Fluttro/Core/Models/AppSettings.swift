@@ -172,6 +172,23 @@ import Foundation
             }
         }
 
+        @Published var enableRecordingCountdown: Bool {
+            didSet {
+                UserDefaults.standard.set(enableRecordingCountdown, forKey: "enableRecordingCountdown")
+            }
+        }
+
+        @Published var recordingCountdownSeconds: Int {
+            didSet {
+                let clampedValue = min(max(recordingCountdownSeconds, 1), 30)
+                if recordingCountdownSeconds != clampedValue {
+                    recordingCountdownSeconds = clampedValue
+                    return
+                }
+                UserDefaults.standard.set(clampedValue, forKey: "recordingCountdownSeconds")
+            }
+        }
+
         // MARK: - Computed Properties
 
         var formattedFileName: String {
@@ -274,6 +291,9 @@ import Foundation
             // Initialize video behavior settings
             self.showMouseCursor = UserDefaults.standard.object(forKey: "showMouseCursor") as? Bool ?? false
             self.recordSystemAudio = UserDefaults.standard.object(forKey: "recordSystemAudio") as? Bool ?? false
+            self.enableRecordingCountdown = UserDefaults.standard.object(forKey: "enableRecordingCountdown") as? Bool ?? false
+            let storedCountdownSeconds = UserDefaults.standard.object(forKey: "recordingCountdownSeconds") as? Int ?? 3
+            self.recordingCountdownSeconds = min(max(storedCountdownSeconds, 1), 30)
             self.hotkeyModifiers = NSEvent.ModifierFlags(
                 rawValue: UserDefaults.standard.object(forKey: "hotkeyModifiers") as? UInt
                     ?? (NSEvent.ModifierFlags.command.rawValue
@@ -314,6 +334,8 @@ import Foundation
             // Reset video behavior settings
             showMouseCursor = false
             recordSystemAudio = false
+            enableRecordingCountdown = false
+            recordingCountdownSeconds = 3
             
             hotkeyModifiers = [.command, .shift]
             hotkeyKeyCode = 0x1A

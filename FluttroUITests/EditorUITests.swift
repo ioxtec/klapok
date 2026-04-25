@@ -24,25 +24,21 @@ final class EditorUITests: XCTestCase {
     // MARK: - Editor Display Tests
     
     func testEditorOpens() throws {
-        // Test that editor opens when image is captured
-        // Note: Requires actual capture or test image
+        throw XCTSkip("Editor UI needs a launch argument or fixture image to open the editor deterministically.")
     }
     
     // MARK: - Save Tests
     
     func testSaveButton() throws {
-        // Test save button in editor
-        // Note: Requires UI elements to be accessible
+        throw XCTSkip("Save UI needs a deterministic editor fixture image before it can be tested safely.")
     }
     
     // MARK: - Settings Tests
     
     func testBackgroundSettings() throws {
-        // Test changing background settings in editor
-        // Note: Requires UI elements to be accessible
+        throw XCTSkip("Background UI needs a deterministic editor fixture image before it can be tested safely.")
     }
 }
-
 
 
 

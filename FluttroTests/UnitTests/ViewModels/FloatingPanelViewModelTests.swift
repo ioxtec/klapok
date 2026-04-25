@@ -114,11 +114,13 @@ final class FloatingPanelViewModelTests: XCTestCase {
     func testPropertyUpdates() {
         floatingPanelViewModel.captureMode = .video
         floatingPanelViewModel.screenshotType = .area
-        floatingPanelViewModel.isAlwaysOnTop = true
+        floatingPanelViewModel.isDisplayPickerPresented = true
+        floatingPanelViewModel.selectedArea = NSRect(x: 10, y: 20, width: 300, height: 200)
         
         XCTAssertEqual(floatingPanelViewModel.captureMode, .video)
         XCTAssertEqual(floatingPanelViewModel.screenshotType, .area)
-        XCTAssertTrue(floatingPanelViewModel.isAlwaysOnTop)
+        XCTAssertTrue(floatingPanelViewModel.isDisplayPickerPresented)
+        XCTAssertEqual(floatingPanelViewModel.selectedArea, NSRect(x: 10, y: 20, width: 300, height: 200))
     }
 
     func testPinnedPanelLevelStaysAboveSelectionOverlays() {

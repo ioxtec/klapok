@@ -62,6 +62,30 @@ import SwiftUI
             AppSettings.shared.applyDockVisibility()
             setupEditorObservation()
             setupEscapeKeyHandling()
+
+            Task { @MainActor in
+                runUITestLaunchActionsIfNeeded()
+            }
+        }
+
+        @MainActor
+        private func runUITestLaunchActionsIfNeeded() {
+            let arguments = ProcessInfo.processInfo.arguments
+            guard arguments.contains("-UITests") else { return }
+
+            if arguments.contains("-UITestResetSettings") {
+                AppSettings.shared.resetToDefaults()
+            }
+
+            if arguments.contains("-UITestOpenSettings") {
+                openSettingsWindow()
+            }
+
+            if arguments.contains("-UITestShowFloatingPanel") {
+                hideEditorWindowsForNewCapture()
+                let mode: CaptureMode = arguments.contains("-UITestShowVideoPanel") ? .video : .image
+                showFloatingPanel(mode: mode)
+            }
         }
 
         private func setupEditorObservation() {
@@ -169,17 +193,6 @@ import SwiftUI
             floatingPanelViewModel != nil && panelWindow != nil && isPanelPresented
         }
 
-        private func handleHotkey() {
-            Task { @MainActor in
-                do {
-                    let image = try await captureManager.captureFullScreen()
-                    editorViewModel.show(image: image)  // This will trigger setupEditorObservation
-                } catch {
-                    NSLog("Screenshot failed: \(error.localizedDescription)")
-                }
-            }
-        }
-
         @MainActor
         private func openEditor(with image: NSImage) {
             Logger.d("AppDelegate: openEditor() called with image size: \(image.size)")
@@ -256,15 +269,28 @@ import SwiftUI
         }
 
         private func registerHotkeys() {
-            let registered = hotkeyManager.register(
-                keyCode: 0x1a,
-                modifiers: 0x0100 | 0x0200
-            ) { [weak self] in
-                self?.isPanelPresented.toggle()
+            for shortcut in KeyboardShortcutAction.allCases {
+                let registered = hotkeyManager.register(
+                    id: shortcut.id,
+                    keyCode: shortcut.keyCode,
+                    modifiers: shortcut.carbonModifiers
+                ) { [weak self] in
+                    Task { @MainActor in
+                        self?.performKeyboardShortcut(shortcut)
+                    }
+                }
+
+                if !registered {
+                    NSLog("Failed to register global hotkey: \(shortcut.title)")
+                }
             }
-            if !registered {
-                NSLog("Failed to register global hotkey")
-            }
+        }
+
+        @MainActor
+        private func performKeyboardShortcut(_ shortcut: KeyboardShortcutAction) {
+            hideEditorWindowsForNewCapture()
+            showFloatingPanel(mode: shortcut.mode)
+            floatingPanelViewModel?.performShortcut(shortcut)
         }
 
         @MainActor
@@ -273,22 +299,20 @@ import SwiftUI
             if let existingPanel = panelWindow {
                 isPanelPresented = true
                 // Initialize current mode for existing panel
-                Task { @MainActor in
-                    floatingPanelViewModel?.prepareForPresentation(mode: mode)
-                    existingPanel.hidesOnDeactivate = false
-                    existingPanel.sharingType = .none
-                    existingPanel.collectionBehavior = [
-                        .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
-                    ]
-                    existingPanel.orderFrontRegardless()
-                    floatingPanelViewModel?.ensurePanelOnTop()
-                }
+                floatingPanelViewModel?.prepareForPresentation(mode: mode)
+                existingPanel.hidesOnDeactivate = false
+                existingPanel.sharingType = .none
+                existingPanel.collectionBehavior = [
+                    .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
+                ]
+                existingPanel.orderFrontRegardless()
+                floatingPanelViewModel?.ensurePanelOnTop()
                 return
             }
 
             // Panel: transparent carrier window; the visible glass is drawn by SwiftUI.
             let panel = NSPanel(
-                contentRect: NSRect(x: 0, y: 0, width: 480, height: 90),
+                contentRect: NSRect(x: 0, y: 0, width: 480, height: 104),
                 styleMask: [.nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
                 defer: false
@@ -327,7 +351,7 @@ import SwiftUI
 
             // Content (SwiftUI)
             let content = NSHostingView(rootView: FloatingPanelView(viewModel: panelViewModel))
-            content.frame = panel.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 480, height: 90)
+            content.frame = panel.contentView?.bounds ?? NSRect(x: 0, y: 0, width: 480, height: 104)
             content.autoresizingMask = [.width, .height]
             content.wantsLayer = true
             content.layer?.backgroundColor = NSColor.clear.cgColor
@@ -381,6 +405,13 @@ import SwiftUI
                 name: .languageChanged,
                 object: nil
             )
+
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(rebuildShortcutsFromNotification),
+                name: .keyboardShortcutsChanged,
+                object: nil
+            )
         }
 
         @objc private func rebuildStatusBarMenuFromNotification() {
@@ -390,24 +421,20 @@ import SwiftUI
             rebuildStatusBarMenu()
         }
 
+        @objc private func rebuildShortcutsFromNotification() {
+            hotkeyManager.unregister()
+            registerHotkeys()
+            rebuildStatusBarMenu()
+        }
+
         private func rebuildStatusBarMenu() {
             let menu = NSMenu()
 
-            let takeScreenshotItem = NSMenuItem(
-                title: LocalizationKeys.takeScreenshotMenu.localized,
-                action: #selector(takeScreenshotFromMenu),
-                keyEquivalent: ""
-            )
-            takeScreenshotItem.target = self
-            menu.addItem(takeScreenshotItem)
+            addShortcutActionItems(KeyboardShortcutAction.screenshotActions, to: menu)
 
-            let recordScreenItem = NSMenuItem(
-                title: LocalizationKeys.recordScreenMenu.localized,
-                action: #selector(recordScreenFromMenu),
-                keyEquivalent: ""
-            )
-            recordScreenItem.target = self
-            menu.addItem(recordScreenItem)
+            menu.addItem(NSMenuItem.separator())
+
+            addShortcutActionItems(KeyboardShortcutAction.recordingActions, to: menu)
 
             menu.addItem(NSMenuItem.separator())
 
@@ -431,6 +458,21 @@ import SwiftUI
             statusItem?.menu = menu
         }
 
+        private func addShortcutActionItems(_ shortcuts: [KeyboardShortcutAction], to menu: NSMenu) {
+            for shortcut in shortcuts {
+                let item = NSMenuItem(
+                    title: shortcut.menuTitle,
+                    action: #selector(performShortcutFromMenu(_:)),
+                    keyEquivalent: shortcut.shortcut.keyEquivalent
+                )
+                item.keyEquivalentModifierMask = shortcut.shortcut.keyEquivalentModifierMask
+                item.representedObject = Int(shortcut.rawValue)
+                item.toolTip = shortcut.description
+                item.target = self
+                menu.addItem(item)
+            }
+        }
+
         @MainActor
         @objc private func takeScreenshotFromMenu() {
             hideEditorWindowsForNewCapture()
@@ -441,6 +483,18 @@ import SwiftUI
         @objc private func recordScreenFromMenu() {
             hideEditorWindowsForNewCapture()
             showFloatingPanel(mode: .video)
+        }
+
+        @MainActor
+        @objc private func performShortcutFromMenu(_ sender: NSMenuItem) {
+            guard
+                let rawValue = sender.representedObject as? Int,
+                let shortcut = KeyboardShortcutAction(rawValue: UInt32(rawValue))
+            else {
+                return
+            }
+
+            performKeyboardShortcut(shortcut)
         }
 
         @MainActor

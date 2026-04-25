@@ -29,9 +29,22 @@
 		5E4027082E6EF72F00B5B48C /* FluttroUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FluttroUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5E40271B2E6F018900B5B48C /* Exceptions for "Fluttro" folder in "Fluttro" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Fluttro.icon,
+			);
+			target = 5E4026EF2E6EF72E00B5B48C /* Fluttro */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5E4026F22E6EF72E00B5B48C /* Fluttro */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5E40271B2E6F018900B5B48C /* Exceptions for "Fluttro" folder in "Fluttro" target */,
+			);
 			path = Fluttro;
 			sourceTree = "<group>";
 		};

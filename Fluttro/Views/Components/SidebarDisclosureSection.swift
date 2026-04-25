@@ -34,7 +34,7 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
 
     func makeNSView(context: Context) -> SidebarScrollHostView {
         let view = SidebarScrollHostView(
-            rootView: AnyView(paddedContent),
+            rootView: AnyView(hostedContent),
             fillsAvailableWidth: fillsAvailableWidth
         )
         context.coordinator.hostView = view
@@ -42,7 +42,7 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: SidebarScrollHostView, context: Context) {
-        nsView.update(rootView: AnyView(paddedContent), fillsAvailableWidth: fillsAvailableWidth)
+        nsView.update(rootView: AnyView(hostedContent), fillsAvailableWidth: fillsAvailableWidth)
     }
 
     private var paddedContent: some View {
@@ -55,6 +55,14 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
         .padding(.bottom, SidebarStyle.sidebarBottomInset)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var hostedContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            paddedContent
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
     final class Coordinator {
@@ -185,6 +193,7 @@ final class SidebarScrollHostView: NSView {
         hostingView.rootView = AnyView(
             rootContent
                 .frame(width: width, alignment: .topLeading)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         )
         hostingView.invalidateIntrinsicContentSize()
     }

@@ -109,14 +109,7 @@ final class ProfileModelsTests: XCTestCase {
         XCTAssertEqual(profile.codec, "H.264")
         XCTAssertEqual(profile.format, "MP4")
         XCTAssertFalse(profile.recordSystemAudio)
-        XCTAssertFalse(profile.recordMicrophone)
-        XCTAssertEqual(profile.audioQuality, "High")
         XCTAssertFalse(profile.showMouseCursor)
-        XCTAssertTrue(profile.showRecordingTimer)
-        XCTAssertFalse(profile.autoStopAfterTime)
-        XCTAssertEqual(profile.maxTime, "10min")
-        XCTAssertTrue(profile.compressAfterRecording)
-        XCTAssertFalse(profile.deleteAfterRecording)
     }
     
     func testVideoEditingProfileSerialization() throws {
@@ -165,7 +158,6 @@ final class ProfileModelsTests: XCTestCase {
 }
 
 #endif
-
 
 
 

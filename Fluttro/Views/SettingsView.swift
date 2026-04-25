@@ -14,6 +14,7 @@ struct SettingsView: View {
         case general = "General"
         case image = "Image"
         case video = "Video"
+        case shortcuts = "Shortcuts"
 
         var id: String { rawValue }
 
@@ -25,6 +26,8 @@ struct SettingsView: View {
                 return "Image"
             case .video:
                 return "Video"
+            case .shortcuts:
+                return "Shortcuts"
             }
         }
 
@@ -36,6 +39,8 @@ struct SettingsView: View {
                 return "photo"
             case .video:
                 return "video"
+            case .shortcuts:
+                return "keyboard"
             }
         }
     }
@@ -63,6 +68,8 @@ struct SettingsView: View {
             ImageSettingsView()
         case .video:
             VideoSettingsView()
+        case .shortcuts:
+            KeyboardShortcutsSettingsView()
         }
     }
 }
@@ -75,6 +82,7 @@ private struct SettingsTabStrip: View {
             Text(selectedTab.title)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
+                .accessibilityIdentifier("settings.title")
 
             HStack(spacing: 14) {
                 ForEach(SettingsView.SettingsTab.allCases) { tab in
@@ -122,6 +130,8 @@ private struct SettingsTabButton: View {
             .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("settings.tab.\(tab.rawValue.lowercased())")
+        .accessibilityValue(isSelected ? "selected" : "unselected")
     }
 }
 

@@ -9,6 +9,7 @@ import SwiftUI
 
 #if os(macOS)
     import AppKit
+    import CoreGraphics
     import ScreenCaptureKit
 
     private struct WindowSelectionItem: Identifiable, Equatable {
@@ -16,11 +17,15 @@ import SwiftUI
         let window: SCWindow
         let frame: CGRect
         let displayName: String
+        let zOrder: Int
+        let area: CGFloat
 
-        init(window: SCWindow) {
+        init(window: SCWindow, zOrder: Int) {
             self.id = window.windowID
             self.window = window
             self.frame = window.frame
+            self.zOrder = zOrder
+            self.area = window.frame.width * window.frame.height
 
             if let appName = window.owningApplication?.applicationName,
                 let title = window.title, !title.isEmpty
@@ -40,9 +45,66 @@ import SwiftUI
         }
     }
 
+    private struct WindowServerMetadata {
+        let windowID: CGWindowID
+        let zOrder: Int
+        let layer: Int
+        let alpha: Double
+    }
+
+    private enum WindowSelectionCoordinateSpace {
+        static func desktopBounds() -> CGRect {
+            NSScreen.screens
+                .map(\.frame)
+                .reduce(.null) { partialResult, frame in
+                    partialResult.isNull ? frame : partialResult.union(frame)
+                }
+        }
+
+        static func topLeftScreenFrame(for appKitScreenFrame: CGRect) -> CGRect {
+            let desktop = desktopBounds()
+            guard !desktop.isNull else { return appKitScreenFrame }
+
+            return CGRect(
+                x: appKitScreenFrame.minX - desktop.minX,
+                y: desktop.maxY - appKitScreenFrame.maxY,
+                width: appKitScreenFrame.width,
+                height: appKitScreenFrame.height
+            )
+        }
+
+        static func topLeftPoint(
+            from point: CGPoint,
+            in appKitScreenFrame: CGRect
+        ) -> CGPoint {
+            let screenFrame = topLeftScreenFrame(for: appKitScreenFrame)
+            return CGPoint(
+                x: screenFrame.minX + point.x,
+                y: screenFrame.minY + point.y
+            )
+        }
+
+        static func localFrame(
+            for windowFrame: CGRect,
+            in appKitScreenFrame: CGRect
+        ) -> CGRect {
+            let screenFrame = topLeftScreenFrame(for: appKitScreenFrame)
+            let visibleFrame = windowFrame.intersection(screenFrame)
+            let frameToDraw = visibleFrame.isNull ? windowFrame : visibleFrame
+
+            return CGRect(
+                x: frameToDraw.minX - screenFrame.minX,
+                y: frameToDraw.minY - screenFrame.minY,
+                width: frameToDraw.width,
+                height: frameToDraw.height
+            )
+        }
+    }
+
     // MARK: - Window Selection View
 
     struct WindowSelectionOverlayView: View {
+        let captureMode: CaptureMode
         let screenFrame: CGRect
         let onSelection: (SCWindow?) -> Void
         let onCancel: () -> Void
@@ -52,6 +114,22 @@ import SwiftUI
         @State private var isLoading: Bool = true
         @State private var lastHoverUpdate: TimeInterval = 0
         private let hoverThrottleInterval: TimeInterval = 1.0 / 30.0
+
+        private var selectionTitle: String {
+            captureMode == .video ? "Select a window to record" : "Select a window to capture"
+        }
+
+        private var selectedHint: String {
+            captureMode == .video
+                ? "Click the record button to start • ESC to cancel"
+                : "Click the camera button to capture • ESC to cancel"
+        }
+
+        private var unselectedHint: String {
+            captureMode == .video
+                ? "Click on a window to select it • ESC to cancel"
+                : "Click on a window to select it • ESC to cancel"
+        }
 
         var body: some View {
             ZStack {
@@ -114,7 +192,7 @@ import SwiftUI
                                     .cornerRadius(6)
 
                             } else {
-                                Text("Select a window to capture")
+                                Text(selectionTitle)
                                     .foregroundColor(.white)
                                     .font(.headline)
 
@@ -131,8 +209,8 @@ import SwiftUI
 
                             Text(
                                 selectedWindow != nil
-                                    ? "Click the camera button to capture • ESC to cancel"
-                                    : "Click on a window to select it • ESC to cancel"
+                                    ? selectedHint
+                                    : unselectedHint
                             )
                             .foregroundColor(.white.opacity(0.8))
                             .font(.caption)
@@ -201,7 +279,11 @@ import SwiftUI
         private func loadAvailableWindows() {
             Task {
                 do {
-                    let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                    let content = try await SCShareableContent.excludingDesktopWindows(true, onScreenWindowsOnly: true)
+                    let windowServerMetadata = loadWindowServerMetadata()
+                    let windowServerMetadataByID = Dictionary(
+                        uniqueKeysWithValues: windowServerMetadata.map { ($0.windowID, $0) }
+                    )
 
                     Logger.d("WindowSelection: Found \(content.windows.count) total windows")
 
@@ -211,12 +293,12 @@ import SwiftUI
                             return nil
                         }
 
-                        let frame = window.frame
-                        guard frame.width > 100 && frame.height > 100 else {
+                        guard let metadata = windowServerMetadataByID[window.windowID] else {
                             return nil
                         }
 
-                        guard let title = window.title, !title.isEmpty else {
+                        let frame = window.frame
+                        guard frame.width > 100 && frame.height > 100 else {
                             return nil
                         }
 
@@ -236,7 +318,12 @@ import SwiftUI
                             "com.apple.systemuiserver",
                             "com.apple.dock",
                             "com.apple.screencapture",
+                            "com.apple.notificationcenterui",
+                            "com.apple.notificationcenter",
+                            "com.apple.controlcenter",
                         ]
+
+                        let title = window.title ?? ""
 
                         // Check title - only filter the most problematic ones
                         if problematicTitles.contains(where: { title.contains($0) }) {
@@ -252,6 +339,18 @@ import SwiftUI
                             return nil
                         }
 
+                        if app.applicationName == "NotificationCenter" {
+                            Logger.d("WindowSelection: Filtering out NotificationCenter window: \(title)")
+                            return nil
+                        }
+
+                        if metadata.layer != 0 || metadata.alpha <= 0.01 {
+                            Logger.d(
+                                "WindowSelection: Filtering out non-standard window \(title) layer=\(metadata.layer) alpha=\(metadata.alpha)"
+                            )
+                            return nil
+                        }
+
                         // Filter out windows that are likely system dialogs (very specific sizes)
                         if (frame.width == 480 && frame.height == 270)  // Common dialog size
                             || (frame.width == 400 && frame.height == 200)  // Another common size
@@ -260,13 +359,19 @@ import SwiftUI
                             return nil
                         }
 
-                        return WindowSelectionItem(window: window)
+                        return WindowSelectionItem(window: window, zOrder: metadata.zOrder)
+                    }
+                    .sorted { lhs, rhs in
+                        if lhs.zOrder != rhs.zOrder {
+                            return lhs.zOrder < rhs.zOrder
+                        }
+                        return lhs.area < rhs.area
                     }
 
                     Logger.d("WindowSelection: After filtering: \(windows.count) windows available")
                     for item in windows.prefix(5) {
                         Logger.d(
-                            "WindowSelection: Available window: \(item.displayName)"
+                            "WindowSelection: Available window: \(item.displayName) z=\(item.zOrder)"
                         )
                     }
 
@@ -289,22 +394,58 @@ import SwiftUI
                 return nil
             }
 
-            for window in availableWindows {
-                if window.frame.contains(screenLocation) {
-                    return window
-                }
-            }
+            let candidates = availableWindows.filter { $0.frame.contains(screenLocation) }
+            guard !candidates.isEmpty else { return nil }
 
-            return nil
+            let screenArea = max(1, screenFrame.width * screenFrame.height)
+
+            return candidates.sorted { lhs, rhs in
+                let lhsNearlyFullscreen = lhs.area / screenArea > 0.8
+                let rhsNearlyFullscreen = rhs.area / screenArea > 0.8
+                if lhsNearlyFullscreen != rhsNearlyFullscreen {
+                    return !lhsNearlyFullscreen && rhsNearlyFullscreen
+                }
+
+                let minArea = max(1, min(lhs.area, rhs.area))
+                let maxArea = max(lhs.area, rhs.area)
+                if maxArea / minArea > 1.35, abs(lhs.zOrder - rhs.zOrder) <= 6 {
+                    return lhs.area < rhs.area
+                }
+
+                if lhs.zOrder != rhs.zOrder {
+                    return lhs.zOrder < rhs.zOrder
+                }
+
+                return lhs.area < rhs.area
+            }.first
         }
 
         private func convertToScreenCoordinates(_ point: CGPoint) -> CGPoint {
-            let screenHeight = screenFrame.height
+            WindowSelectionCoordinateSpace.topLeftPoint(from: point, in: screenFrame)
+        }
 
-            return CGPoint(
-                x: screenFrame.minX + point.x,
-                y: screenFrame.minY + (screenHeight - point.y)
-            )
+        private func loadWindowServerMetadata() -> [WindowServerMetadata] {
+            guard let windowInfo = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID)
+                as? [[String: Any]]
+            else {
+                return []
+            }
+
+            return windowInfo.enumerated().compactMap { index, entry in
+                guard let number = entry[kCGWindowNumber as String] as? NSNumber else {
+                    return nil
+                }
+
+                let layer = (entry[kCGWindowLayer as String] as? NSNumber)?.intValue ?? 0
+                let alpha = (entry[kCGWindowAlpha as String] as? NSNumber)?.doubleValue ?? 1.0
+
+                return WindowServerMetadata(
+                    windowID: CGWindowID(number.uint32Value),
+                    zOrder: index,
+                    layer: layer,
+                    alpha: alpha
+                )
+            }
         }
     }
 
@@ -317,16 +458,9 @@ import SwiftUI
         let label: String?
 
         var body: some View {
-            let windowFrame = item.frame
-            let localFrame = windowFrame.intersection(screenFrame)
-            let frameToDraw = localFrame.isNull ? windowFrame : localFrame
-
-            // Convert window coordinates to SwiftUI coordinates
-            let swiftUIFrame = CGRect(
-                x: frameToDraw.minX - screenFrame.minX,
-                y: screenFrame.maxY - frameToDraw.maxY,
-                width: frameToDraw.width,
-                height: frameToDraw.height
+            let swiftUIFrame = WindowSelectionCoordinateSpace.localFrame(
+                for: item.frame,
+                in: screenFrame
             )
 
             RoundedRectangle(cornerRadius: 8)
@@ -372,6 +506,7 @@ import SwiftUI
 
     #Preview {
         WindowSelectionOverlayView(
+            captureMode: .image,
             screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
             onSelection: { _ in },
             onCancel: {}

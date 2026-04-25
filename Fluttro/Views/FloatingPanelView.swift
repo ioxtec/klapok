@@ -33,7 +33,7 @@ import SwiftUI
                     CaptureTypeSelector(viewModel: viewModel)
                     CaptureButton(viewModel: viewModel)
 
-                    if viewModel.captureMode == .video && viewModel.videoRecordingState == .recording {
+                    if viewModel.captureMode == .video && viewModel.videoRecordingState.isActive {
                         RecordingIndicator(viewModel: viewModel)
                     }
 
@@ -65,8 +65,10 @@ import SwiftUI
                         .zIndex(2)
                 }
             }
-            .padding(8)
-            .frame(minWidth: 450, minHeight: viewModel.isDisplayPickerPresented ? 240 : 74)
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
+            .frame(minWidth: 450, minHeight: viewModel.isDisplayPickerPresented ? 248 : 88)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             .animation(.easeInOut(duration: 0.18), value: viewModel.isDisplayPickerPresented)
             .onKeyPress(.space) {
@@ -144,6 +146,7 @@ import SwiftUI
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
+            .accessibilityIdentifier("floatingPanel.displayPicker")
             .background {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .fill(.ultraThinMaterial)

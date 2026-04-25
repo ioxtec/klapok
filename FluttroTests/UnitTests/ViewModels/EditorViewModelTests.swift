@@ -99,20 +99,19 @@ final class EditorViewModelTests: XCTestCase {
         XCTAssertEqual(ratio, 4.0/3.0, accuracy: 0.01)
     }
     
-    // MARK: - Image Position Calculation Tests
+    // MARK: - Output Size Calculation Tests
     
-    func testCalculateImagePosition() {
-        let backgroundSize = CGSize(width: 1200, height: 1000)
-        let imageSize = CGSize(width: 800, height: 600)
+    func testCalculateOutputSizeWithoutBackground() {
+        let previousBackgroundType = BackgroundManager.shared.collections.backgroundType
+        BackgroundManager.shared.setBackgroundType(.none)
+        defer {
+            BackgroundManager.shared.setBackgroundType(previousBackgroundType)
+        }
         
-        let position = editorViewModel.calculateImagePosition(
-            backgroundSize: backgroundSize,
-            imageSize: imageSize
-        )
+        let outputSize = editorViewModel.calculateOutputSize(for: testImage)
         
-        // Should be centered
-        XCTAssertEqual(position.x, 200.0, accuracy: 0.1)
-        XCTAssertEqual(position.y, 200.0, accuracy: 0.1)
+        XCTAssertEqual(outputSize.width, testImage.pixelSize.width, accuracy: 0.1)
+        XCTAssertEqual(outputSize.height, testImage.pixelSize.height, accuracy: 0.1)
     }
     
     // MARK: - Annotation Manager Integration Tests
@@ -133,14 +132,20 @@ final class EditorViewModelTests: XCTestCase {
     // MARK: - Save Image Tests
     
     func testSaveImage() {
+        let previousSaveDirectory = AppSettings.shared.saveDirectory
+        let testDirectory = TestHelpers.createTempDirectory()
+        AppSettings.shared.saveDirectory = testDirectory
+        defer {
+            AppSettings.shared.saveDirectory = previousSaveDirectory
+            TestHelpers.removeDirectory(testDirectory)
+        }
+
         editorViewModel.show(image: testImage)
         
-        // Note: This will actually try to save, so we just verify it doesn't crash
-        // In a real scenario, we would mock AppSettings
         editorViewModel.saveImage()
         
-        // Should not crash
         XCTAssertNotNil(editorViewModel.image)
+        XCTAssertFalse((try? FileManager.default.contentsOfDirectory(atPath: testDirectory.path).isEmpty) ?? true)
     }
     
     // MARK: - Copy to Clipboard Tests
@@ -178,7 +183,6 @@ final class EditorViewModelTests: XCTestCase {
 }
 
 #endif
-
 
 
 

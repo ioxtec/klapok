@@ -27,6 +27,7 @@ final class AppSettingsTests: XCTestCase {
         
         // Note: AppSettings uses singleton, so we test the shared instance
         settings = AppSettings.shared
+        settings.resetToDefaults()
     }
     
     override func tearDown() {
@@ -256,7 +257,6 @@ final class AppSettingsTests: XCTestCase {
 }
 
 #endif
-
 
 
 

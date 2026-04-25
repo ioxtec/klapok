@@ -23,6 +23,7 @@ class VideoRecordingService: VideoCaptureService {
     private var recordingStartTime: Date?
     private var recordingURL: URL?
     private var currentRecordingSize: CGSize?
+    private let firstFrameTimeout: TimeInterval = 8.0
     
     // MARK: - VideoCaptureService Implementation
     
@@ -56,20 +57,20 @@ class VideoRecordingService: VideoCaptureService {
         excludingWindows: [NSWindow] = []
     ) async throws {
         try prepareRecording()
-        try await setupScreenCapture(displayID: displayID, excludingWindows: excludingWindows)
-        markRecordingStarted()
+        let firstFrameDate = try await setupScreenCapture(displayID: displayID, excludingWindows: excludingWindows)
+        markRecordingStarted(at: firstFrameDate)
     }
     
     func startRecordingWindow(_ window: SCWindow, excludingWindows: [NSWindow] = []) async throws {
         try prepareRecording()
-        try await setupWindowCapture(window: window, excludingWindows: excludingWindows)
-        markRecordingStarted()
+        let firstFrameDate = try await setupWindowCapture(window: window, excludingWindows: excludingWindows)
+        markRecordingStarted(at: firstFrameDate)
     }
     
     func startRecordingArea(_ areaRect: NSRect, excludingWindows: [NSWindow] = []) async throws {
         try prepareRecording()
-        try await setupAreaCapture(areaRect: areaRect, excludingWindows: excludingWindows)
-        markRecordingStarted()
+        let firstFrameDate = try await setupAreaCapture(areaRect: areaRect, excludingWindows: excludingWindows)
+        markRecordingStarted(at: firstFrameDate)
     }
     
     func stopRecording() async throws -> VideoRecording {
@@ -123,7 +124,8 @@ class VideoRecordingService: VideoCaptureService {
     }
 
     func cancelRecording() async {
-        guard isRecording else {
+        let hasPendingRecordingResources = stream != nil || streamOutput != nil || recordingURL != nil
+        guard isRecording || hasPendingRecordingResources else {
             Logger.w("VideoRecordingService: Not recording, cannot cancel")
             return
         }
@@ -166,9 +168,9 @@ class VideoRecordingService: VideoCaptureService {
             .appendingPathComponent("fluttro_recording_\(Date().timeIntervalSince1970).\(fileExtension)")
     }
 
-    private func markRecordingStarted() {
+    private func markRecordingStarted(at startDate: Date) {
         isRecording = true
-        recordingStartTime = Date()
+        recordingStartTime = startDate
     }
 
     private func matchingExcludedWindows(
@@ -219,19 +221,20 @@ class VideoRecordingService: VideoCaptureService {
         configuration: SCStreamConfiguration,
         recordingURL: URL,
         outputSize: CGSize
-    ) async throws {
+    ) async throws -> Date {
         currentRecordingSize = outputSize
         let output = VideoStreamOutput(recordingURL: recordingURL, outputSize: outputSize)
         streamOutput = output
         stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
         try stream?.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue.global(qos: .userInitiated))
         try await stream?.startCapture()
+        return try await waitForFirstFrame(from: output)
     }
     
     private func setupScreenCapture(
         displayID: CGDirectDisplayID? = nil,
         excludingWindows: [NSWindow] = []
-    ) async throws {
+    ) async throws -> Date {
         guard let recordingURL = recordingURL else {
             throw CaptureError.invalidRequest("No recording URL set")
         }
@@ -256,7 +259,7 @@ class VideoRecordingService: VideoCaptureService {
         let stream = makeStreamConfiguration(sourceSize: sourceSize, settings: settings)
         let filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
 
-        try await startStream(
+        return try await startStream(
             filter: filter,
             configuration: stream.configuration,
             recordingURL: recordingURL,
@@ -264,7 +267,7 @@ class VideoRecordingService: VideoCaptureService {
         )
     }
     
-    private func setupWindowCapture(window: SCWindow, excludingWindows: [NSWindow] = []) async throws {
+    private func setupWindowCapture(window: SCWindow, excludingWindows: [NSWindow] = []) async throws -> Date {
         guard let recordingURL = recordingURL else {
             throw CaptureError.invalidRequest("No recording URL set")
         }
@@ -293,7 +296,7 @@ class VideoRecordingService: VideoCaptureService {
             filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
         }
 
-        try await startStream(
+        return try await startStream(
             filter: filter,
             configuration: stream.configuration,
             recordingURL: recordingURL,
@@ -301,7 +304,7 @@ class VideoRecordingService: VideoCaptureService {
         )
     }
     
-    private func setupAreaCapture(areaRect: NSRect, excludingWindows: [NSWindow] = []) async throws {
+    private func setupAreaCapture(areaRect: NSRect, excludingWindows: [NSWindow] = []) async throws -> Date {
         guard let recordingURL = recordingURL else {
             throw CaptureError.invalidRequest("No recording URL set")
         }
@@ -338,12 +341,28 @@ class VideoRecordingService: VideoCaptureService {
         stream.configuration.sourceRect = convertedRect
         let filter = SCContentFilter(display: display, excludingWindows: windowsToExclude)
 
-        try await startStream(
+        return try await startStream(
             filter: filter,
             configuration: stream.configuration,
             recordingURL: recordingURL,
             outputSize: stream.outputSize
         )
+    }
+
+    private func waitForFirstFrame(from output: VideoStreamOutput) async throws -> Date {
+        let deadline = Date().addingTimeInterval(firstFrameTimeout)
+
+        while Date() < deadline {
+            try Task.checkCancellation()
+
+            if let firstFrameDate = output.firstFrameDate {
+                return firstFrameDate
+            }
+
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+
+        throw CaptureError.timeout
     }
     
     // MARK: - Window Activation
@@ -369,12 +388,15 @@ class VideoRecordingService: VideoCaptureService {
         // Find the running application by bundle identifier
         if let targetApp = runningApps.first(where: { $0.bundleIdentifier == bundleId }) {
             // Activate the application
-            targetApp.activate(options: [])
+            targetApp.activate(options: [.activateIgnoringOtherApps])
             
-            // Small delay to let the app activate
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                // Try to bring the specific window to front using AppleScript
-                self.bringSpecificWindowToFront(appName: appName, windowTitle: windowTitle)
+            guard !bundleId.isEmpty, !windowTitle.isEmpty else {
+                return
+            }
+
+            // Run AppleScript off the main thread so a slow Apple event does not freeze the floating panel UI.
+            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1) {
+                self.bringSpecificWindowToFront(bundleIdentifier: bundleId, windowTitle: windowTitle)
             }
         } else {
             Logger.w("VideoRecordingService: Application not found in running apps: \(bundleId)")
@@ -382,12 +404,14 @@ class VideoRecordingService: VideoCaptureService {
     }
     
     /// Uses AppleScript to bring a specific window to the front
-    private func bringSpecificWindowToFront(appName: String, windowTitle: String) {
+    private func bringSpecificWindowToFront(bundleIdentifier: String, windowTitle: String) {
+        let escapedBundleIdentifier = escapeAppleScriptString(bundleIdentifier)
+        let escapedWindowTitle = escapeAppleScriptString(windowTitle)
         let script = """
-        tell application "\(appName)"
+        tell application id "\(escapedBundleIdentifier)"
             activate
             try
-                set index of window "\(windowTitle)" to 1
+                set index of window "\(escapedWindowTitle)" to 1
             end try
         end tell
         """
@@ -400,6 +424,12 @@ class VideoRecordingService: VideoCaptureService {
         if let error = error {
             Logger.w("VideoRecordingService: AppleScript window activation failed: \(error)")
         }
+    }
+
+    private func escapeAppleScriptString(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
     }
     
     private func parseResolution(_ resolution: String) -> (Int, Int) {
