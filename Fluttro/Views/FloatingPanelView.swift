@@ -31,6 +31,7 @@ import SwiftUI
                         .opacity(0.35)
 
                     CaptureTypeSelector(viewModel: viewModel)
+                    QuickSettingsButton(viewModel: viewModel)
                     CaptureButton(viewModel: viewModel)
 
                     if viewModel.captureMode == .video && viewModel.videoRecordingState.isActive {

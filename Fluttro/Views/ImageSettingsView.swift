@@ -35,6 +35,12 @@ struct ImageSettingsView: View {
                     subtitle: "Real screenshot preferences used by the capture pipeline.",
                     systemImage: "camera"
                 ) {
+                    SettingsToggleOption(
+                        title: LocalizationKeys.showMouseCursorTitle.localized,
+                        description: LocalizationKeys.showMouseCursorDescription.localized,
+                        isOn: $viewModel.screenshotShowsMouseCursor
+                    )
+
                     SettingsPickerOption(
                         title: "Screenshot size",
                         description: "Real screen size writes physical pixels. Scaled screen size uses the macOS logical size.",

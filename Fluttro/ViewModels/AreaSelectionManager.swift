@@ -19,30 +19,6 @@ import SwiftUI
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
             true
         }
-
-        override func resetCursorRects() {
-            super.resetCursorRects()
-            addCursorRect(bounds, cursor: .crosshair)
-        }
-
-        override func cursorUpdate(with event: NSEvent) {
-            NSCursor.crosshair.set()
-        }
-
-        override func mouseMoved(with event: NSEvent) {
-            NSCursor.crosshair.set()
-            super.mouseMoved(with: event)
-        }
-
-        override func mouseDragged(with event: NSEvent) {
-            NSCursor.crosshair.set()
-            super.mouseDragged(with: event)
-        }
-
-        override func mouseDown(with event: NSEvent) {
-            NSCursor.crosshair.set()
-            super.mouseDown(with: event)
-        }
     }
 
     // MARK: - Area Selection Manager
@@ -65,6 +41,7 @@ import SwiftUI
             self.isPresented = true
             self.isRecording = false
             selectionCoordinator.reset()
+            restoreRememberedSelectionIfNeeded()
 
             createOverlayWindow()
             startSelectionCursorOverride()
@@ -164,34 +141,53 @@ import SwiftUI
             Logger.s("AreaSelectionManager: Overlay window shown successfully")
         }
 
+        private func restoreRememberedSelectionIfNeeded() {
+            let settings = AppSettings.shared
+            guard
+                settings.areaSelectionLockEnabled,
+                let rect = settings.lastAreaSelectionRect,
+                !rect.isEmpty,
+                let displayID = displayID(for: rect)
+            else {
+                return
+            }
+
+            selectionCoordinator.activeScreenID = displayID
+            selectionCoordinator.currentSelection = rect
+        }
+
+        private func displayID(for rect: NSRect) -> CGDirectDisplayID? {
+            let midpoint = NSPoint(x: rect.midX, y: rect.midY)
+            let screenWithMidpoint = NSScreen.screens.first { $0.frame.contains(midpoint) }
+            if let screenWithMidpoint {
+                return ScreenPixelGeometry.displayID(for: screenWithMidpoint)
+            }
+
+            let bestMatchingScreen = NSScreen.screens.max { lhs, rhs in
+                intersectionArea(between: lhs.frame, and: rect) < intersectionArea(between: rhs.frame, and: rect)
+            }
+
+            guard
+                let bestMatchingScreen,
+                intersectionArea(between: bestMatchingScreen.frame, and: rect) > 0
+            else {
+                return nil
+            }
+
+            return ScreenPixelGeometry.displayID(for: bestMatchingScreen)
+        }
+
+        private func intersectionArea(between lhs: NSRect, and rhs: NSRect) -> CGFloat {
+            let intersection = lhs.intersection(rhs)
+            return intersection.width * intersection.height
+        }
+
         private func startSelectionCursorOverride() {
             guard !didPushSelectionCursor else { return }
 
             NSCursor.crosshair.push()
             NSCursor.crosshair.set()
             didPushSelectionCursor = true
-
-            let events: NSEvent.EventTypeMask = [
-                .cursorUpdate,
-                .leftMouseDown,
-                .leftMouseDragged,
-                .mouseMoved,
-            ]
-
-            if let localMonitor = NSEvent.addLocalMonitorForEvents(matching: events, handler: { event in
-                NSCursor.crosshair.set()
-                return event
-            }) {
-                cursorMonitors.append(localMonitor)
-            }
-
-            if let globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: events, handler: { _ in
-                DispatchQueue.main.async {
-                    NSCursor.crosshair.set()
-                }
-            }) {
-                cursorMonitors.append(globalMonitor)
-            }
         }
 
         private func stopSelectionCursorOverride() {

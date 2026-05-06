@@ -32,6 +32,14 @@ import SwiftUI
         case idle
     }
 
+    private enum SelectionHoverTarget {
+        case miniPanel
+        case coordinateEditor
+        case resize(handle: SelectionResizeHandle)
+        case move
+        case create
+    }
+
     // MARK: - Shared Selection State
 
     final class AreaSelectionCoordinator: ObservableObject {
@@ -152,13 +160,13 @@ import SwiftUI
             }
             .contentShape(Rectangle())
             .onContinuousHover { phase in
-                if !coordinator.isRecording && !isEditingSelection {
-                    switch phase {
-                    case .active(let location):
-                        updateCursor(at: location)
-                    case .ended:
-                        break
-                    }
+                guard !coordinator.isRecording else { return }
+
+                switch phase {
+                case .active(let location):
+                    updateCursor(at: location)
+                case .ended:
+                    NSCursor.crosshair.set()
                 }
             }
             .gesture((coordinator.isRecording || isEditingSelection) ? nil : mainDragGesture)
@@ -182,6 +190,9 @@ import SwiftUI
                 return .handled
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onAppear {
+                restoreSelectionIfNeeded()
+            }
         }
 
         // MARK: - Gesture Handling
@@ -345,6 +356,21 @@ import SwiftUI
             updateSelectionDraft(from: .zero)
         }
 
+        private func restoreSelectionIfNeeded() {
+            guard coordinator.activeScreenID == screenID, !coordinator.currentSelection.isEmpty else {
+                return
+            }
+
+            let restoredRect = constrainRectToScreen(
+                convertFromScreenCoordinates(coordinator.currentSelection)
+            )
+            guard restoredRect.width > 10, restoredRect.height > 10 else { return }
+
+            selectionRect = restoredRect
+            mode = .idle
+            updateSelectionDraft(from: restoredRect)
+        }
+
         private func resizeSelection(handle: SelectionResizeHandle, to point: CGPoint) {
             let newRect = calculateResizedRect(handle: handle, to: point)
             
@@ -419,20 +445,40 @@ import SwiftUI
         }
 
         private func updateCursor(at location: CGPoint) {
+            switch hoverTarget(at: location) {
+            case .miniPanel, .coordinateEditor:
+                NSCursor.arrow.set()
+            case .resize(let handle):
+                cursorForHandle(handle).set()
+            case .move:
+                Self.moveCursor.set()
+            case .create:
+                NSCursor.crosshair.set()
+            }
+        }
+
+        private func hoverTarget(at location: CGPoint) -> SelectionHoverTarget {
             if selectionRect.isEmpty {
-                NSCursor.crosshair.set()
-                return
+                return .create
             }
 
-            let handle = getResizeHandle(at: location)
-
-            if let handle = handle {
-                setCursorForHandle(handle)
-            } else if selectionRect.contains(location) {
-                NSCursor.openHand.set()
-            } else {
-                NSCursor.crosshair.set()
+            if selectionControlsFrame.contains(location) {
+                return .miniPanel
             }
+
+            if isEditingSelection, selectionEditorFrame.contains(location) {
+                return .coordinateEditor
+            }
+
+            if let handle = getResizeHandle(at: location) {
+                return .resize(handle: handle)
+            }
+
+            if selectionRect.contains(location) {
+                return .move
+            }
+
+            return .create
         }
 
         private func createSimpleDiagonalCursor(isNWSE: Bool) {
@@ -571,17 +617,12 @@ import SwiftUI
             return nil
         }
 
-        private func setCursorForHandle(_ handle: SelectionResizeHandle) {
-            let cursor = cursorForHandle(handle)
-            cursor.set()
-        }
-        
         private func cursorForHandle(_ handle: SelectionResizeHandle) -> NSCursor {
             switch handle {
             case .topLeft, .bottomRight:
-                return diagonalResizeCursor(isNWSE: true)
+                return Self.diagonalResizeCursorNWSE
             case .topRight, .bottomLeft:
-                return diagonalResizeCursor(isNWSE: false)
+                return Self.diagonalResizeCursorNESW
             case .top, .bottom:
                 return NSCursor.resizeUpDown
             case .left, .right:
@@ -589,125 +630,55 @@ import SwiftUI
             }
         }
 
-        private func diagonalResizeCursor(isNWSE: Bool) -> NSCursor {
-            let size = CGSize(width: 18, height: 18)
-            let image = NSImage(size: size)
+        private var selectionControlsFrame: CGRect {
+            guard !selectionRect.isEmpty else { return .zero }
 
-            image.lockFocus()
-            guard let context = NSGraphicsContext.current?.cgContext else {
-                image.unlockFocus()
-                return NSCursor.arrow
-            }
+            let digits = max(
+                coordinateDigitCount(selectionRect.minX),
+                coordinateDigitCount(selectionRect.minY),
+                coordinateDigitCount(selectionRect.width),
+                coordinateDigitCount(selectionRect.height)
+            )
+            let text = "x:\(String(repeating: "8", count: digits)), y:\(String(repeating: "8", count: digits)), w:\(String(repeating: "8", count: digits)), h:\(String(repeating: "8", count: digits))"
+            let textSize = (text as NSString).size(withAttributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
+            ])
+            let buttonCount = 3
+            let buttonWidth = CGFloat(buttonCount * 18)
+            let spacingWidth = CGFloat(buttonCount * 8)
+            let width = textSize.width + buttonWidth + spacingWidth + 16
+            let height: CGFloat = 28
+            let center = CGPoint(x: selectionRect.midX, y: max(selectionRect.minY - 15, 15))
 
-            context.clear(CGRect(origin: .zero, size: size))
-            context.setLineCap(.round)
-            context.setLineJoin(.round)
-
-            let start = isNWSE ? CGPoint(x: 4, y: 4) : CGPoint(x: 14, y: 4)
-            let end = isNWSE ? CGPoint(x: 14, y: 14) : CGPoint(x: 4, y: 14)
-
-            drawDiagonalResizeCursorLine(from: start, to: end, in: context, color: .white, width: 4)
-            drawDiagonalResizeCursorLine(from: start, to: end, in: context, color: .black, width: 2)
-
-            image.unlockFocus()
-
-            return NSCursor(image: image, hotSpot: NSPoint(x: 9, y: 9))
+            return CGRect(
+                x: center.x - (width / 2),
+                y: center.y - (height / 2),
+                width: width,
+                height: height
+            ).insetBy(dx: -6, dy: -4)
         }
 
-        private func drawDiagonalResizeCursorLine(
-            from start: CGPoint,
-            to end: CGPoint,
-            in context: CGContext,
-            color: NSColor,
-            width: CGFloat
-        ) {
-            context.setStrokeColor(color.cgColor)
-            context.setFillColor(color.cgColor)
-            context.setLineWidth(width)
-            context.move(to: start)
-            context.addLine(to: end)
-            context.strokePath()
+        private var selectionEditorFrame: CGRect {
+            guard isEditingSelection else { return .zero }
 
-            drawArrowHead(tip: start, toward: CGPoint(x: start.x - end.x, y: start.y - end.y), in: context)
-            drawArrowHead(tip: end, toward: CGPoint(x: end.x - start.x, y: end.y - start.y), in: context)
+            let fieldWidth: CGFloat = 48
+            let fieldStackWidth: CGFloat = 4 + 8 + fieldWidth
+            let fieldsWidth = fieldStackWidth * 4
+            let buttonsWidth: CGFloat = 20 + 8 + 20
+            let width = fieldsWidth + buttonsWidth + 20
+            let height: CGFloat = 38
+            let center = selectionEditorPosition
+
+            return CGRect(
+                x: center.x - (width / 2),
+                y: center.y - (height / 2),
+                width: width,
+                height: height
+            ).insetBy(dx: -6, dy: -4)
         }
 
-        private func drawArrowHead(tip: CGPoint, toward direction: CGPoint, in context: CGContext) {
-            let length = max(sqrt(direction.x * direction.x + direction.y * direction.y), 1)
-            let unit = CGPoint(x: direction.x / length, y: direction.y / length)
-            let perpendicular = CGPoint(x: -unit.y, y: unit.x)
-            let base = CGPoint(x: tip.x - unit.x * 5, y: tip.y - unit.y * 5)
-
-            context.beginPath()
-            context.move(to: tip)
-            context.addLine(to: CGPoint(x: base.x + perpendicular.x * 3, y: base.y + perpendicular.y * 3))
-            context.addLine(to: CGPoint(x: base.x - perpendicular.x * 3, y: base.y - perpendicular.y * 3))
-            context.closePath()
-            context.fillPath()
-        }
-
-        private func createDiagonalCursor(angle: CGFloat) {
-            // Create a simple diagonal resize cursor using Core Graphics
-            let size = CGSize(width: 16, height: 16)
-            let image = NSImage(size: size)
-
-            image.lockFocus()
-
-            // Set up the graphics context
-            guard let context = NSGraphicsContext.current?.cgContext else {
-                NSCursor.arrow.set()
-                image.unlockFocus()
-                return
-            }
-
-            // Clear the background
-            context.clear(CGRect(origin: .zero, size: size))
-
-            // Set line properties
-            context.setStrokeColor(NSColor.black.cgColor)
-            context.setLineWidth(1.5)
-            context.setLineCap(.round)
-
-            let center = CGPoint(x: size.width / 2, y: size.height / 2)
-            let length: CGFloat = 6
-
-            if angle == 0 {  // NW-SE diagonal
-                // Draw NW-SE arrow
-                context.move(to: CGPoint(x: center.x - length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x + length, y: center.y + length))
-
-                // Arrow heads
-                context.move(to: CGPoint(x: center.x - length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x - length + 3, y: center.y - length))
-                context.move(to: CGPoint(x: center.x - length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x - length, y: center.y - length + 3))
-
-                context.move(to: CGPoint(x: center.x + length, y: center.y + length))
-                context.addLine(to: CGPoint(x: center.x + length - 3, y: center.y + length))
-                context.move(to: CGPoint(x: center.x + length, y: center.y + length))
-                context.addLine(to: CGPoint(x: center.x + length, y: center.y + length - 3))
-            } else {  // NE-SW diagonal
-                // Draw NE-SW arrow
-                context.move(to: CGPoint(x: center.x + length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x - length, y: center.y + length))
-
-                // Arrow heads
-                context.move(to: CGPoint(x: center.x + length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x + length - 3, y: center.y - length))
-                context.move(to: CGPoint(x: center.x + length, y: center.y - length))
-                context.addLine(to: CGPoint(x: center.x + length, y: center.y - length + 3))
-
-                context.move(to: CGPoint(x: center.x - length, y: center.y + length))
-                context.addLine(to: CGPoint(x: center.x - length + 3, y: center.y + length))
-                context.move(to: CGPoint(x: center.x - length, y: center.y + length))
-                context.addLine(to: CGPoint(x: center.x - length, y: center.y + length - 3))
-            }
-
-            context.strokePath()
-            image.unlockFocus()
-
-            let cursor = NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))
-            cursor.set()
+        private func coordinateDigitCount(_ value: CGFloat) -> Int {
+            max(1, String(Int(abs(value).rounded())).count)
         }
 
         private func convertToScreenCoordinates(_ rect: CGRect) -> NSRect {
@@ -716,6 +687,17 @@ import SwiftUI
             return NSRect(
                 x: screenFrame.minX + rect.minX,
                 y: screenFrame.minY + (screenHeight - rect.minY - rect.height),
+                width: rect.width,
+                height: rect.height
+            )
+        }
+
+        private func convertFromScreenCoordinates(_ rect: CGRect) -> CGRect {
+            let screenHeight = screenFrame.height
+
+            return CGRect(
+                x: rect.minX - screenFrame.minX,
+                y: screenHeight - (rect.minY - screenFrame.minY) - rect.height,
                 width: rect.width,
                 height: rect.height
             )
@@ -800,6 +782,78 @@ import SwiftUI
 
             return constrainedRect
         }
+
+        private static let diagonalResizeCursorNWSE = makeSymbolCursor(
+            systemName: "arrow.up.left.and.arrow.down.right",
+            fallback: .resizeUpDown
+        )
+        private static let diagonalResizeCursorNESW = makeSymbolCursor(
+            systemName: "arrow.down.left.and.arrow.up.right",
+            fallback: .resizeLeftRight
+        )
+        private static let moveCursor = makeSymbolCursor(
+            systemName: "arrow.up.and.down.and.arrow.left.and.right",
+            fallback: .openHand
+        )
+
+        private static func makeSymbolCursor(systemName: String, fallback: NSCursor) -> NSCursor {
+            let configuration = NSImage.SymbolConfiguration(
+                pointSize: 18,
+                weight: .bold,
+                scale: .medium
+            )
+            let canvasSize = CGSize(width: 24, height: 24)
+
+            guard
+                let baseSymbol = NSImage(
+                    systemSymbolName: systemName,
+                    accessibilityDescription: nil
+                )?.withSymbolConfiguration(configuration)
+            else {
+                return fallback
+            }
+
+            let outlinedImage = NSImage(size: canvasSize)
+            outlinedImage.lockFocus()
+
+            let drawRect = CGRect(
+                x: (canvasSize.width - baseSymbol.size.width) / 2,
+                y: (canvasSize.height - baseSymbol.size.height) / 2,
+                width: baseSymbol.size.width,
+                height: baseSymbol.size.height
+            )
+            let outlineOffsets = [
+                CGPoint(x: -1, y: -1), CGPoint(x: 0, y: -1), CGPoint(x: 1, y: -1),
+                CGPoint(x: -1, y: 0),                           CGPoint(x: 1, y: 0),
+                CGPoint(x: -1, y: 1),  CGPoint(x: 0, y: 1),  CGPoint(x: 1, y: 1),
+            ]
+
+            outlineOffsets.forEach { offset in
+                renderSymbol(
+                    baseSymbol,
+                    color: .white,
+                    in: drawRect.offsetBy(dx: offset.x, dy: offset.y)
+                )
+            }
+
+            renderSymbol(baseSymbol, color: .black, in: drawRect)
+            outlinedImage.unlockFocus()
+
+            return NSCursor(
+                image: outlinedImage,
+                hotSpot: NSPoint(x: outlinedImage.size.width / 2, y: outlinedImage.size.height / 2)
+            )
+        }
+
+        private static func renderSymbol(_ symbol: NSImage, color: NSColor, in rect: CGRect) {
+            let tinted = NSImage(size: rect.size)
+            tinted.lockFocus()
+            symbol.draw(in: CGRect(origin: .zero, size: rect.size))
+            color.set()
+            CGRect(origin: .zero, size: rect.size).fill(using: .sourceAtop)
+            tinted.unlockFocus()
+            tinted.draw(in: rect)
+        }
     }
 
     // MARK: - Selection Rectangle View
@@ -880,6 +934,7 @@ import SwiftUI
         let showActions: Bool
         let onCapture: () -> Void
         let onEdit: () -> Void
+        @StateObject private var settings = AppSettings.shared
         
         var body: some View {
             HStack(spacing: 8) {
@@ -903,6 +958,23 @@ import SwiftUI
                     }
                     .buttonStyle(.plain)
                     .help("Edit selection coordinates")
+
+                    Button {
+                        settings.areaSelectionLockEnabled.toggle()
+                    } label: {
+                        Image(systemName: settings.areaSelectionLockEnabled ? "lock.fill" : "lock.open")
+                            .font(.system(size: 11, weight: .semibold))
+                            .frame(width: 18, height: 18)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Remember selected area")
+                    .accessibilityIdentifier("areaSelection.lock")
+                    .accessibilityValue(settings.areaSelectionLockEnabled ? "locked" : "unlocked")
+                    .help(
+                        settings.areaSelectionLockEnabled
+                            ? "Reuse the last selected area the next time area capture opens"
+                            : "Remember and reuse the last selected area"
+                    )
                 }
             }
             .foregroundColor(.white)

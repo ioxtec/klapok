@@ -59,6 +59,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.videoBitrate, 5000000) // 5 Mbps
         XCTAssertEqual(settings.videoCodec, "H.264")
         XCTAssertEqual(settings.videoFormat, "MP4")
+        XCTAssertFalse(settings.areaSelectionLockEnabled)
+        XCTAssertNil(settings.lastAreaSelectionRect)
     }
     
     // MARK: - Save Directory Tests
@@ -182,6 +184,22 @@ final class AppSettingsTests: XCTestCase {
         settings.videoBitrateString = "5000 kbps"
         XCTAssertEqual(settings.videoBitrate, 5000000)
     }
+
+    func testAreaSelectionLockPersistence() {
+        settings.areaSelectionLockEnabled = true
+
+        XCTAssertTrue(settings.areaSelectionLockEnabled)
+        XCTAssertEqual(UserDefaults.standard.object(forKey: "areaSelectionLockEnabled") as? Bool, true)
+    }
+
+    func testRememberAreaSelectionPersistence() {
+        let rect = NSRect(x: 120, y: 80, width: 640, height: 360)
+
+        settings.rememberAreaSelection(rect)
+
+        XCTAssertEqual(settings.lastAreaSelectionRect, rect)
+        XCTAssertEqual(UserDefaults.standard.string(forKey: "lastAreaSelectionRect"), NSStringFromRect(rect))
+    }
     
     // MARK: - Reset Tests
     
@@ -257,7 +275,6 @@ final class AppSettingsTests: XCTestCase {
 }
 
 #endif
-
 
 
 

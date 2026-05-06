@@ -196,24 +196,11 @@ class VideoRecordingService: VideoCaptureService {
         sourceSize: CGSize,
         settings: AppSettings = .shared
     ) -> (configuration: SCStreamConfiguration, outputSize: CGSize) {
-        let streamConfig = SCStreamConfiguration()
-        let outputSize: CGSize
-
-        if settings.videoResolution == "Source" {
-            outputSize = sourceSize
-        } else {
-            let (width, height) = parseResolution(settings.videoResolution)
-            outputSize = CGSize(width: width, height: height)
-        }
-
-        streamConfig.width = Int(outputSize.width)
-        streamConfig.height = Int(outputSize.height)
-        streamConfig.minimumFrameInterval = CMTime(value: 1, timescale: Int32(settings.videoFrameRate))
-        streamConfig.queueDepth = 5
-        streamConfig.showsCursor = settings.showMouseCursor
-        streamConfig.capturesAudio = settings.recordSystemAudio
-
-        return (streamConfig, outputSize)
+        let streamSettings = VideoCaptureConfigurationBuilder.streamSettings(
+            sourceSize: sourceSize,
+            settings: settings
+        )
+        return (streamSettings.makeStreamConfiguration(), streamSettings.outputSize)
     }
 
     private func startStream(
@@ -432,18 +419,6 @@ class VideoRecordingService: VideoCaptureService {
             .replacingOccurrences(of: "\"", with: "\\\"")
     }
     
-    private func parseResolution(_ resolution: String) -> (Int, Int) {
-        switch resolution {
-        case "1080p":
-            return (1920, 1080)
-        case "720p":
-            return (1280, 720)
-        case "480p":
-            return (854, 480)
-        default:
-            return (1920, 1080) // Default to 1080p
-        }
-    }
 }
 
 #endif

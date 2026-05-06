@@ -140,6 +140,18 @@ struct ImageCaptureConfiguration {
         scalesToFit: false,
         preservesAspectRatio: true
     )
+
+    func withShowsCursor(_ showsCursor: Bool) -> ImageCaptureConfiguration {
+        ImageCaptureConfiguration(
+            pixelFormat: pixelFormat,
+            captureResolution: captureResolution,
+            showsCursor: showsCursor,
+            capturesAudio: capturesAudio,
+            minimumFrameInterval: minimumFrameInterval,
+            scalesToFit: scalesToFit,
+            preservesAspectRatio: preservesAspectRatio
+        )
+    }
 }
 
 /// Configuration for video capture operations (Future)

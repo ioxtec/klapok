@@ -104,6 +104,10 @@ import SwiftUI
             videoRecordingState.isActive ? 0.76 : 1.0
         }
 
+        private var screenshotCaptureConfiguration: ImageCaptureConfiguration {
+            .default.withShowsCursor(AppSettings.shared.screenshotShowsMouseCursor)
+        }
+
         // MARK: - Initialization
 
         init(editorViewModel: EditorViewModel) {
@@ -265,7 +269,10 @@ import SwiftUI
             hideFloatingPanel()
 
             do {
-                let image = try await captureManager.captureFullScreen(displayID: displayID)
+                let image = try await captureManager.captureFullScreen(
+                    displayID: displayID,
+                    configuration: screenshotCaptureConfiguration
+                )
                 let sourceRect = ScreenPixelGeometry.screen(for: displayID)?.frame ?? NSScreen.main?.frame
                 isCapturing = false
                 presentCapturedScreenshot(image, sourceRect: sourceRect)
@@ -292,7 +299,9 @@ import SwiftUI
                 switch screenshotType {
                 case .fullScreen:
                     hideFloatingPanel()
-                    image = try await captureManager.captureFullScreen()
+                    image = try await captureManager.captureFullScreen(
+                        configuration: screenshotCaptureConfiguration
+                    )
                     sourceRect = NSScreen.main?.frame
 
                 case .area:
@@ -305,6 +314,7 @@ import SwiftUI
                         if !currentSelection.isEmpty && currentSelection.width > 10
                             && currentSelection.height > 10
                         {
+                            rememberAreaSelection(currentSelection)
                             // Hide area selection overlay BEFORE taking screenshot
                             Logger.d(
                                 "FloatingPanelViewModel: Hiding area selection overlay before screenshot"
@@ -317,7 +327,10 @@ import SwiftUI
                             try await Task.sleep(nanoseconds: 100_000_000)  // 0.1 second
 
                             // Now take the screenshot
-                            image = try await captureManager.captureArea(currentSelection)
+                            image = try await captureManager.captureArea(
+                                currentSelection,
+                                configuration: screenshotCaptureConfiguration
+                            )
                             sourceRect = currentSelection
                         } else {
                             Logger.w("FloatingPanelViewModel: No valid selection")
@@ -342,7 +355,10 @@ import SwiftUI
                         return
                     }
                     hideFloatingPanel()
-                    image = try await captureManager.captureWindow(window)
+                    image = try await captureManager.captureWindow(
+                        window,
+                        configuration: screenshotCaptureConfiguration
+                    )
                     sourceRect = window.frame
                 }
 
@@ -480,7 +496,7 @@ import SwiftUI
                     "FloatingPanelViewModel: Area selection completed: \(String(describing: rect))"
                 )
                 if let rect = rect {
-                    self.selectedArea = rect
+                    self.rememberAreaSelection(rect)
                     if self.captureMode == .video {
                         if self.isShortcutAreaRecordingPending {
                             self.isShortcutAreaRecordingPending = false
@@ -524,6 +540,7 @@ import SwiftUI
         private func captureSelectedArea(rect: NSRect) async {
             Logger.d("FloatingPanelViewModel: Capturing selected area: \(rect)")
             isCapturing = true
+            rememberAreaSelection(rect)
 
             // Hide area selection overlay BEFORE taking screenshot
             Logger.d("FloatingPanelViewModel: Hiding area selection overlay before screenshot")
@@ -539,7 +556,10 @@ import SwiftUI
             }
 
             do {
-                let image = try await captureManager.captureArea(rect)
+                let image = try await captureManager.captureArea(
+                    rect,
+                    configuration: screenshotCaptureConfiguration
+                )
                 isCapturing = false
                 presentCapturedScreenshot(image, sourceRect: rect)
                 Logger.s("FloatingPanelViewModel: Area screenshot completed")
@@ -644,7 +664,10 @@ import SwiftUI
             }
 
             do {
-                let image = try await captureManager.captureWindow(window)
+                let image = try await captureManager.captureWindow(
+                    window,
+                    configuration: screenshotCaptureConfiguration
+                )
                 presentCapturedScreenshot(image, sourceRect: window.frame)
                 Logger.s("FloatingPanelViewModel: Window screenshot completed")
             } catch {
@@ -716,6 +739,16 @@ import SwiftUI
                 ? TimeInterval(settings.recordingCountdownSeconds)
                 : 0.0
             let captureType = screenshotType
+
+            if
+                captureType == .area,
+                let areaToRecord,
+                !areaToRecord.isEmpty,
+                areaToRecord.width > 10,
+                areaToRecord.height > 10
+            {
+                rememberAreaSelection(areaToRecord)
+            }
             
             // Hide window selection overlay before starting recording (area selection stays visible)
             if isWindowSelectionActive {
@@ -1053,6 +1086,15 @@ import SwiftUI
             isShortcutWindowScreenshotPending = false
             isVideoWindowSelectionPending = false
             selectedArea = .zero
+        }
+
+        @MainActor
+        private func rememberAreaSelection(_ rect: NSRect) {
+            let normalizedRect = rect.standardized
+            guard !normalizedRect.isEmpty else { return }
+
+            selectedArea = normalizedRect
+            AppSettings.shared.rememberAreaSelection(normalizedRect)
         }
         
         private func startRecordingTimer() {

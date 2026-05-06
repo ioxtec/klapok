@@ -35,46 +35,26 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
             }
 
             let settings = AppSettings.shared
-            let fileType: AVFileType = settings.videoFormat == "MP4" ? .mp4 : .mov
-
-            assetWriter = try AVAssetWriter(outputURL: recordingURL, fileType: fileType)
-
-            let videoSize = outputSize ?? ScreenPixelGeometry.captureSize(
-                for: NSScreen.main,
-                mode: settings.capturePixelMode
+            let writerSettings = VideoCaptureConfigurationBuilder.writerSettings(
+                outputSize: outputSize ?? ScreenPixelGeometry.captureSize(
+                    for: NSScreen.main,
+                    mode: settings.capturePixelMode
+                ),
+                settings: settings
             )
 
-            let codec: AVVideoCodecType = settings.videoCodec == "H.265" ? .hevc : .h264
-            let videoSettings: [String: Any] = [
-                AVVideoCodecKey: codec,
-                AVVideoWidthKey: Int(videoSize.width),
-                AVVideoHeightKey: Int(videoSize.height),
-                AVVideoCompressionPropertiesKey: [
-                    AVVideoAverageBitRateKey: settings.videoBitrate,
-                    AVVideoProfileLevelKey: AVVideoProfileLevelH264BaselineAutoLevel,
-                    AVVideoMaxKeyFrameIntervalKey: settings.videoFrameRate * 2,
-                    AVVideoExpectedSourceFrameRateKey: settings.videoFrameRate,
-                    AVVideoAllowFrameReorderingKey: false,
-                    AVVideoH264EntropyModeKey: AVVideoH264EntropyModeCAVLC,
-                    AVVideoPixelAspectRatioKey: [
-                        AVVideoPixelAspectRatioHorizontalSpacingKey: 1,
-                        AVVideoPixelAspectRatioVerticalSpacingKey: 1
-                    ]
-                ]
-            ]
+            assetWriter = try AVAssetWriter(outputURL: recordingURL, fileType: writerSettings.fileType)
 
-            let input = AVAssetWriterInput(mediaType: .video, outputSettings: videoSettings)
+            let input = AVAssetWriterInput(
+                mediaType: .video,
+                outputSettings: writerSettings.outputSettings
+            )
             input.expectsMediaDataInRealTime = true
             videoInput = input
 
             pixelBufferAdaptor = AVAssetWriterInputPixelBufferAdaptor(
                 assetWriterInput: input,
-                sourcePixelBufferAttributes: [
-                    kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-                    kCVPixelBufferWidthKey as String: Int(videoSize.width),
-                    kCVPixelBufferHeightKey as String: Int(videoSize.height),
-                    kCVPixelBufferIOSurfacePropertiesKey as String: [:]
-                ]
+                sourcePixelBufferAttributes: writerSettings.pixelBufferAttributes
             )
 
             if assetWriter?.canAdd(input) == true {

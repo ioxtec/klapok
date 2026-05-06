@@ -90,6 +90,23 @@ import Foundation
             }
         }
 
+        @Published var areaSelectionLockEnabled: Bool {
+            didSet {
+                UserDefaults.standard.set(areaSelectionLockEnabled, forKey: "areaSelectionLockEnabled")
+            }
+        }
+
+        @Published private(set) var lastAreaSelectionRect: NSRect? {
+            didSet {
+                guard let rect = lastAreaSelectionRect, !rect.isEmpty else {
+                    UserDefaults.standard.removeObject(forKey: "lastAreaSelectionRect")
+                    return
+                }
+
+                UserDefaults.standard.set(NSStringFromRect(rect), forKey: "lastAreaSelectionRect")
+            }
+        }
+
         @Published var hotkeyModifiers: NSEvent.ModifierFlags {
             didSet {
                 UserDefaults.standard.set(hotkeyModifiers.rawValue, forKey: "hotkeyModifiers")
@@ -169,6 +186,12 @@ import Foundation
         @Published var recordSystemAudio: Bool {
             didSet {
                 UserDefaults.standard.set(recordSystemAudio, forKey: "recordSystemAudio")
+            }
+        }
+
+        @Published var screenshotShowsMouseCursor: Bool {
+            didSet {
+                UserDefaults.standard.set(screenshotShowsMouseCursor, forKey: "screenshotShowsMouseCursor")
             }
         }
 
@@ -278,6 +301,16 @@ import Foundation
             self.defaultCaptureType = CaptureType(
                 rawValue: UserDefaults.standard.string(forKey: "defaultCaptureType") ?? ""
             ) ?? .fullScreen
+            self.areaSelectionLockEnabled = UserDefaults.standard.object(forKey: "areaSelectionLockEnabled") as? Bool ?? false
+            if
+                let storedRect = UserDefaults.standard.string(forKey: "lastAreaSelectionRect"),
+                !storedRect.isEmpty
+            {
+                let rect = NSRectFromString(storedRect)
+                self.lastAreaSelectionRect = rect.isEmpty ? nil : rect
+            } else {
+                self.lastAreaSelectionRect = nil
+            }
             self.videoFileNameTemplate =
                 UserDefaults.standard.string(forKey: "videoFileNameTemplate") ?? "Video-{datetime}"
             
@@ -291,6 +324,7 @@ import Foundation
             // Initialize video behavior settings
             self.showMouseCursor = UserDefaults.standard.object(forKey: "showMouseCursor") as? Bool ?? false
             self.recordSystemAudio = UserDefaults.standard.object(forKey: "recordSystemAudio") as? Bool ?? false
+            self.screenshotShowsMouseCursor = UserDefaults.standard.object(forKey: "screenshotShowsMouseCursor") as? Bool ?? false
             self.enableRecordingCountdown = UserDefaults.standard.object(forKey: "enableRecordingCountdown") as? Bool ?? false
             let storedCountdownSeconds = UserDefaults.standard.object(forKey: "recordingCountdownSeconds") as? Int ?? 3
             self.recordingCountdownSeconds = min(max(storedCountdownSeconds, 1), 30)
@@ -316,6 +350,8 @@ import Foundation
             screenshotReviewPosition = .bottomRight
             capturePixelMode = .realPixels
             defaultCaptureType = .fullScreen
+            areaSelectionLockEnabled = false
+            lastAreaSelectionRect = nil
             videoSaveDirectory = Self.defaultVideoSaveDirectory
             videoFileNameTemplate = "Video-{datetime}"
             
@@ -323,6 +359,8 @@ import Foundation
             UserDefaults.standard.removeObject(forKey: "saveDirectory")
             UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
             UserDefaults.standard.removeObject(forKey: "screenshotReviewPosition")
+            UserDefaults.standard.removeObject(forKey: "areaSelectionLockEnabled")
+            UserDefaults.standard.removeObject(forKey: "lastAreaSelectionRect")
             
             // Reset video settings to defaults
             videoResolution = "Source"
@@ -334,6 +372,7 @@ import Foundation
             // Reset video behavior settings
             showMouseCursor = false
             recordSystemAudio = false
+            screenshotShowsMouseCursor = false
             enableRecordingCountdown = false
             recordingCountdownSeconds = 3
             
@@ -341,6 +380,12 @@ import Foundation
             hotkeyKeyCode = 0x1A
             showInDock = true
             launchAtLogin = false
+        }
+
+        func rememberAreaSelection(_ rect: NSRect) {
+            let normalizedRect = rect.standardized
+            guard !normalizedRect.isEmpty else { return }
+            lastAreaSelectionRect = normalizedRect
         }
 
         func applyDockVisibility() {

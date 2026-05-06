@@ -47,6 +47,12 @@ import Foundation
             }
         }
 
+        @Published var screenshotShowsMouseCursor: Bool {
+            didSet {
+                appSettings.screenshotShowsMouseCursor = screenshotShowsMouseCursor
+            }
+        }
+
         @Published var hotkeyModifiers: NSEvent.ModifierFlags {
             didSet {
                 appSettings.hotkeyModifiers = hotkeyModifiers
@@ -90,6 +96,7 @@ import Foundation
             self.screenshotReviewPosition = appSettings.screenshotReviewPosition
             self.capturePixelMode = appSettings.capturePixelMode
             self.defaultCaptureType = appSettings.defaultCaptureType
+            self.screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor
             self.hotkeyModifiers = appSettings.hotkeyModifiers
             self.hotkeyKeyCode = appSettings.hotkeyKeyCode
             self.showInDock = appSettings.showInDock
@@ -121,6 +128,7 @@ import Foundation
             screenshotReviewPosition = appSettings.screenshotReviewPosition
             capturePixelMode = appSettings.capturePixelMode
             defaultCaptureType = appSettings.defaultCaptureType
+            screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor
             hotkeyModifiers = appSettings.hotkeyModifiers
             hotkeyKeyCode = appSettings.hotkeyKeyCode
             showInDock = appSettings.showInDock

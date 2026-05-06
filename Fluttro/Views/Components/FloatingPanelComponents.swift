@@ -215,6 +215,89 @@ struct CaptureTypeSelector: View {
     }
 }
 
+// MARK: - Quick Settings Button
+
+struct QuickSettingsButton: View {
+    @ObservedObject var viewModel: FloatingPanelViewModel
+    @StateObject private var settings = AppSettings.shared
+
+    var body: some View {
+        Menu {
+            Toggle(
+                mouseCursorTitle,
+                isOn: screenshotCursorBinding
+            )
+
+            if viewModel.captureMode == .video {
+                Divider()
+
+                Toggle(
+                    LocalizationKeys.recordSystemAudioTitle.localized,
+                    isOn: $settings.recordSystemAudio
+                )
+            }
+        } label: {
+            Image(systemName: "gearshape.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(.thinMaterial)
+                )
+                .overlay(
+                    Circle()
+                        .stroke(.white.opacity(0.14), lineWidth: 0.7)
+                )
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .accessibilityLabel("Quick settings")
+        .accessibilityIdentifier("floatingPanel.quickSettings")
+        .help(quickSettingsHelpText)
+    }
+
+    private var mouseCursorTitle: String {
+        switch viewModel.captureMode {
+        case .image:
+            return LocalizationKeys.showMouseCursorTitle.localized
+        case .video:
+            return LocalizationKeys.showMouseCursorVideoTitle.localized
+        }
+    }
+
+    private var screenshotCursorBinding: Binding<Bool> {
+        Binding(
+            get: {
+                switch viewModel.captureMode {
+                case .image:
+                    return settings.screenshotShowsMouseCursor
+                case .video:
+                    return settings.showMouseCursor
+                }
+            },
+            set: { newValue in
+                switch viewModel.captureMode {
+                case .image:
+                    settings.screenshotShowsMouseCursor = newValue
+                case .video:
+                    settings.showMouseCursor = newValue
+                }
+            }
+        )
+    }
+
+    private var quickSettingsHelpText: String {
+        switch viewModel.captureMode {
+        case .image:
+            return "Quick screenshot settings"
+        case .video:
+            return "Quick recording settings"
+        }
+    }
+}
+
 // MARK: - Capture Button
 
 struct CaptureButton: View {
