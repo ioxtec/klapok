@@ -8,18 +8,63 @@
 import SwiftUI
 import AppKit
 
+@MainActor
+private final class BackgroundEditorViewState: ObservableObject {
+    @Published var showingGradientEditor = false
+    @Published var showingImageImporter = false
+    @Published var showingImageLibrary = false
+    @Published var showingDeleteAlert = false
+    @Published var deleteItemType: BackgroundEditorView.DeleteItemType?
+}
+
 struct BackgroundEditorView: View {
     @ObservedObject var backgroundManager: BackgroundManager
-    @State private var showingGradientEditor = false
-    @State private var showingImageImporter = false
-    @State private var showingImageLibrary = false
-    @State private var showingDeleteAlert = false
-    @State private var itemToDelete: Any?
-    @State private var deleteItemType: DeleteItemType?
+    @StateObject private var viewState = BackgroundEditorViewState()
     
     enum DeleteItemType {
         case gradient(UUID)
         case image(UUID)
+    }
+
+    private var showingGradientEditor: Bool {
+        get { viewState.showingGradientEditor }
+        nonmutating set { viewState.showingGradientEditor = newValue }
+    }
+
+    private var showingImageImporter: Bool {
+        get { viewState.showingImageImporter }
+        nonmutating set { viewState.showingImageImporter = newValue }
+    }
+
+    private var showingImageLibrary: Bool {
+        get { viewState.showingImageLibrary }
+        nonmutating set { viewState.showingImageLibrary = newValue }
+    }
+
+    private var showingDeleteAlert: Bool {
+        get { viewState.showingDeleteAlert }
+        nonmutating set { viewState.showingDeleteAlert = newValue }
+    }
+
+    private var deleteItemType: DeleteItemType? {
+        get { viewState.deleteItemType }
+        nonmutating set { viewState.deleteItemType = newValue }
+    }
+
+    private var showingGradientEditorBinding: Binding<Bool> {
+        Binding(get: { showingGradientEditor }, set: { showingGradientEditor = $0 })
+    }
+
+    private var showingImageImporterBinding: Binding<Bool> {
+        Binding(get: { showingImageImporter }, set: { showingImageImporter = $0 })
+    }
+
+    private var showingImageLibraryBinding: Binding<Bool> {
+        Binding(get: { showingImageLibrary }, set: { showingImageLibrary = $0 })
+    }
+
+    private var showingDeleteAlertBinding: Binding<Bool> {
+        Binding(get: { showingDeleteAlert }, set: { showingDeleteAlert = $0 })
     }
     
     var body: some View {
@@ -28,9 +73,8 @@ struct BackgroundEditorView: View {
                 Picker("", selection: Binding(
                     get: { backgroundManager.collections.backgroundType },
                     set: { newType in
-                        backgroundManager.collections.backgroundType = newType
-                        // Save asynchronously to avoid publishing during view updates.
-                        DispatchQueue.main.async {
+                        Task { @MainActor in
+                            backgroundManager.setBackgroundType(newType)
                             backgroundManager.saveCollections()
                         }
                     }
@@ -59,13 +103,13 @@ struct BackgroundEditorView: View {
                 SidebarHintText("The screenshot is exported without a decorative background.")
             }
         }
-        .sheet(isPresented: $showingGradientEditor) {
+        .sheet(isPresented: showingGradientEditorBinding) {
             GradientEditorView(backgroundManager: backgroundManager)
         }
-        .sheet(isPresented: $showingImageImporter) {
+        .sheet(isPresented: showingImageImporterBinding) {
             ImageImporterView(backgroundManager: backgroundManager)
         }
-        .alert("Delete Item", isPresented: $showingDeleteAlert) {
+        .alert("Delete Item", isPresented: showingDeleteAlertBinding) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 if let itemType = deleteItemType {
@@ -101,7 +145,6 @@ struct BackgroundEditorView: View {
                             backgroundManager.selectGradient(withId: gradient.id)
                         },
                         onLongPress: {
-                            itemToDelete = gradient
                             deleteItemType = .gradient(gradient.id)
                             showingDeleteAlert = true
                         }
@@ -131,12 +174,11 @@ struct BackgroundEditorView: View {
                 BackgroundImageStrip(
                     images: backgroundManager.collections.backgroundImages,
                     selectedImageId: backgroundManager.collections.selectedImageId,
-                    isLibraryPresented: $showingImageLibrary,
+                    isLibraryPresented: showingImageLibraryBinding,
                     onSelect: { image in
                         backgroundManager.selectImage(withId: image.id)
                     },
                     onDelete: { image in
-                        itemToDelete = image
                         deleteItemType = .image(image.id)
                         showingDeleteAlert = true
                     }
@@ -223,7 +265,6 @@ struct BackgroundEditorView: View {
     }
 
     private func requestDeleteImage(_ image: BackgroundImage) {
-        itemToDelete = image
         deleteItemType = .image(image.id)
         showingDeleteAlert = true
     }
@@ -418,9 +459,26 @@ struct ImageThumbnailView: View {
     let size: CGSize
     let onSelect: () -> Void
     let onLongPress: () -> Void
-    @State private var isHovering = false
-    @State private var showsPreview = false
-    @State private var previewTask: Task<Void, Never>?
+    @StateObject private var hoverState = ImageThumbnailHoverState()
+
+    private var isHovering: Bool {
+        get { hoverState.isHovering }
+        nonmutating set { hoverState.isHovering = newValue }
+    }
+
+    private var showsPreview: Bool {
+        get { hoverState.showsPreview }
+        nonmutating set { hoverState.showsPreview = newValue }
+    }
+
+    private var previewTask: Task<Void, Never>? {
+        get { hoverState.previewTask }
+        nonmutating set { hoverState.previewTask = newValue }
+    }
+
+    private var showsPreviewBinding: Binding<Bool> {
+        Binding(get: { showsPreview }, set: { showsPreview = $0 })
+    }
 
     init(
         backgroundImage: BackgroundImage,
@@ -512,10 +570,17 @@ struct ImageThumbnailView: View {
                 showsPreview = false
             }
         }
-        .popover(isPresented: $showsPreview, arrowEdge: .trailing) {
+        .popover(isPresented: showsPreviewBinding, arrowEdge: .trailing) {
             ImageThumbnailPreview(backgroundImage: backgroundImage)
         }
     }
+}
+
+@MainActor
+private final class ImageThumbnailHoverState: ObservableObject {
+    @Published var isHovering = false
+    @Published var showsPreview = false
+    @Published var previewTask: Task<Void, Never>?
 }
 
 private struct ImageThumbnailPreview: View {
@@ -584,10 +649,4 @@ private struct ImageThumbnailPreview: View {
                     .fill(Color.primary.opacity(0.055))
             }
     }
-}
-
-#Preview {
-    BackgroundEditorView(backgroundManager: BackgroundManager(forPreview: true))
-        .frame(width: 300, height: 400)
-        .padding()
 }

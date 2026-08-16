@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var selectedTab: SettingsTab = .general
+    @StateObject private var viewState = SettingsViewState()
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
@@ -47,7 +47,12 @@ struct SettingsView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            SettingsTabStrip(selectedTab: $selectedTab)
+            SettingsTabStrip(
+                selectedTab: Binding(
+                    get: { viewState.selectedTab },
+                    set: { viewState.selectedTab = $0 }
+                )
+            )
 
             Divider()
                 .opacity(0.45)
@@ -57,6 +62,10 @@ struct SettingsView: View {
                 .background(.regularMaterial)
         }
         .frame(minWidth: 820, idealWidth: 900, maxWidth: 1120, minHeight: 560, idealHeight: 640, maxHeight: 820)
+    }
+
+    private var selectedTab: SettingsTab {
+        viewState.selectedTab
     }
 
     @ViewBuilder
@@ -72,6 +81,11 @@ struct SettingsView: View {
             KeyboardShortcutsSettingsView()
         }
     }
+}
+
+@MainActor
+private final class SettingsViewState: ObservableObject {
+    @Published var selectedTab: SettingsView.SettingsTab = .general
 }
 
 private struct SettingsTabStrip: View {
@@ -133,8 +147,4 @@ private struct SettingsTabButton: View {
         .accessibilityIdentifier("settings.tab.\(tab.rawValue.lowercased())")
         .accessibilityValue(isSelected ? "selected" : "unselected")
     }
-}
-
-#Preview {
-    SettingsView()
 }

@@ -10,6 +10,11 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 
+@MainActor
+private final class SidebarDisclosureSectionHoverState: ObservableObject {
+    @Published var isHovering = false
+}
+
 struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
     private let content: Content
     private let fillsAvailableWidth: Bool
@@ -71,11 +76,16 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
 }
 
 final class SidebarScrollHostView: NSView {
+    private struct PendingScrollPosition {
+        let distanceFromTop: CGFloat
+    }
+
     private let scrollView = NSScrollView()
     private let hostingView: NSHostingView<AnyView>
     private var rootContent: AnyView
     private var fillsAvailableWidth: Bool
     private var appliedContentWidth: CGFloat = 0
+    private var pendingScrollPosition: PendingScrollPosition?
 
     init(rootView: AnyView, fillsAvailableWidth: Bool) {
         self.rootContent = rootView
@@ -98,6 +108,7 @@ final class SidebarScrollHostView: NSView {
     }
 
     func update(rootView: AnyView, fillsAvailableWidth: Bool) {
+        pendingScrollPosition = captureScrollPosition()
         rootContent = rootView
         self.fillsAvailableWidth = fillsAvailableWidth
         appliedContentWidth = 0
@@ -109,7 +120,6 @@ final class SidebarScrollHostView: NSView {
         hostingView.invalidateIntrinsicContentSize()
         hostingView.needsLayout = true
         needsLayout = true
-        layoutSubtreeIfNeeded()
     }
 
     override func layout() {
@@ -180,7 +190,7 @@ final class SidebarScrollHostView: NSView {
         let fittingHeight = hostingView.fittingSize.height
         let height = max(viewportSize.height, fittingHeight)
         hostingView.frame = NSRect(x: 0, y: 0, width: width, height: height)
-        scrollView.documentView = hostingView
+        restorePendingScrollOrigin()
         scrollView.reflectScrolledClipView(scrollView.contentView)
     }
 
@@ -197,6 +207,48 @@ final class SidebarScrollHostView: NSView {
         )
         hostingView.invalidateIntrinsicContentSize()
     }
+
+    private func restorePendingScrollOrigin() {
+        guard let pendingScrollPosition else { return }
+
+        let restoredOrigin = CGPoint(
+            x: 0,
+            y: verticalOrigin(forDistanceFromTop: pendingScrollPosition.distanceFromTop)
+        )
+
+        scrollView.contentView.scroll(to: restoredOrigin)
+        self.pendingScrollPosition = nil
+    }
+
+    private func captureScrollPosition() -> PendingScrollPosition {
+        PendingScrollPosition(distanceFromTop: currentDistanceFromTop())
+    }
+
+    private func currentDistanceFromTop() -> CGFloat {
+        let maxY = maximumScrollOriginY
+        let originY = scrollView.contentView.bounds.origin.y
+
+        if hostingView.isFlipped {
+            return min(max(originY, 0), maxY)
+        }
+
+        return min(max(maxY - originY, 0), maxY)
+    }
+
+    private func verticalOrigin(forDistanceFromTop distanceFromTop: CGFloat) -> CGFloat {
+        let maxY = maximumScrollOriginY
+        let clampedDistance = min(max(distanceFromTop, 0), maxY)
+
+        if hostingView.isFlipped {
+            return clampedDistance
+        }
+
+        return maxY - clampedDistance
+    }
+
+    private var maximumScrollOriginY: CGFloat {
+        max(0, hostingView.frame.height - scrollView.contentView.bounds.height)
+    }
 }
 
 struct SidebarDisclosureSection<Content: View>: View {
@@ -207,7 +259,7 @@ struct SidebarDisclosureSection<Content: View>: View {
     private let content: Content
 
     @AppStorage private var isExpanded: Bool
-    @State private var isHovering = false
+    @StateObject private var hoverState = SidebarDisclosureSectionHoverState()
 
     init(
         id: String,
@@ -265,7 +317,7 @@ struct SidebarDisclosureSection<Content: View>: View {
             .buttonStyle(.plain)
             .help(subtitle ?? title)
             .onHover { hovering in
-                isHovering = hovering
+                hoverState.isHovering = hovering
             }
 
             if isExpanded {
@@ -281,7 +333,7 @@ struct SidebarDisclosureSection<Content: View>: View {
     }
 
     private var headerBackground: Color {
-        if isHovering {
+        if hoverState.isHovering {
             return Color.primary.opacity(0.055)
         }
 

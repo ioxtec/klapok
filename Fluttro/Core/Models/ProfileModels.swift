@@ -402,6 +402,25 @@ extension VideoEditingProfile {
             recordingCountdownSeconds: settings.recordingCountdownSeconds
         )
     }
+
+    func updating(from settings: AppSettings, name: String? = nil) -> VideoEditingProfile {
+        VideoEditingProfile(
+            id: id,
+            name: name ?? self.name,
+            isDefault: isDefault,
+            createdAt: createdAt,
+            modifiedAt: Date(),
+            resolution: settings.videoResolution,
+            frameRate: settings.videoFrameRate,
+            bitrate: settings.videoBitrate,
+            codec: settings.videoCodec,
+            format: settings.videoFormat,
+            recordSystemAudio: settings.recordSystemAudio,
+            showMouseCursor: settings.showMouseCursor,
+            enableRecordingCountdown: settings.enableRecordingCountdown,
+            recordingCountdownSeconds: settings.recordingCountdownSeconds
+        )
+    }
 }
 
 #endif

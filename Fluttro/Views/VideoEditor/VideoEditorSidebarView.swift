@@ -24,52 +24,55 @@ struct VideoEditorSidebarView: View {
         SidebarScrollContainer(leadingInset: 2, trailingInset: 4) {
             SidebarDisclosureSection(
                 id: "video.profiles",
-                title: "Profiles",
+                title: "Profiles".localized,
                 systemImage: "slider.horizontal.3",
-                subtitle: "Presets for export format, quality, size, and audio."
+                subtitle: "Presets for new recordings: size, frame rate, audio, cursor, and countdown.".localized
             ) {
                 profileControl
             }
 
             SidebarDisclosureSection(
                 id: "video.source",
-                title: "Video",
+                title: "Video".localized,
                 systemImage: "film",
-                subtitle: "Source file, duration, and capture details."
+                subtitle: "Source file, duration, and capture details.".localized
             ) {
                 if let video {
                     VStack(alignment: .leading, spacing: 9) {
-                        SidebarValueRow(title: "File", value: video.url.lastPathComponent, systemImage: "doc")
+                        SidebarValueRow(title: "File".localized, value: video.url.lastPathComponent, systemImage: "doc")
                         SidebarDivider()
-                        SidebarValueRow(title: "Duration", value: formatDuration(video.duration), systemImage: "clock")
+                        SidebarValueRow(title: "Duration".localized, value: formatDuration(video.duration), systemImage: "clock")
                         SidebarDivider()
-                        SidebarValueRow(title: "Size", value: formatFileSize(video.url), systemImage: "internaldrive")
+                        SidebarValueRow(title: "Size".localized, value: formatFileSize(video.url), systemImage: "internaldrive")
                         SidebarDivider()
-                        SidebarValueRow(title: "Created", value: formatDate(video.url), systemImage: "calendar")
+                        SidebarValueRow(title: "Created".localized, value: formatDate(video.url), systemImage: "calendar")
                         SidebarDivider()
-                        SidebarValueRow(title: "Frame rate", value: "\(Int(video.frameRate)) FPS", systemImage: "speedometer")
+                        SidebarValueRow(title: "Frame rate".localized, value: "\(Int(video.frameRate)) FPS", systemImage: "speedometer")
                         SidebarDivider()
                         SidebarValueRow(
-                            title: "Resolution",
+                            title: "Resolution".localized,
                             value: "\(Int(video.size.width)) x \(Int(video.size.height))",
                             systemImage: "rectangle"
                         )
                     }
                 } else {
-                    VideoSidebarHint("No video selected.")
+                    VideoSidebarHint("No video selected.".localized)
                 }
             }
 
             SidebarDisclosureSection(
                 id: "video.export",
-                title: "Export",
+                title: "Export".localized,
                 systemImage: "square.and.arrow.up",
-                subtitle: "Trimmed video or GIF output settings."
+                subtitle: "Trimmed video uses the shared format and codec from video settings. GIF export keeps its own controls here.".localized
             ) {
                 ExportTypeSelector(exportManager: exportManager)
 
                 if exportManager.settings.exportType == .video {
-                    VideoExportSettingsView(exportManager: exportManager)
+                    VideoExportSettingsView(
+                        exportManager: exportManager,
+                        settings: settings
+                    )
                 } else {
                     GIFExportSettingsView(
                         exportManager: exportManager,
@@ -85,7 +88,7 @@ struct VideoEditorSidebarView: View {
             profileManager: profileManager,
             profiles: profileManager.videoProfiles.profiles,
             activeProfile: profileManager.getActiveVideoProfile(),
-            profileTypeName: "Video",
+            profileTypeName: "Video".localized,
             showsHeader: false,
             usesContainer: false,
             onProfileSelected: { profile in
@@ -116,20 +119,7 @@ struct VideoEditorSidebarView: View {
 
     private func updateProfile(_ profile: VideoEditingProfile, newName: String) {
         if newName == profile.name {
-            let updatedProfile = VideoEditingProfile(
-                id: profile.id,
-                name: profile.name,
-                isDefault: profile.isDefault,
-                createdAt: profile.createdAt,
-                modifiedAt: Date(),
-                resolution: settings.videoResolution,
-                frameRate: settings.videoFrameRate,
-                bitrate: settings.videoBitrate,
-                codec: settings.videoCodec,
-                format: settings.videoFormat,
-                recordSystemAudio: settings.recordSystemAudio,
-                showMouseCursor: settings.showMouseCursor
-            )
+            let updatedProfile = profile.updating(from: settings)
             profileManager.updateVideoProfile(updatedProfile)
         } else {
             var updatedProfile = profile

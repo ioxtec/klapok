@@ -135,10 +135,17 @@ class VideoEditorViewModel: ObservableObject {
             return
         }
 
-        timelineCutSelection = VideoCutSegment(
+        let proposedSelection = VideoCutSegment(
             startTime: normalizedStart,
             endTime: normalizedEnd
         )
+
+        guard !overlapsExistingCut(proposedSelection) else {
+            timelineCutSelection = nil
+            return
+        }
+
+        timelineCutSelection = proposedSelection
     }
 
     func commitCutSelection() {
@@ -255,7 +262,7 @@ class VideoEditorViewModel: ObservableObject {
         }
     }
 
-    func exportTrimmedVideo() async {
+    func exportTrimmedVideo(settings: VideoExportSettings) async {
         guard let video else { return }
 
         isExporting = true
@@ -264,7 +271,8 @@ class VideoEditorViewModel: ObservableObject {
         do {
             let outputURL = try await VideoExportService.exportEditedVideo(
                 video: video,
-                ranges: editedSourceRanges()
+                ranges: editedSourceRanges(),
+                settings: settings
             )
 
             Logger.s("VideoEditorViewModel: Edited video exported to \(outputURL.path)")
@@ -351,6 +359,12 @@ class VideoEditorViewModel: ObservableObject {
         return merged
     }
 
+    private func overlapsExistingCut(_ selection: VideoCutSegment) -> Bool {
+        cutSegments.contains { existing in
+            max(existing.startTime, selection.startTime) < min(existing.endTime, selection.endTime)
+        }
+    }
+
     func shareVideo() {
         guard let video else { return }
 
@@ -369,10 +383,10 @@ class VideoEditorViewModel: ObservableObject {
         guard let video else { return }
 
         let alert = NSAlert()
-        alert.messageText = "Delete Video"
-        alert.informativeText = "Are you sure you want to delete this video? This action cannot be undone."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
+        alert.messageText = "Delete Video".localized
+        alert.informativeText = "Are you sure you want to delete this video? This action cannot be undone.".localized
+        alert.addButton(withTitle: "Delete".localized)
+        alert.addButton(withTitle: "Cancel".localized)
         alert.alertStyle = .warning
 
         if alert.runModal() == .alertFirstButtonReturn {

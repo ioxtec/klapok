@@ -108,8 +108,4 @@ struct ImageSettingsView: View {
     }
 }
 
-#Preview {
-    ImageSettingsView()
-}
-
 #endif

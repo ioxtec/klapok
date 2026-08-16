@@ -10,16 +10,44 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 
+@MainActor
+private final class EditableTextAnnotationViewState: ObservableObject {
+    @Published var editingText = ""
+    @Published var isDragging = false
+    @Published var lastDragTranslation: CGSize = .zero
+    @Published var recordedDragUndo = false
+}
+
 struct EditableTextAnnotationView: View {
     let annotation: Annotation
     @ObservedObject var annotationManager: AnnotationManager
     let canvasSize: CGSize
     let sourceImageSize: CGSize?
-    @State private var editingText: String = ""
-    @State private var isDragging: Bool = false
-    @State private var lastDragTranslation: CGSize = .zero
-    @State private var recordedDragUndo = false
-    @FocusState private var isTextFieldFocused: Bool
+    @StateObject private var viewState = EditableTextAnnotationViewState()
+
+    private var editingText: String {
+        get { viewState.editingText }
+        nonmutating set { viewState.editingText = newValue }
+    }
+
+    private var isDragging: Bool {
+        get { viewState.isDragging }
+        nonmutating set { viewState.isDragging = newValue }
+    }
+
+    private var lastDragTranslation: CGSize {
+        get { viewState.lastDragTranslation }
+        nonmutating set { viewState.lastDragTranslation = newValue }
+    }
+
+    private var recordedDragUndo: Bool {
+        get { viewState.recordedDragUndo }
+        nonmutating set { viewState.recordedDragUndo = newValue }
+    }
+
+    private var editingTextBinding: Binding<String> {
+        Binding(get: { editingText }, set: { editingText = $0 })
+    }
     
     private var isEditing: Bool {
         annotationManager.editingTextAnnotationId == annotation.id
@@ -50,20 +78,16 @@ struct EditableTextAnnotationView: View {
         
         Group {
             if isEditing {
-                TextField("Enter text", text: $editingText)
+                TextField("Enter text", text: editingTextBinding)
                     .textFieldStyle(.roundedBorder)
                     .font(.system(size: fontSize, weight: annotation.fontWeight.swiftUIWeight))
                     .foregroundColor(annotation.color.toColor())
                     .padding(.horizontal, 4)
-                    .focused($isTextFieldFocused)
                     .onSubmit {
                         finishEditing()
                     }
                     .onAppear {
                         editingText = annotation.text ?? "Text"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            isTextFieldFocused = true
-                        }
                     }
                     .onChange(of: editingText) { _, newValue in
                         annotationManager.updateSelectedAnnotationText(newValue, recordHistory: false)
@@ -130,8 +154,8 @@ struct EditableTextAnnotationView: View {
                     }
                 }
         )
-        .onChange (of: isTextFieldFocused){ _, focused in
-            if !focused && isEditing {
+        .onDisappear {
+            if isEditing {
                 finishEditing()
             }
         }
@@ -148,25 +172,6 @@ struct EditableTextAnnotationView: View {
         // Switch back to select tool after finishing text editing
         annotationManager.selectTool(.select)
     }
-}
-
-#Preview {
-    VStack {
-        EditableTextAnnotationView(
-            annotation: Annotation(
-                type: .text,
-                startPoint: CGPoint(x: 100, y: 100),
-                endPoint: CGPoint(x: 200, y: 130),
-                text: "Sample Text",
-                color: ColorData(color: .red)
-            ),
-            annotationManager: AnnotationManager(),
-            canvasSize: CGSize(width: 400, height: 300),
-            sourceImageSize: CGSize(width: 400, height: 300)
-        )
-    }
-    .frame(width: 400, height: 300)
-    .background(Color.gray.opacity(0.2))
 }
 
 #endif

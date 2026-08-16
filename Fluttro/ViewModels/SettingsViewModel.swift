@@ -10,6 +10,7 @@ import Foundation
 #if os(macOS)
     import AppKit
 
+    @MainActor
     final class SettingsViewModel: ObservableObject {
         // MARK: - Dependencies
 
@@ -53,35 +54,13 @@ import Foundation
             }
         }
 
-        @Published var hotkeyModifiers: NSEvent.ModifierFlags {
-            didSet {
-                appSettings.hotkeyModifiers = hotkeyModifiers
-            }
-        }
-
-        @Published var hotkeyKeyCode: UInt16 {
-            didSet {
-                appSettings.hotkeyKeyCode = hotkeyKeyCode
-            }
-        }
-
         @Published var showInDock: Bool {
             didSet {
                 appSettings.showInDock = showInDock
             }
         }
 
-        @Published var launchAtLogin: Bool {
-            didSet {
-                appSettings.launchAtLogin = launchAtLogin
-            }
-        }
-
         // MARK: - Computed Properties
-
-        var hotkeyDisplayString: String {
-            return appSettings.hotkeyDisplayString
-        }
 
         var previewFileName: String {
             return appSettings.formattedFileName + ".png"
@@ -97,10 +76,7 @@ import Foundation
             self.capturePixelMode = appSettings.capturePixelMode
             self.defaultCaptureType = appSettings.defaultCaptureType
             self.screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor
-            self.hotkeyModifiers = appSettings.hotkeyModifiers
-            self.hotkeyKeyCode = appSettings.hotkeyKeyCode
             self.showInDock = appSettings.showInDock
-            self.launchAtLogin = appSettings.launchAtLogin
         }
 
         // MARK: - Public Methods
@@ -113,6 +89,7 @@ import Foundation
             panel.allowsMultipleSelection = false
             panel.title = "Wybierz folder do zapisywania zrzutów"
             panel.directoryURL = saveDirectory
+            WindowPlacement.centerModalPanel(panel)
 
             if panel.runModal() == .OK, let url = panel.url {
                 saveDirectory = url
@@ -129,10 +106,7 @@ import Foundation
             capturePixelMode = appSettings.capturePixelMode
             defaultCaptureType = appSettings.defaultCaptureType
             screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor
-            hotkeyModifiers = appSettings.hotkeyModifiers
-            hotkeyKeyCode = appSettings.hotkeyKeyCode
             showInDock = appSettings.showInDock
-            launchAtLogin = appSettings.launchAtLogin
         }
 
         func openSaveDirectory() {

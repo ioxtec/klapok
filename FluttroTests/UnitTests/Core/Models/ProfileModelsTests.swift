@@ -110,6 +110,8 @@ final class ProfileModelsTests: XCTestCase {
         XCTAssertEqual(profile.format, "MP4")
         XCTAssertFalse(profile.recordSystemAudio)
         XCTAssertFalse(profile.showMouseCursor)
+        XCTAssertFalse(profile.enableRecordingCountdown)
+        XCTAssertEqual(profile.recordingCountdownSeconds, 3)
     }
     
     func testVideoEditingProfileSerialization() throws {
@@ -142,6 +144,75 @@ final class ProfileModelsTests: XCTestCase {
         XCTAssertTrue(names.contains("High Quality"))
         XCTAssertTrue(names.contains("Balanced"))
     }
+
+    @MainActor
+    func testVideoEditingProfileFromAppSettingsCopiesRecordingBehavior() {
+        let settings = AppSettings.shared
+        settings.resetToDefaults()
+        settings.videoResolution = "720p"
+        settings.videoFrameRate = 60
+        settings.videoBitrate = 10_000_000
+        settings.videoCodec = "H.265"
+        settings.videoFormat = "MOV"
+        settings.recordSystemAudio = true
+        settings.showMouseCursor = true
+        settings.enableRecordingCountdown = true
+        settings.recordingCountdownSeconds = 5
+
+        let profile = VideoEditingProfile.fromAppSettings(settings, name: "Captured Settings")
+
+        XCTAssertEqual(profile.resolution, "720p")
+        XCTAssertEqual(profile.frameRate, 60)
+        XCTAssertEqual(profile.bitrate, 10_000_000)
+        XCTAssertEqual(profile.codec, "H.265")
+        XCTAssertEqual(profile.format, "MOV")
+        XCTAssertTrue(profile.recordSystemAudio)
+        XCTAssertTrue(profile.showMouseCursor)
+        XCTAssertTrue(profile.enableRecordingCountdown)
+        XCTAssertEqual(profile.recordingCountdownSeconds, 5)
+    }
+
+    @MainActor
+    func testVideoEditingProfileUpdatingPreservesIdentityAndRefreshesValues() {
+        let settings = AppSettings.shared
+        settings.resetToDefaults()
+        settings.videoResolution = "1080p"
+        settings.videoFrameRate = 24
+        settings.videoBitrate = 2_000_000
+        settings.videoCodec = "H.264"
+        settings.videoFormat = "MP4"
+        settings.recordSystemAudio = true
+        settings.showMouseCursor = false
+        settings.enableRecordingCountdown = true
+        settings.recordingCountdownSeconds = 7
+
+        let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let profile = VideoEditingProfile(
+            id: UUID(),
+            name: "Original Profile",
+            isDefault: true,
+            createdAt: createdAt,
+            modifiedAt: createdAt,
+            resolution: "Source"
+        )
+
+        let updatedProfile = profile.updating(from: settings, name: "Updated Profile")
+
+        XCTAssertEqual(updatedProfile.id, profile.id)
+        XCTAssertEqual(updatedProfile.createdAt, createdAt)
+        XCTAssertTrue(updatedProfile.isDefault)
+        XCTAssertEqual(updatedProfile.name, "Updated Profile")
+        XCTAssertEqual(updatedProfile.resolution, "1080p")
+        XCTAssertEqual(updatedProfile.frameRate, 24)
+        XCTAssertEqual(updatedProfile.bitrate, 2_000_000)
+        XCTAssertEqual(updatedProfile.codec, "H.264")
+        XCTAssertEqual(updatedProfile.format, "MP4")
+        XCTAssertTrue(updatedProfile.recordSystemAudio)
+        XCTAssertFalse(updatedProfile.showMouseCursor)
+        XCTAssertTrue(updatedProfile.enableRecordingCountdown)
+        XCTAssertEqual(updatedProfile.recordingCountdownSeconds, 7)
+        XCTAssertGreaterThanOrEqual(updatedProfile.modifiedAt.timeIntervalSince(createdAt), 0)
+    }
     
     // MARK: - Profile Protocol Tests
     
@@ -158,7 +229,6 @@ final class ProfileModelsTests: XCTestCase {
 }
 
 #endif
-
 
 
 

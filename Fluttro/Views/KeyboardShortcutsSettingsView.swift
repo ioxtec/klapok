@@ -12,8 +12,17 @@ import AppKit
 import Carbon.HIToolbox
 
 struct KeyboardShortcutsSettingsView: View {
-    @State private var refreshID = UUID()
-    @State private var conflictMessage: String?
+    @StateObject private var viewState = KeyboardShortcutsSettingsViewState()
+
+    private var refreshID: UUID {
+        get { viewState.refreshID }
+        nonmutating set { viewState.refreshID = newValue }
+    }
+
+    private var conflictMessage: String? {
+        get { viewState.conflictMessage }
+        nonmutating set { viewState.conflictMessage = newValue }
+    }
 
     var body: some View {
         ScrollView {
@@ -79,6 +88,12 @@ struct KeyboardShortcutsSettingsView: View {
             refreshID = UUID()
         }
     }
+}
+
+@MainActor
+private final class KeyboardShortcutsSettingsViewState: ObservableObject {
+    @Published var refreshID = UUID()
+    @Published var conflictMessage: String?
 }
 
 private struct KeyboardShortcutOption: View {
@@ -207,10 +222,6 @@ private final class ShortcutRecorderButton: NSButton {
         isRecording = false
         refreshTitle()
     }
-}
-
-#Preview {
-    KeyboardShortcutsSettingsView()
 }
 
 #endif

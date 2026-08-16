@@ -39,6 +39,28 @@ enum VideoQuality: String, Codable, CaseIterable, Identifiable {
         case .maximum: return 20_000_000  // 20 Mbps
         }
     }
+
+    var exportPresetDescription: String {
+        switch self {
+        case .low:
+            return "Smaller file"
+        case .medium:
+            return "Balanced"
+        case .high:
+            return "High quality"
+        case .veryHigh:
+            return "Higher quality"
+        case .maximum:
+            return "Best available quality"
+        }
+    }
+
+    static func fromBitrate(_ bitrate: Int) -> VideoQuality {
+        let candidates = Self.allCases
+        return candidates.min { lhs, rhs in
+            abs(lhs.bitrate - bitrate) < abs(rhs.bitrate - bitrate)
+        } ?? .high
+    }
 }
 
 enum VideoScaling: String, Codable, CaseIterable, Identifiable {
@@ -240,4 +262,3 @@ struct ExportSettings: Codable {
         self.gifSettings = GIFExportSettings()
     }
 }
-

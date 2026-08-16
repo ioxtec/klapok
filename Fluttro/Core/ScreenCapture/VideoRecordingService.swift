@@ -23,6 +23,7 @@ class VideoRecordingService: VideoCaptureService {
     private var recordingStartTime: Date?
     private var recordingURL: URL?
     private var currentRecordingSize: CGSize?
+    private var sampleHandlerQueue: DispatchQueue?
     private let firstFrameTimeout: TimeInterval = 8.0
     
     // MARK: - VideoCaptureService Implementation
@@ -92,6 +93,7 @@ class VideoRecordingService: VideoCaptureService {
             await streamOutput.finishWriting()
         }
         streamOutput = nil
+        sampleHandlerQueue = nil
         
         guard let recordingURL = recordingURL else {
             throw CaptureError.invalidRequest("No recording URL found")
@@ -140,6 +142,7 @@ class VideoRecordingService: VideoCaptureService {
             await streamOutput.finishWriting()
         }
         streamOutput = nil
+        sampleHandlerQueue = nil
         recordingStartTime = nil
         recordingURL = nil
         currentRecordingSize = nil
@@ -210,10 +213,19 @@ class VideoRecordingService: VideoCaptureService {
         outputSize: CGSize
     ) async throws -> Date {
         currentRecordingSize = outputSize
-        let output = VideoStreamOutput(recordingURL: recordingURL, outputSize: outputSize)
+        let output = VideoStreamOutput(
+            recordingURL: recordingURL,
+            outputSize: outputSize,
+            capturesAudio: configuration.capturesAudio
+        )
         streamOutput = output
         stream = SCStream(filter: filter, configuration: configuration, delegate: nil)
-        try stream?.addStreamOutput(output, type: .screen, sampleHandlerQueue: DispatchQueue.global(qos: .userInitiated))
+        let outputQueue = DispatchQueue(label: "Fluttro.VideoRecordingService.StreamOutput")
+        sampleHandlerQueue = outputQueue
+        try stream?.addStreamOutput(output, type: .screen, sampleHandlerQueue: outputQueue)
+        if configuration.capturesAudio {
+            try stream?.addStreamOutput(output, type: .audio, sampleHandlerQueue: outputQueue)
+        }
         try await stream?.startCapture()
         return try await waitForFirstFrame(from: output)
     }
@@ -375,7 +387,7 @@ class VideoRecordingService: VideoCaptureService {
         // Find the running application by bundle identifier
         if let targetApp = runningApps.first(where: { $0.bundleIdentifier == bundleId }) {
             // Activate the application
-            targetApp.activate(options: [.activateIgnoringOtherApps])
+            targetApp.activate()
             
             guard !bundleId.isEmpty, !windowTitle.isEmpty else {
                 return
@@ -383,7 +395,7 @@ class VideoRecordingService: VideoCaptureService {
 
             // Run AppleScript off the main thread so a slow Apple event does not freeze the floating panel UI.
             DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1) {
-                self.bringSpecificWindowToFront(bundleIdentifier: bundleId, windowTitle: windowTitle)
+                Self.bringSpecificWindowToFront(bundleIdentifier: bundleId, windowTitle: windowTitle)
             }
         } else {
             Logger.w("VideoRecordingService: Application not found in running apps: \(bundleId)")
@@ -391,7 +403,7 @@ class VideoRecordingService: VideoCaptureService {
     }
     
     /// Uses AppleScript to bring a specific window to the front
-    private func bringSpecificWindowToFront(bundleIdentifier: String, windowTitle: String) {
+    private static func bringSpecificWindowToFront(bundleIdentifier: String, windowTitle: String) {
         let escapedBundleIdentifier = escapeAppleScriptString(bundleIdentifier)
         let escapedWindowTitle = escapeAppleScriptString(windowTitle)
         let script = """
@@ -413,7 +425,7 @@ class VideoRecordingService: VideoCaptureService {
         }
     }
 
-    private func escapeAppleScriptString(_ value: String) -> String {
+    private static func escapeAppleScriptString(_ value: String) -> String {
         value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")

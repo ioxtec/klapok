@@ -80,6 +80,12 @@ class ExportManager: ObservableObject {
         settings.videoSettings.audioOption = option
         saveSettings()
     }
+
+    func effectiveVideoSettings(appSettings: AppSettings = .shared) -> VideoExportSettings {
+        var resolvedSettings = settings.videoSettings
+        resolvedSettings.quality = appSettings.normalizedVideoQuality
+        return resolvedSettings
+    }
     
     // MARK: - GIF Settings
     

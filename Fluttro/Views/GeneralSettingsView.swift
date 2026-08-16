@@ -83,12 +83,6 @@ struct GeneralSettingsView: View {
                         isOn: $viewModel.showInDock
                     )
 
-                    SettingsToggleOption(
-                        title: LocalizationKeys.launchAtLoginTitle.localized,
-                        description: LocalizationKeys.launchAtLoginDescription.localized,
-                        isOn: $viewModel.launchAtLogin
-                    )
-
                     SettingsPickerOption(
                         title: LocalizationKeys.capturePixelModeTitle.localized,
                         description: LocalizationKeys.capturePixelModeDescription.localized,
@@ -202,10 +196,6 @@ private struct PermissionOption: View {
             }
         }
     }
-}
-
-#Preview {
-    GeneralSettingsView()
 }
 
 #endif

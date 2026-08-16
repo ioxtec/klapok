@@ -13,13 +13,14 @@ import AppKit
 struct VideoSettingsView: View {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var profileManager = ProfileManager.shared
+    @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 SettingsSection(
-                    title: "Video profiles",
-                    subtitle: "Profiles are selected and applied from the recorder. Settings keeps profile import/export compact.",
+                    title: "Recording profiles".localized,
+                    subtitle: "Profiles are selected before capture and store the recording options below.".localized,
                     systemImage: "square.stack.3d.up"
                 ) {
                     SettingsProfilesSummary(
@@ -33,15 +34,15 @@ struct VideoSettingsView: View {
 
                 SettingsSection(
                     title: LocalizationKeys.videoQualityTitle.localized,
-                    subtitle: "Recording quality used by new videos.",
+                    subtitle: "These options apply to new recordings before you open the video editor.".localized,
                     systemImage: "slider.horizontal.3"
                 ) {
                     SettingsPickerOption(
                         title: LocalizationKeys.resolutionTitle.localized,
-                        description: "Source keeps the captured screen size. Presets downscale to a fixed output size.",
+                        description: "Source keeps the captured screen size. Presets downscale to a fixed output size.".localized,
                         selection: $settings.videoResolution,
                         options: [
-                            ("Source", "Source"),
+                            ("Source", "Source".localized),
                             ("1080p", "1080p"),
                             ("720p", "720p"),
                             ("480p", "480p")
@@ -49,8 +50,8 @@ struct VideoSettingsView: View {
                     )
 
                     SettingsPickerOption(
-                        title: "Source size",
-                        description: "Used when Resolution is set to Source.",
+                        title: "Source size".localized,
+                        description: "Used when Resolution is set to Source.".localized,
                         selection: Binding(
                             get: { settings.capturePixelMode.rawValue },
                             set: {
@@ -65,7 +66,7 @@ struct VideoSettingsView: View {
                     )
 
                     SettingsValueOption(
-                        title: "Expected recording size",
+                        title: "Expected recording size".localized,
                         description: expectedRecordingDescription,
                         value: "\(Int(expectedRecordingSize.width)) x \(Int(expectedRecordingSize.height)) px"
                     )
@@ -97,7 +98,7 @@ struct VideoSettingsView: View {
 
                 SettingsSection(
                     title: LocalizationKeys.audioTitle.localized,
-                    subtitle: "Audio options that are currently wired to recording.",
+                    subtitle: "Audio capture options used while recording.".localized,
                     systemImage: "speaker.wave.2"
                 ) {
                     SettingsToggleOption(
@@ -110,19 +111,19 @@ struct VideoSettingsView: View {
 
                 SettingsSection(
                     title: LocalizationKeys.recordingBehaviorTitle.localized,
-                    subtitle: "Recording behavior applied before capture starts.",
+                    subtitle: "Recording behavior applied before capture starts.".localized,
                     systemImage: "record.circle"
                 ) {
                     SettingsToggleOption(
-                        title: "Enable countdown before screen recording",
-                        description: "Adds a short delay before a new video recording starts.",
+                        title: "Enable countdown before screen recording".localized,
+                        description: "Adds a short delay before a new video recording starts.".localized,
                         isOn: $settings.enableRecordingCountdown
                     )
 
                     if settings.enableRecordingCountdown {
                         SettingsPickerOption(
-                            title: "Countdown duration",
-                            description: "Choose how many seconds to wait before recording begins.",
+                            title: "Countdown duration".localized,
+                            description: "Choose how many seconds to wait before recording begins.".localized,
                             selection: Binding(
                                 get: { String(settings.recordingCountdownSeconds) },
                                 set: { newValue in
@@ -130,7 +131,7 @@ struct VideoSettingsView: View {
                                 }
                             ),
                             options: (1...30).map { value in
-                                let label = value == 1 ? "1 second" : "\(value) seconds"
+                                let label = "\(value) s"
                                 return (String(value), label)
                             }
                         )
@@ -146,27 +147,27 @@ struct VideoSettingsView: View {
 
                 SettingsSection(
                     title: LocalizationKeys.filesTitle.localized,
-                    subtitle: "Video file destination and container format.",
+                    subtitle: "Where new recordings are saved before review or export.".localized,
                     systemImage: "folder"
                 ) {
                     SettingsPathOption(
-                        title: "Video folder",
+                        title: "Video folder".localized,
                         path: settings.videoSaveDirectory.path,
-                        description: "Where screen recordings are saved.",
+                        description: "Where screen recordings are saved.".localized,
                         action: selectVideoSaveDirectory
                     )
 
                     SettingsTextOption(
-                        title: "Filename template",
-                        description: "Preview: \(settings.formattedVideoFileName).\(settings.videoFormat.lowercased())",
-                        infoText: "Use {datetime} for date and time or {date} for the date.",
+                        title: LocalizationKeys.filenameTemplateOptionTitle.localized,
+                        description: "Preview: %@".localized(with: "\(settings.formattedVideoFileName).\(settings.videoFormat.lowercased())"),
+                        infoText: "Use {datetime} for date and time or {date} for the date.".localized,
                         text: $settings.videoFileNameTemplate,
                         placeholder: "Video-{datetime}"
                     )
 
                     SettingsPickerOption(
                         title: LocalizationKeys.formatTitle.localized,
-                        description: "WebM is hidden because the writer currently exports MP4 or MOV only.",
+                        description: "WebM is hidden because the writer currently exports MP4 or MOV only.".localized,
                         selection: $settings.videoFormat,
                         options: [
                             ("MP4", "MP4"),
@@ -175,14 +176,26 @@ struct VideoSettingsView: View {
                     )
 
                     SettingsPickerOption(
-                        title: "Codec",
-                        description: "H.264 is safest. HEVC can create smaller files on newer Macs.",
+                        title: "Codec".localized,
+                        description: "H.264 is safest. HEVC can create smaller files on newer Macs.".localized,
                         isLast: true,
                         selection: $settings.videoCodec,
                         options: [
                             ("H.264", "H.264"),
                             ("H.265", "HEVC (H.265)")
                         ]
+                    )
+                }
+
+                SettingsSection(
+                    title: "Editor export".localized,
+                    subtitle: "What happens after a recording is already captured.".localized,
+                    systemImage: "square.and.arrow.up"
+                ) {
+                    SettingsInfoOption(
+                        title: "Trimmed video export".localized,
+                        description: "Trimmed video export uses the shared format, codec, and quality above. Scaling and export audio stay in the video editor sidebar. GIF export keeps its own controls there as well.".localized,
+                        isLast: true
                     )
                 }
 
@@ -194,7 +207,7 @@ struct VideoSettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("settings.content.video")
-        .onAppear(perform: normalizeUnsupportedValues)
+        .id(languageManager.selectedLanguage.rawValue)
     }
 
     private func selectVideoSaveDirectory() {
@@ -203,18 +216,13 @@ struct VideoSettingsView: View {
         panel.canChooseDirectories = true
         panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false
-        panel.title = "Select Video Save Directory"
-        panel.message = "Choose a directory where video recordings will be saved."
+        panel.title = "Select Video Save Directory".localized
+        panel.message = "Choose a directory where video recordings will be saved.".localized
         panel.directoryURL = settings.videoSaveDirectory
+        WindowPlacement.centerModalPanel(panel)
 
         if panel.runModal() == .OK, let url = panel.url {
             settings.videoSaveDirectory = url
-        }
-    }
-
-    private func normalizeUnsupportedValues() {
-        if settings.videoFormat == "WebM" {
-            settings.videoFormat = "MP4"
         }
     }
 
@@ -239,11 +247,11 @@ struct VideoSettingsView: View {
     private var expectedRecordingDescription: String {
         if settings.videoResolution == "Source" {
             return settings.capturePixelMode == .realPixels
-                ? "Pixel-perfect physical display size."
-                : "macOS scaled logical display size."
+                ? "Pixel-perfect physical display size.".localized
+                : "macOS scaled logical display size.".localized
         }
 
-        return "Fixed preset selected instead of source size."
+        return "Fixed preset selected instead of source size.".localized
     }
 }
 
@@ -251,15 +259,11 @@ private extension CapturePixelMode {
     var videoDisplayName: String {
         switch self {
         case .realPixels:
-            return "Real screen size"
+            return "Real screen size".localized
         case .scaledScreenSize:
-            return "Scaled screen size"
+            return "Scaled screen size".localized
         }
     }
-}
-
-#Preview {
-    VideoSettingsView()
 }
 
 #endif

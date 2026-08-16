@@ -229,6 +229,7 @@ import SwiftUI
                 window.isOpaque = false
                 window.backgroundColor = .clear
                 window.minSize = NSSize(width: 1180, height: 720)
+                window.setContentSize(NSSize(width: 1180, height: 720))
                 WindowPlacement.center(window, on: panelWindow?.screen)
                 window.isReleasedWhenClosed = false
 
@@ -239,10 +240,10 @@ import SwiftUI
             Logger.d("AppDelegate: Showing editor window...")
             editorWindow?.makeKeyAndOrderFront(nil)
             if let editorWindow {
-                refreshEditorWindowLayout(editorWindow)
+                refreshEditorWindowLayout(editorWindow, preferredScreen: panelWindow?.screen)
 
                 DispatchQueue.main.async {
-                    self.refreshEditorWindowLayout(editorWindow)
+                    self.refreshEditorWindowLayout(editorWindow, preferredScreen: self.panelWindow?.screen)
                 }
             }
             NSApp.activate(ignoringOtherApps: true)
@@ -250,7 +251,7 @@ import SwiftUI
         }
 
         @MainActor
-        private func refreshEditorWindowLayout(_ window: NSWindow) {
+        private func refreshEditorWindowLayout(_ window: NSWindow, preferredScreen: NSScreen? = nil) {
             window.contentView?.needsLayout = true
             window.contentView?.layoutSubtreeIfNeeded()
             window.contentView?.needsDisplay = true
@@ -266,6 +267,7 @@ import SwiftUI
 
             window.setFrame(nudgedFrame, display: true, animate: false)
             window.setFrame(frame, display: true, animate: false)
+            WindowPlacement.center(window, on: preferredScreen)
         }
 
         private func registerHotkeys() {

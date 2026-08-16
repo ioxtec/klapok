@@ -164,9 +164,4 @@ import SwiftUI
         }
     }
 
-    #Preview {
-        FloatingPanelView(viewModel: FloatingPanelViewModel(editorViewModel: EditorViewModel()))
-            .padding()
-    }
-
 #endif

@@ -853,7 +853,7 @@ import SwiftUI
                         hideAreaSelection()
                     }
                     
-                    await saveVideoAndOpenEditor(recording)
+                    presentVideoReview(for: recording)
                 } catch {
                     Logger.e("Failed to stop video recording: \(error)")
                     videoRecordingState = .idle
@@ -938,33 +938,69 @@ import SwiftUI
         }
         
         @MainActor
-        private func saveVideoAndOpenEditor(_ recording: VideoRecording) async {
+        private func presentVideoReview(for recording: VideoRecording) {
+            let sourceRect = selectedArea.isEmpty ? nil : selectedArea
+
+            VideoReviewPresenter.shared.present(
+                recording: recording,
+                sourceRect: sourceRect,
+                onCopy: { [weak self] recording in
+                    Task { @MainActor in
+                        await self?.saveCopyAndPasteVideo(recording)
+                    }
+                },
+                onEdit: { [weak self] recording in
+                    Task { @MainActor in
+                        guard let self, let savedRecording = self.saveVideoRecording(recording) else { return }
+                        await self.openVideoInEditor(savedRecording)
+                    }
+                },
+                onSave: { [weak self] recording in
+                    _ = self?.saveVideoRecording(recording)
+                },
+                onCancel: { [weak self] recording in
+                    self?.discardRecording(recording)
+                }
+            )
+        }
+
+        @MainActor
+        private func saveCopyAndPasteVideo(_ recording: VideoRecording) async {
+            guard let savedRecording = saveVideoRecording(recording) else { return }
+
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.writeObjects([savedRecording.url as NSURL])
+        }
+
+        @MainActor
+        private func saveVideoRecording(_ recording: VideoRecording) -> VideoRecording? {
             let settings = AppSettings.shared
             let originalDirectory = settings.videoSaveDirectory
             
-            // Save video to user's chosen directory
             if let savedURL = settings.saveVideo(recording.url) {
                 Logger.d("Video saved to: \(savedURL.path)")
                 
-                // Check if directory changed (fallback to default)
                 if settings.videoSaveDirectory != originalDirectory {
                     showDirectoryChangedAlert(for: "video")
                 }
                 
-                // Create new VideoRecording with saved URL
-                let savedRecording = VideoRecording(
+                return VideoRecording(
                     url: savedURL,
                     duration: recording.duration,
                     size: recording.size,
                     frameRate: recording.frameRate
                 )
-                
-                // Open video in editor
-                await openVideoInEditor(savedRecording)
             } else {
                 Logger.e("Failed to save video")
                 showSaveErrorAlert()
+                return nil
             }
+        }
+
+        @MainActor
+        private func discardRecording(_ recording: VideoRecording) {
+            try? FileManager.default.removeItem(at: recording.url)
         }
         
         @MainActor
@@ -1032,19 +1068,20 @@ import SwiftUI
             window.delegate = windowDelegate
             window.minSize = NSSize(width: 1180, height: 720)
             window.isReleasedWhenClosed = false
+            window.setContentSize(NSSize(width: 1180, height: 720))
             WindowPlacement.center(window, on: panelWindow?.screen)
             videoEditorWindow = window
             videoEditorWindowDelegate = windowDelegate
             window.makeKeyAndOrderFront(nil)
-            refreshVideoEditorWindowLayout(window)
+            refreshVideoEditorWindowLayout(window, preferredScreen: panelWindow?.screen)
 
             DispatchQueue.main.async {
-                self.refreshVideoEditorWindowLayout(window)
+                self.refreshVideoEditorWindowLayout(window, preferredScreen: self.panelWindow?.screen)
             }
         }
 
         @MainActor
-        private func refreshVideoEditorWindowLayout(_ window: NSWindow) {
+        private func refreshVideoEditorWindowLayout(_ window: NSWindow, preferredScreen: NSScreen? = nil) {
             window.contentView?.needsLayout = true
             window.contentView?.layoutSubtreeIfNeeded()
             window.contentView?.needsDisplay = true
@@ -1060,6 +1097,7 @@ import SwiftUI
 
             window.setFrame(nudgedFrame, display: true, animate: false)
             window.setFrame(frame, display: true, animate: false)
+            WindowPlacement.center(window, on: preferredScreen)
         }
         
         // MARK: - Panel Management

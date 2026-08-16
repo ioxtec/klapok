@@ -29,9 +29,15 @@ enum CaptureFileStore {
         _ image: NSImage,
         fileName: String,
         primaryDirectory: URL,
-        fallbackDirectory: URL
+        fallbackDirectory: URL,
+        securityScoped: Bool = false
     ) -> CaptureFileStoreResult? {
-        saveScreenshot(image, fileName: fileName, to: primaryDirectory)
+        saveScreenshot(
+            image,
+            fileName: fileName,
+            to: primaryDirectory,
+            securityScoped: securityScoped
+        )
             ?? saveScreenshot(image, fileName: fileName, to: fallbackDirectory)
     }
 
@@ -63,7 +69,8 @@ enum CaptureFileStore {
     private static func saveScreenshot(
         _ image: NSImage,
         fileName: String,
-        to directory: URL
+        to directory: URL,
+        securityScoped: Bool = false
     ) -> CaptureFileStoreResult? {
         guard let pngData = pngData(from: image) else {
             Logger.e("CaptureFileStore: Failed to convert screenshot to PNG")
@@ -71,10 +78,12 @@ enum CaptureFileStore {
         }
 
         do {
-            try ensureDirectory(directory)
-            let fileURL = directory.appendingPathComponent(fileName)
-            try pngData.write(to: fileURL)
-            return CaptureFileStoreResult(url: fileURL, directory: directory)
+            return try withSecurityScope(for: directory, enabled: securityScoped) {
+                try ensureDirectory(directory)
+                let fileURL = directory.appendingPathComponent(fileName)
+                try pngData.write(to: fileURL)
+                return CaptureFileStoreResult(url: fileURL, directory: directory)
+            }
         } catch {
             Logger.e("CaptureFileStore: Failed to save screenshot to \(directory.path): \(error)")
             return nil

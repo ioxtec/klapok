@@ -392,8 +392,4 @@ import SwiftUI
         }
     }
 
-    #Preview {
-        ScreenshotEditorView(viewModel: EditorViewModel())
-    }
-
 #endif

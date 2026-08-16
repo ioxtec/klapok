@@ -259,8 +259,13 @@ final class ProfileManagerTests: XCTestCase {
     
     func testCreateVideoProfileFromCurrentSettings() {
         let settings = AppSettings.shared
+        settings.resetToDefaults()
         settings.videoResolution = "1080p"
         settings.videoFrameRate = 60
+        settings.recordSystemAudio = true
+        settings.showMouseCursor = true
+        settings.enableRecordingCountdown = true
+        settings.recordingCountdownSeconds = 4
         
         let profile = profileManager.createVideoProfileFromCurrentSettings(
             name: "From Settings Video",
@@ -270,12 +275,15 @@ final class ProfileManagerTests: XCTestCase {
         XCTAssertEqual(profile.name, "From Settings Video")
         XCTAssertEqual(profile.resolution, "1080p")
         XCTAssertEqual(profile.frameRate, 60)
+        XCTAssertTrue(profile.recordSystemAudio)
+        XCTAssertTrue(profile.showMouseCursor)
+        XCTAssertTrue(profile.enableRecordingCountdown)
+        XCTAssertEqual(profile.recordingCountdownSeconds, 4)
         XCTAssertTrue(profileManager.videoProfiles.profiles.contains { $0.id == profile.id })
     }
 }
 
 #endif
-
 
 
 

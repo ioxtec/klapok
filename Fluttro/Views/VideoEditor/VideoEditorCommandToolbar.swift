@@ -19,7 +19,7 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                 Image(systemName: "square.and.arrow.up")
             }
             .disabled(viewModel.video == nil)
-            .help("Share video")
+            .help("Share video".localized)
 
             Button {
                 viewModel.openInFinder()
@@ -27,12 +27,14 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                 Image(systemName: "folder")
             }
             .disabled(viewModel.video == nil)
-            .help("Show in Finder")
+            .help("Show in Finder".localized)
 
             Button {
                 Task {
                     if exportManager.settings.exportType == .video {
-                        await viewModel.exportTrimmedVideo()
+                        await viewModel.exportTrimmedVideo(
+                            settings: exportManager.effectiveVideoSettings()
+                        )
                     } else {
                         await viewModel.exportAsGIF(settings: exportManager.settings.gifSettings)
                     }
@@ -46,7 +48,7 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                 }
             }
             .disabled(viewModel.isExporting || viewModel.video == nil)
-            .help("Export as \(exportManager.settings.exportType.displayName)")
+            .help("Export as %@".localized(with: exportManager.settings.exportType.displayName.localized))
 
             Button(role: .destructive) {
                 viewModel.deleteVideo()
@@ -54,7 +56,7 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                 Image(systemName: "trash")
             }
             .disabled(viewModel.video == nil)
-            .help("Delete video")
+            .help("Delete video".localized)
         }
     }
 }

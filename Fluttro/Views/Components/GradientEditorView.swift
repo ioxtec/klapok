@@ -8,20 +8,60 @@
 import SwiftUI
 import AppKit
 
-struct GradientEditorView: View {
-    @ObservedObject var backgroundManager: BackgroundManager
-    @Environment(\.dismiss) private var dismiss
-
-    @State private var gradientName = ""
-    @State private var direction: GradientDirection = .topLeadingToBottomTrailing
-    @State private var opacity: Double = 1.0
-    @State private var stops: [EditableGradientStop] = [
+@MainActor
+private final class GradientEditorViewState: ObservableObject {
+    @Published var gradientName = ""
+    @Published var direction: GradientDirection = .topLeadingToBottomTrailing
+    @Published var opacity: Double = 1.0
+    @Published var stops: [EditableGradientStop] = [
         EditableGradientStop(color: Color(red: 0.98, green: 0.29, blue: 0.36), location: 0),
         EditableGradientStop(color: Color(red: 0.77, green: 0.22, blue: 0.91), location: 1)
     ]
+}
+
+struct GradientEditorView: View {
+    @ObservedObject var backgroundManager: BackgroundManager
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var viewState = GradientEditorViewState()
 
     private let minimumStopCount = 2
     private let maximumStopCount = 6
+
+    private var gradientName: String {
+        get { viewState.gradientName }
+        nonmutating set { viewState.gradientName = newValue }
+    }
+
+    private var direction: GradientDirection {
+        get { viewState.direction }
+        nonmutating set { viewState.direction = newValue }
+    }
+
+    private var opacity: Double {
+        get { viewState.opacity }
+        nonmutating set { viewState.opacity = newValue }
+    }
+
+    private var stops: [EditableGradientStop] {
+        get { viewState.stops }
+        nonmutating set { viewState.stops = newValue }
+    }
+
+    private var gradientNameBinding: Binding<String> {
+        Binding(get: { gradientName }, set: { gradientName = $0 })
+    }
+
+    private var directionBinding: Binding<GradientDirection> {
+        Binding(get: { direction }, set: { direction = $0 })
+    }
+
+    private var opacityBinding: Binding<Double> {
+        Binding(get: { opacity }, set: { opacity = $0 })
+    }
+
+    private var stopsBinding: Binding<[EditableGradientStop]> {
+        Binding(get: { stops }, set: { stops = $0 })
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -45,6 +85,7 @@ struct GradientEditorView: View {
             footer
         }
         .frame(width: 520, height: 640)
+        .centeredSheetWindow()
     }
 
     private var header: some View {
@@ -81,7 +122,7 @@ struct GradientEditorView: View {
             Text("Name")
                 .font(.callout)
 
-            TextField("Gradient name", text: $gradientName)
+            TextField("Gradient name", text: gradientNameBinding)
                 .textFieldStyle(.roundedBorder)
         }
     }
@@ -91,7 +132,7 @@ struct GradientEditorView: View {
             Text("Direction")
                 .font(.callout)
 
-            Picker("", selection: $direction) {
+            Picker("", selection: directionBinding) {
                 ForEach(GradientDirection.allCases) { direction in
                     Text(direction.shortName).tag(direction)
                 }
@@ -125,7 +166,7 @@ struct GradientEditorView: View {
             }
 
             VStack(spacing: 8) {
-                ForEach($stops) { $stop in
+                ForEach(stopsBinding) { $stop in
                     GradientStopRow(
                         stop: $stop,
                         canDelete: stops.count > minimumStopCount,
@@ -151,7 +192,7 @@ struct GradientEditorView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Slider(value: $opacity, in: 0.1...1.0, step: 0.1)
+            Slider(value: opacityBinding, in: 0.1...1.0, step: 0.1)
         }
     }
 
@@ -408,8 +449,4 @@ private extension Array {
         guard count > 1 else { return [] }
         return zip(self, dropFirst()).map { ($0, $1) }
     }
-}
-
-#Preview {
-    GradientEditorView(backgroundManager: BackgroundManager(forPreview: true))
 }

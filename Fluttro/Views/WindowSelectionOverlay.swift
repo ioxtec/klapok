@@ -52,6 +52,15 @@ import SwiftUI
         let alpha: Double
     }
 
+    @MainActor
+    private final class WindowSelectionOverlayState: ObservableObject {
+        @Published var availableWindows: [WindowSelectionItem] = []
+        @Published var hoveredWindow: WindowSelectionItem?
+        @Published var selectedWindow: WindowSelectionItem?
+        @Published var isLoading = true
+        @Published var lastHoverUpdate: TimeInterval = 0
+    }
+
     private enum WindowSelectionCoordinateSpace {
         static func desktopBounds() -> CGRect {
             NSScreen.screens
@@ -108,12 +117,33 @@ import SwiftUI
         let screenFrame: CGRect
         let onSelection: (SCWindow?) -> Void
         let onCancel: () -> Void
-        @State private var availableWindows: [WindowSelectionItem] = []
-        @State private var hoveredWindow: WindowSelectionItem?
-        @State private var selectedWindow: WindowSelectionItem?
-        @State private var isLoading: Bool = true
-        @State private var lastHoverUpdate: TimeInterval = 0
+        @StateObject private var viewState = WindowSelectionOverlayState()
         private let hoverThrottleInterval: TimeInterval = 1.0 / 30.0
+
+        private var availableWindows: [WindowSelectionItem] {
+            get { viewState.availableWindows }
+            nonmutating set { viewState.availableWindows = newValue }
+        }
+
+        private var hoveredWindow: WindowSelectionItem? {
+            get { viewState.hoveredWindow }
+            nonmutating set { viewState.hoveredWindow = newValue }
+        }
+
+        private var selectedWindow: WindowSelectionItem? {
+            get { viewState.selectedWindow }
+            nonmutating set { viewState.selectedWindow = newValue }
+        }
+
+        private var isLoading: Bool {
+            get { viewState.isLoading }
+            nonmutating set { viewState.isLoading = newValue }
+        }
+
+        private var lastHoverUpdate: TimeInterval {
+            get { viewState.lastHoverUpdate }
+            nonmutating set { viewState.lastHoverUpdate = newValue }
+        }
 
         private var selectionTitle: String {
             captureMode == .video ? "Select a window to record" : "Select a window to capture"
@@ -502,15 +532,6 @@ import SwiftUI
                 .opacity(swiftUIFrame.isEmpty ? 0 : 1)
                 .allowsHitTesting(false)  // Don't interfere with mouse events
         }
-    }
-
-    #Preview {
-        WindowSelectionOverlayView(
-            captureMode: .image,
-            screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
-            onSelection: { _ in },
-            onCancel: {}
-        )
     }
 
 #endif

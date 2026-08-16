@@ -57,12 +57,24 @@ import Foundation
         static let shared = AppSettings()
         private static let screenshotsDirectoryName = "Fluttro Screenshots"
         private static let videosDirectoryName = "Fluttro Videos"
+        private static let saveDirectoryPathKey = "saveDirectory"
+        private static let saveDirectoryBookmarkKey = "saveDirectoryBookmark"
+        private static let videoSaveDirectoryPathKey = "videoSaveDirectory"
+        private static let videoSaveDirectoryBookmarkKey = "videoSaveDirectoryBookmark"
+        private static let supportedVideoResolutions = ["Source", "1080p", "720p", "480p"]
+        private static let supportedVideoFrameRates = [24, 30, 60]
+        private static let supportedVideoCodecs = ["H.264", "H.265"]
+        private static let supportedVideoFormats = ["MP4", "MOV"]
 
         // MARK: - Published Properties
 
         @Published var saveDirectory: URL {
             didSet {
-                UserDefaults.standard.set(saveDirectory.path, forKey: "saveDirectory")
+                Self.persistDirectory(
+                    saveDirectory,
+                    pathKey: Self.saveDirectoryPathKey,
+                    bookmarkKey: Self.saveDirectoryBookmarkKey
+                )
             }
         }
 
@@ -107,18 +119,6 @@ import Foundation
             }
         }
 
-        @Published var hotkeyModifiers: NSEvent.ModifierFlags {
-            didSet {
-                UserDefaults.standard.set(hotkeyModifiers.rawValue, forKey: "hotkeyModifiers")
-            }
-        }
-
-        @Published var hotkeyKeyCode: UInt16 {
-            didSet {
-                UserDefaults.standard.set(hotkeyKeyCode, forKey: "hotkeyKeyCode")
-            }
-        }
-
         @Published var showInDock: Bool {
             didSet {
                 UserDefaults.standard.set(showInDock, forKey: "showInDock")
@@ -126,16 +126,13 @@ import Foundation
             }
         }
 
-        @Published var launchAtLogin: Bool {
-            didSet {
-                UserDefaults.standard.set(launchAtLogin, forKey: "launchAtLogin")
-                updateLaunchAtLogin()
-            }
-        }
-
         @Published var videoSaveDirectory: URL {
             didSet {
-                UserDefaults.standard.set(videoSaveDirectory.path, forKey: "videoSaveDirectory")
+                Self.persistDirectory(
+                    videoSaveDirectory,
+                    pathKey: Self.videoSaveDirectoryPathKey,
+                    bookmarkKey: Self.videoSaveDirectoryBookmarkKey
+                )
             }
         }
 
@@ -148,31 +145,56 @@ import Foundation
         // Video Quality Settings
         @Published var videoResolution: String {
             didSet {
-                UserDefaults.standard.set(videoResolution, forKey: "videoResolution")
+                let normalizedValue = Self.normalizedVideoResolution(videoResolution)
+                if videoResolution != normalizedValue {
+                    videoResolution = normalizedValue
+                    return
+                }
+                UserDefaults.standard.set(normalizedValue, forKey: "videoResolution")
             }
         }
         
         @Published var videoFrameRate: Int {
             didSet {
-                UserDefaults.standard.set(videoFrameRate, forKey: "videoFrameRate")
+                let normalizedValue = Self.normalizedVideoFrameRate(videoFrameRate)
+                if videoFrameRate != normalizedValue {
+                    videoFrameRate = normalizedValue
+                    return
+                }
+                UserDefaults.standard.set(normalizedValue, forKey: "videoFrameRate")
             }
         }
         
         @Published var videoBitrate: Int {
             didSet {
-                UserDefaults.standard.set(videoBitrate, forKey: "videoBitrate")
+                let normalizedValue = Self.normalizedVideoBitrate(videoBitrate)
+                if videoBitrate != normalizedValue {
+                    videoBitrate = normalizedValue
+                    return
+                }
+                UserDefaults.standard.set(normalizedValue, forKey: "videoBitrate")
             }
         }
         
         @Published var videoCodec: String {
             didSet {
-                UserDefaults.standard.set(videoCodec, forKey: "videoCodec")
+                let normalizedValue = Self.normalizedVideoCodec(videoCodec)
+                if videoCodec != normalizedValue {
+                    videoCodec = normalizedValue
+                    return
+                }
+                UserDefaults.standard.set(normalizedValue, forKey: "videoCodec")
             }
         }
         
         @Published var videoFormat: String {
             didSet {
-                UserDefaults.standard.set(videoFormat, forKey: "videoFormat")
+                let normalizedValue = Self.normalizedVideoFormat(videoFormat)
+                if videoFormat != normalizedValue {
+                    videoFormat = normalizedValue
+                    return
+                }
+                UserDefaults.standard.set(normalizedValue, forKey: "videoFormat")
             }
         }
         
@@ -263,30 +285,22 @@ import Foundation
             }
         }
 
-        var hotkeyDisplayString: String {
-            var components: [String] = []
-
-            if hotkeyModifiers.contains(.command) { components.append("⌘") }
-            if hotkeyModifiers.contains(.option) { components.append("⌥") }
-            if hotkeyModifiers.contains(.control) { components.append("⌃") }
-            if hotkeyModifiers.contains(.shift) { components.append("⇧") }
-
-            // Convert key code to character
-            let keyString = keyCodeToString(hotkeyKeyCode)
-            components.append(keyString)
-
-            return components.joined()
+        var normalizedVideoQuality: VideoQuality {
+            VideoQuality.fromBitrate(videoBitrate)
         }
 
         // MARK: - Initialization
 
         private init() {
+            Self.removeLegacySettings()
             self.saveDirectory = Self.storedDirectory(
-                forKey: "saveDirectory",
+                pathKey: Self.saveDirectoryPathKey,
+                bookmarkKey: Self.saveDirectoryBookmarkKey,
                 fallback: Self.defaultSaveDirectory
             )
             self.videoSaveDirectory = Self.storedDirectory(
-                forKey: "videoSaveDirectory",
+                pathKey: Self.videoSaveDirectoryPathKey,
+                bookmarkKey: Self.videoSaveDirectoryBookmarkKey,
                 fallback: Self.defaultVideoSaveDirectory
             )
             
@@ -328,17 +342,10 @@ import Foundation
             self.enableRecordingCountdown = UserDefaults.standard.object(forKey: "enableRecordingCountdown") as? Bool ?? false
             let storedCountdownSeconds = UserDefaults.standard.object(forKey: "recordingCountdownSeconds") as? Int ?? 3
             self.recordingCountdownSeconds = min(max(storedCountdownSeconds, 1), 30)
-            self.hotkeyModifiers = NSEvent.ModifierFlags(
-                rawValue: UserDefaults.standard.object(forKey: "hotkeyModifiers") as? UInt
-                    ?? (NSEvent.ModifierFlags.command.rawValue
-                        | NSEvent.ModifierFlags.shift.rawValue))
-            self.hotkeyKeyCode = UInt16(
-                UserDefaults.standard.integer(forKey: "hotkeyKeyCode") != 0
-                    ? UserDefaults.standard.integer(forKey: "hotkeyKeyCode") : 0x1A)  // Default: Cmd+Shift+]
             self.showInDock = UserDefaults.standard.object(forKey: "showInDock") as? Bool ?? true
-            self.launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
+            normalizeVideoSettingsValues()
 
-            try? CaptureFileStore.ensureDirectory(saveDirectory)
+            try? CaptureFileStore.ensureDirectory(saveDirectory, securityScoped: true)
             try? CaptureFileStore.ensureDirectory(videoSaveDirectory, securityScoped: true)
         }
 
@@ -356,8 +363,10 @@ import Foundation
             videoFileNameTemplate = "Video-{datetime}"
             
             // Clear any saved paths from UserDefaults
-            UserDefaults.standard.removeObject(forKey: "saveDirectory")
-            UserDefaults.standard.removeObject(forKey: "videoSaveDirectory")
+            UserDefaults.standard.removeObject(forKey: Self.saveDirectoryPathKey)
+            UserDefaults.standard.removeObject(forKey: Self.saveDirectoryBookmarkKey)
+            UserDefaults.standard.removeObject(forKey: Self.videoSaveDirectoryPathKey)
+            UserDefaults.standard.removeObject(forKey: Self.videoSaveDirectoryBookmarkKey)
             UserDefaults.standard.removeObject(forKey: "screenshotReviewPosition")
             UserDefaults.standard.removeObject(forKey: "areaSelectionLockEnabled")
             UserDefaults.standard.removeObject(forKey: "lastAreaSelectionRect")
@@ -375,11 +384,11 @@ import Foundation
             screenshotShowsMouseCursor = false
             enableRecordingCountdown = false
             recordingCountdownSeconds = 3
-            
-            hotkeyModifiers = [.command, .shift]
-            hotkeyKeyCode = 0x1A
             showInDock = true
-            launchAtLogin = false
+        }
+
+        func applyVideoQuality(_ quality: VideoQuality) {
+            videoBitrate = quality.bitrate
         }
 
         func rememberAreaSelection(_ rect: NSRect) {
@@ -398,7 +407,8 @@ import Foundation
                 image,
                 fileName: fileName,
                 primaryDirectory: saveDirectory,
-                fallbackDirectory: Self.defaultSaveDirectory
+                fallbackDirectory: Self.defaultSaveDirectory,
+                securityScoped: true
             ) else {
                 return nil
             }
@@ -436,18 +446,109 @@ import Foundation
             documentsDirectory.appendingPathComponent(videosDirectoryName)
         }
 
-        private static func storedDirectory(forKey key: String, fallback: URL) -> URL {
-            guard let savedPath = UserDefaults.standard.string(forKey: key) else {
+        private static func storedDirectory(pathKey: String, bookmarkKey: String, fallback: URL) -> URL {
+            if
+                let bookmarkData = UserDefaults.standard.data(forKey: bookmarkKey),
+                let resolvedURL = resolveDirectoryBookmark(
+                    bookmarkData,
+                    pathKey: pathKey,
+                    bookmarkKey: bookmarkKey
+                )
+            {
+                return resolvedURL
+            }
+
+            guard
+                let savedPath = UserDefaults.standard.string(forKey: pathKey),
+                !savedPath.isEmpty
+            else {
                 return fallback
             }
 
-            let savedURL = URL(fileURLWithPath: savedPath)
-            guard savedURL.path.contains("/Library/Containers/") else {
-                UserDefaults.standard.removeObject(forKey: key)
-                return fallback
+            return URL(fileURLWithPath: savedPath)
+        }
+
+        private static func persistDirectory(_ directory: URL, pathKey: String, bookmarkKey: String) {
+            UserDefaults.standard.set(directory.path, forKey: pathKey)
+            try? CaptureFileStore.ensureDirectory(directory, securityScoped: true)
+
+            let bookmarkData =
+                (try? directory.bookmarkData(
+                    options: [.withSecurityScope],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                ))
+                ?? (try? directory.bookmarkData(
+                    options: [],
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                ))
+
+            guard let bookmarkData else {
+                UserDefaults.standard.removeObject(forKey: bookmarkKey)
+                return
             }
 
-            return savedURL
+            UserDefaults.standard.set(bookmarkData, forKey: bookmarkKey)
+        }
+
+        private static func resolveDirectoryBookmark(
+            _ bookmarkData: Data,
+            pathKey: String,
+            bookmarkKey: String
+        ) -> URL? {
+            var isStale = false
+            guard let resolvedURL = try? URL(
+                resolvingBookmarkData: bookmarkData,
+                options: [.withSecurityScope],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else {
+                UserDefaults.standard.removeObject(forKey: bookmarkKey)
+                return nil
+            }
+
+            if isStale {
+                persistDirectory(resolvedURL, pathKey: pathKey, bookmarkKey: bookmarkKey)
+            }
+
+            return resolvedURL
+        }
+
+        private func normalizeVideoSettingsValues() {
+            videoResolution = Self.normalizedVideoResolution(videoResolution)
+            videoFrameRate = Self.normalizedVideoFrameRate(videoFrameRate)
+            videoBitrate = Self.normalizedVideoBitrate(videoBitrate)
+            videoCodec = Self.normalizedVideoCodec(videoCodec)
+            videoFormat = Self.normalizedVideoFormat(videoFormat)
+        }
+
+        private static func normalizedVideoResolution(_ value: String) -> String {
+            supportedVideoResolutions.contains(value) ? value : "Source"
+        }
+
+        private static func normalizedVideoFrameRate(_ value: Int) -> Int {
+            supportedVideoFrameRates.min { lhs, rhs in
+                abs(lhs - value) < abs(rhs - value)
+            } ?? 30
+        }
+
+        private static func normalizedVideoBitrate(_ value: Int) -> Int {
+            VideoQuality.fromBitrate(value).bitrate
+        }
+
+        private static func normalizedVideoCodec(_ value: String) -> String {
+            supportedVideoCodecs.contains(value) ? value : "H.264"
+        }
+
+        private static func normalizedVideoFormat(_ value: String) -> String {
+            supportedVideoFormats.contains(value) ? value : "MP4"
+        }
+
+        private static func removeLegacySettings() {
+            UserDefaults.standard.removeObject(forKey: "hotkeyModifiers")
+            UserDefaults.standard.removeObject(forKey: "hotkeyKeyCode")
+            UserDefaults.standard.removeObject(forKey: "launchAtLogin")
         }
 
         private func updateDockVisibility() {
@@ -464,47 +565,6 @@ import Foundation
                     window.makeKeyAndOrderFront(nil)
                     window.orderFrontRegardless()
                 }
-            }
-        }
-
-        private func updateLaunchAtLogin() {
-            // Stored for the settings UI; login item registration is not wired yet.
-        }
-
-        private func keyCodeToString(_ keyCode: UInt16) -> String {
-            switch keyCode {
-            case 0x1A: return "]"
-            case 0x1B: return "-"
-            case 0x18: return "="
-            case 0x0C: return "Q"
-            case 0x0D: return "W"
-            case 0x0E: return "E"
-            case 0x0F: return "R"
-            case 0x11: return "T"
-            case 0x10: return "Y"
-            case 0x20: return "U"
-            case 0x22: return "I"
-            case 0x1F: return "O"
-            case 0x23: return "P"
-            case 0x00: return "A"
-            case 0x01: return "S"
-            case 0x02: return "D"
-            case 0x03: return "F"
-            case 0x05: return "G"
-            case 0x04: return "H"
-            case 0x26: return "J"
-            case 0x28: return "K"
-            case 0x25: return "L"
-            case 0x06: return "Z"
-            case 0x07: return "X"
-            case 0x08: return "C"
-            case 0x09: return "V"
-            case 0x0B: return "B"
-            case 0x2D: return "N"
-            case 0x2E: return "M"
-            case 0x31: return "Space"
-            case 0x35: return "Esc"
-            default: return "Key\(keyCode)"
             }
         }
     }

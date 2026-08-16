@@ -7,13 +7,16 @@ import Foundation
 
 #if os(macOS)
 import AppKit
-import AVFoundation
+@preconcurrency import AVFoundation
 import ImageIO
 import UniformTypeIdentifiers
 
 enum VideoExportService {
     enum ExportError: LocalizedError {
         case exportSessionUnavailable
+        case assetReaderUnavailable
+        case assetWriterUnavailable
+        case exportFailed(String)
         case gifDestinationUnavailable
         case gifFrameGenerationFailed
         case gifFinalizeFailed
@@ -22,6 +25,12 @@ enum VideoExportService {
             switch self {
             case .exportSessionUnavailable:
                 return "Could not create a video export session."
+            case .assetReaderUnavailable:
+                return "Could not create a video reader."
+            case .assetWriterUnavailable:
+                return "Could not create a video writer."
+            case .exportFailed(let message):
+                return message
             case .gifDestinationUnavailable:
                 return "Could not create a GIF destination."
             case .gifFrameGenerationFailed:
@@ -34,27 +43,47 @@ enum VideoExportService {
 
     static func exportEditedVideo(
         video: VideoRecording,
-        ranges: [TimelineTimeRange]
+        ranges: [TimelineTimeRange],
+        settings: VideoExportSettings
     ) async throws -> URL {
         let asset = AVURLAsset(url: video.url)
-        let exportAsset = try await editedExportAsset(from: asset, ranges: ranges)
-        guard let exportSession = AVAssetExportSession(
-            asset: exportAsset,
-            presetName: AVAssetExportPresetHighestQuality
-        ) else {
-            throw ExportError.exportSessionUnavailable
-        }
+        let exportAsset = try await editedExportAsset(
+            from: asset,
+            ranges: ranges,
+            includeAudio: settings.audioOption != .exclude
+        )
+        let targetSize = targetVideoSize(
+            from: video.size,
+            scaling: settings.scaling,
+            customScaleFactor: settings.customScaleFactor
+        )
+        let videoComposition = try await makeVideoComposition(
+            for: exportAsset,
+            targetSize: targetSize
+        )
+        let appSettings = AppSettings.shared
+        let sourceFrameRate = try await sourceFrameRate(for: exportAsset)
+        let outputConfiguration = editedVideoOutputConfiguration(
+            targetSize: targetSize,
+            quality: settings.quality,
+            format: appSettings.videoFormat,
+            codec: appSettings.videoCodec,
+            frameRate: sourceFrameRate
+        )
 
         let outputURL = uniqueOutputURL(
             baseName: "\(video.url.deletingPathExtension().lastPathComponent)_edited",
-            fileExtension: "mp4",
+            fileExtension: outputConfiguration.fileExtension,
             in: video.url.deletingLastPathComponent()
         )
 
-        exportSession.outputURL = outputURL
-        exportSession.outputFileType = .mp4
-
-        try await exportSession.export(to: outputURL, as: .mp4)
+        try await transcodeEditedVideo(
+            asset: exportAsset,
+            videoComposition: videoComposition,
+            audioOption: settings.audioOption,
+            outputURL: outputURL,
+            configuration: outputConfiguration
+        )
         return outputURL
     }
 
@@ -131,7 +160,8 @@ enum VideoExportService {
 
     private static func editedExportAsset(
         from asset: AVURLAsset,
-        ranges: [TimelineTimeRange]
+        ranges: [TimelineTimeRange],
+        includeAudio: Bool
     ) async throws -> AVAsset {
         guard !ranges.isEmpty else { return asset }
 
@@ -146,13 +176,13 @@ enum VideoExportService {
             return asset
         }
 
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        let compositionAudioTrack = audioTracks.first.flatMap { _ in
+        let audioTracks = includeAudio ? try await asset.loadTracks(withMediaType: .audio) : []
+        let compositionAudioTrack = includeAudio ? audioTracks.first.flatMap { _ in
             composition.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid
             )
-        }
+        } : nil
 
         var insertionTime = CMTime.zero
         for range in ranges {
@@ -185,13 +215,395 @@ enum VideoExportService {
         return composition
     }
 
+    private static func targetVideoSize(
+        from sourceSize: CGSize,
+        scaling: VideoScaling,
+        customScaleFactor: Double
+    ) -> CGSize {
+        let scaleFactor: Double
+        switch scaling {
+        case .custom:
+            scaleFactor = customScaleFactor
+        default:
+            scaleFactor = scaling.scaleFactor
+        }
+
+        let width = normalizedPixelDimension(Double(sourceSize.width) * scaleFactor)
+        let height = normalizedPixelDimension(Double(sourceSize.height) * scaleFactor)
+        return CGSize(width: width, height: height)
+    }
+
+    private static func normalizedPixelDimension(_ value: Double) -> CGFloat {
+        let rounded = max(2, Int(value.rounded()))
+        let even = rounded.isMultiple(of: 2) ? rounded : rounded + 1
+        return CGFloat(even)
+    }
+
+    private static func makeVideoComposition(
+        for asset: AVAsset,
+        targetSize: CGSize
+    ) async throws -> AVMutableVideoComposition? {
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            return nil
+        }
+
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let frameRate = try await videoTrack.load(.nominalFrameRate)
+        let sourceSize = orientedVideoSize(naturalSize: naturalSize, transform: preferredTransform)
+
+        guard sourceSize.width > 0, sourceSize.height > 0 else {
+            return nil
+        }
+
+        let scaleX = targetSize.width / sourceSize.width
+        let scaleY = targetSize.height / sourceSize.height
+        let scaledTransform = preferredTransform.concatenating(
+            CGAffineTransform(scaleX: scaleX, y: scaleY)
+        )
+
+        let instruction = AVMutableVideoCompositionInstruction()
+        instruction.timeRange = CMTimeRange(
+            start: .zero,
+            duration: try await asset.load(.duration)
+        )
+
+        let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: videoTrack)
+        layerInstruction.setTransform(scaledTransform, at: .zero)
+        instruction.layerInstructions = [layerInstruction]
+
+        let composition = AVMutableVideoComposition()
+        composition.instructions = [instruction]
+        composition.renderSize = targetSize
+        let timescale = Int32(max(1, Int(frameRate.rounded())))
+        composition.frameDuration = CMTime(value: 1, timescale: timescale)
+        return composition
+    }
+
+    private static func sourceFrameRate(for asset: AVAsset) async throws -> Int {
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            return 30
+        }
+
+        let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+        let resolvedFrameRate = nominalFrameRate > 0 ? Int(nominalFrameRate.rounded()) : 30
+        return max(1, resolvedFrameRate)
+    }
+
+    private static func transcodeEditedVideo(
+        asset: AVAsset,
+        videoComposition: AVVideoComposition?,
+        audioOption: AudioExportOption,
+        outputURL: URL,
+        configuration: EditedVideoOutputConfiguration
+    ) async throws {
+        if FileManager.default.fileExists(atPath: outputURL.path) {
+            try FileManager.default.removeItem(at: outputURL)
+        }
+
+        guard let reader = try? AVAssetReader(asset: asset) else {
+            throw ExportError.assetReaderUnavailable
+        }
+
+        guard let writer = try? AVAssetWriter(outputURL: outputURL, fileType: configuration.fileType) else {
+            throw ExportError.assetWriterUnavailable
+        }
+
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw ExportError.exportFailed("No video track available for export.")
+        }
+
+        let videoOutput = AVAssetReaderVideoCompositionOutput(
+            videoTracks: [videoTrack],
+            videoSettings: [
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+            ]
+        )
+        videoOutput.videoComposition = videoComposition
+        videoOutput.alwaysCopiesSampleData = false
+
+        guard reader.canAdd(videoOutput) else {
+            throw ExportError.exportFailed("Could not attach the video reader output.")
+        }
+        reader.add(videoOutput)
+
+        let videoInput = AVAssetWriterInput(
+            mediaType: .video,
+            outputSettings: configuration.videoOutputSettings
+        )
+        videoInput.expectsMediaDataInRealTime = false
+
+        guard writer.canAdd(videoInput) else {
+            throw ExportError.exportFailed("Could not attach the video writer input.")
+        }
+        writer.add(videoInput)
+
+        let audioPair = try await makeAudioPipeline(
+            for: asset,
+            audioOption: audioOption,
+            writer: writer,
+            reader: reader
+        )
+        let readerBox = UncheckedSendableBox(reader)
+        let writerBox = UncheckedSendableBox(writer)
+        let videoInputBox = UncheckedSendableBox(videoInput)
+        let videoOutputBox = UncheckedSendableBox(videoOutput)
+        let audioPairBox = audioPair.map(UncheckedSendableBox.init)
+
+        guard reader.startReading() else {
+            throw ExportError.exportFailed(reader.error?.localizedDescription ?? "Video reading failed to start.")
+        }
+
+        guard writer.startWriting() else {
+            throw ExportError.exportFailed(writer.error?.localizedDescription ?? "Video writing failed to start.")
+        }
+
+        writer.startSession(atSourceTime: .zero)
+
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            let stateQueue = DispatchQueue(label: "Fluttro.VideoExportService.State")
+            let videoQueue = DispatchQueue(label: "Fluttro.VideoExportService.Video")
+            let audioQueue = DispatchQueue(label: "Fluttro.VideoExportService.Audio")
+            var videoFinished = false
+            var audioFinished = audioPair == nil
+            var resumed = false
+
+            func resumeOnce(with result: Result<Void, Error>) {
+                stateQueue.sync {
+                    guard !resumed else { return }
+                    resumed = true
+                    switch result {
+                    case .success:
+                        continuation.resume()
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                    }
+                }
+            }
+
+            func completeStream(
+                finishedVideo: Bool = false,
+                finishedAudio: Bool = false
+            ) {
+                stateQueue.sync {
+                    if finishedVideo {
+                        videoFinished = true
+                    }
+                    if finishedAudio {
+                        audioFinished = true
+                    }
+                }
+
+                if videoFinished && audioFinished {
+                    writerBox.value.finishWriting {
+                        if readerBox.value.status == .failed {
+                            resumeOnce(
+                                with: .failure(
+                                    ExportError.exportFailed(
+                                        readerBox.value.error?.localizedDescription ?? "Video reader failed during export."
+                                    )
+                                )
+                            )
+                            return
+                        }
+
+                        if writerBox.value.status == .failed {
+                            resumeOnce(
+                                with: .failure(
+                                    ExportError.exportFailed(
+                                        writerBox.value.error?.localizedDescription ?? "Video writer failed during export."
+                                    )
+                                )
+                            )
+                            return
+                        }
+
+                        resumeOnce(with: .success(()))
+                    }
+                }
+            }
+
+            videoInputBox.value.requestMediaDataWhenReady(on: videoQueue) {
+                while videoInputBox.value.isReadyForMoreMediaData {
+                    if let sampleBuffer = videoOutputBox.value.copyNextSampleBuffer() {
+                        if !videoInputBox.value.append(sampleBuffer) {
+                            readerBox.value.cancelReading()
+                            writerBox.value.cancelWriting()
+                            resumeOnce(
+                                with: .failure(
+                                    ExportError.exportFailed(
+                                        writerBox.value.error?.localizedDescription ?? "Failed while writing video frames."
+                                    )
+                                )
+                            )
+                            return
+                        }
+                    } else {
+                        videoInputBox.value.markAsFinished()
+                        completeStream(finishedVideo: true)
+                        return
+                    }
+                }
+            }
+
+            if let audioPairBox {
+                audioPairBox.value.input.requestMediaDataWhenReady(on: audioQueue) {
+                    while audioPairBox.value.input.isReadyForMoreMediaData {
+                        if let sampleBuffer = audioPairBox.value.output.copyNextSampleBuffer() {
+                            if !audioPairBox.value.input.append(sampleBuffer) {
+                                readerBox.value.cancelReading()
+                                writerBox.value.cancelWriting()
+                                resumeOnce(
+                                    with: .failure(
+                                        ExportError.exportFailed(
+                                            writerBox.value.error?.localizedDescription ?? "Failed while writing audio samples."
+                                        )
+                                    )
+                                )
+                                return
+                            }
+                        } else {
+                            audioPairBox.value.input.markAsFinished()
+                            completeStream(finishedAudio: true)
+                            return
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static func makeAudioPipeline(
+        for asset: AVAsset,
+        audioOption: AudioExportOption,
+        writer: AVAssetWriter,
+        reader: AVAssetReader
+    ) async throws -> (output: AVAssetReaderAudioMixOutput, input: AVAssetWriterInput)? {
+        guard audioOption != .exclude else {
+            return nil
+        }
+
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard !audioTracks.isEmpty else {
+            return nil
+        }
+
+        let audioOutput = AVAssetReaderAudioMixOutput(
+            audioTracks: audioTracks,
+            audioSettings: [
+                AVFormatIDKey: kAudioFormatLinearPCM
+            ]
+        )
+        audioOutput.alwaysCopiesSampleData = false
+
+        if audioOption == .mute {
+            let parameters = audioTracks.map { track -> AVMutableAudioMixInputParameters in
+                let inputParameters = AVMutableAudioMixInputParameters(track: track)
+                inputParameters.setVolume(0, at: .zero)
+                return inputParameters
+            }
+            let audioMix = AVMutableAudioMix()
+            audioMix.inputParameters = parameters
+            audioOutput.audioMix = audioMix
+        }
+
+        guard reader.canAdd(audioOutput) else {
+            throw ExportError.exportFailed("Could not attach the audio reader output.")
+        }
+        reader.add(audioOutput)
+
+        let audioInput = AVAssetWriterInput(
+            mediaType: .audio,
+            outputSettings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVNumberOfChannelsKey: 2,
+                AVSampleRateKey: 44_100,
+                AVEncoderBitRateKey: 192_000
+            ]
+        )
+        audioInput.expectsMediaDataInRealTime = false
+
+        guard writer.canAdd(audioInput) else {
+            throw ExportError.exportFailed("Could not attach the audio writer input.")
+        }
+        writer.add(audioInput)
+
+        return (audioOutput, audioInput)
+    }
+
+    private static func editedVideoOutputConfiguration(
+        targetSize: CGSize,
+        quality: VideoQuality,
+        format: String,
+        codec: String,
+        frameRate: Int
+    ) -> EditedVideoOutputConfiguration {
+        let resolvedCodec: AVVideoCodecType = codec == "H.265" ? .hevc : .h264
+        let resolvedFileType: AVFileType = format == "MOV" ? .mov : .mp4
+        let resolvedFileExtension = format == "MOV" ? "mov" : "mp4"
+        let maxKeyFrameInterval = max(1, frameRate * 2)
+
+        var compressionProperties: [String: Any] = [
+            AVVideoAverageBitRateKey: quality.bitrate,
+            AVVideoExpectedSourceFrameRateKey: frameRate,
+            AVVideoMaxKeyFrameIntervalKey: maxKeyFrameInterval,
+            AVVideoAllowFrameReorderingKey: false,
+            AVVideoPixelAspectRatioKey: [
+                AVVideoPixelAspectRatioHorizontalSpacingKey: 1,
+                AVVideoPixelAspectRatioVerticalSpacingKey: 1
+            ]
+        ]
+
+        if resolvedCodec == .h264 {
+            compressionProperties[AVVideoProfileLevelKey] = AVVideoProfileLevelH264HighAutoLevel
+        }
+
+        return EditedVideoOutputConfiguration(
+            fileType: resolvedFileType,
+            fileExtension: resolvedFileExtension,
+            videoOutputSettings: [
+                AVVideoCodecKey: resolvedCodec,
+                AVVideoWidthKey: Int(targetSize.width),
+                AVVideoHeightKey: Int(targetSize.height),
+                AVVideoCompressionPropertiesKey: compressionProperties
+            ]
+        )
+    }
+
+    private static func orientedVideoSize(
+        naturalSize: CGSize,
+        transform: CGAffineTransform
+    ) -> CGSize {
+        let rect = CGRect(origin: .zero, size: naturalSize).applying(transform)
+        return CGSize(width: abs(rect.width), height: abs(rect.height))
+    }
+
     private static func gifTargetSize(
         for videoSize: CGSize,
         settings: GIFExportSettings
     ) -> CGSize {
+        guard
+            videoSize.width.isFinite,
+            videoSize.height.isFinite,
+            videoSize.width > 0,
+            videoSize.height > 0
+        else {
+            return CGSize(
+                width: max(2, CGFloat(settings.maxWidth)),
+                height: max(2, CGFloat(settings.maxHeight))
+            )
+        }
+
         let aspectRatio = videoSize.width / videoSize.height
         var targetWidth = CGFloat(settings.maxWidth)
         var targetHeight = CGFloat(settings.maxHeight)
+
+        guard aspectRatio.isFinite, aspectRatio > 0 else {
+            return CGSize(width: max(2, targetWidth), height: max(2, targetHeight))
+        }
 
         if targetWidth / targetHeight > aspectRatio {
             targetWidth = targetHeight * aspectRatio
@@ -199,7 +611,7 @@ enum VideoExportService {
             targetHeight = targetWidth / aspectRatio
         }
 
-        return CGSize(width: targetWidth, height: targetHeight)
+        return CGSize(width: max(2, targetWidth), height: max(2, targetHeight))
     }
 
     private static func gifFileProperties(settings: GIFExportSettings) -> [String: Any] {
@@ -255,6 +667,25 @@ enum VideoExportService {
         }
 
         return candidate
+    }
+}
+
+private struct EditedVideoOutputConfiguration {
+    let fileType: AVFileType
+    let fileExtension: String
+    let videoOutputSettings: [String: Any]
+}
+
+private struct AudioPipeline {
+    let output: AVAssetReaderAudioMixOutput
+    let input: AVAssetWriterInput
+}
+
+private final class UncheckedSendableBox<Value>: @unchecked Sendable {
+    let value: Value
+
+    init(_ value: Value) {
+        self.value = value
     }
 }
 

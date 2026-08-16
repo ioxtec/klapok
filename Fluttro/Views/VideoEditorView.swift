@@ -15,6 +15,7 @@ struct VideoEditorView: View {
     @StateObject private var settings = AppSettings.shared
     @StateObject private var profileManager = ProfileManager.shared
     @StateObject private var exportManager = ExportManager.shared
+    @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
         NavigationSplitView {
@@ -45,9 +46,10 @@ struct VideoEditorView: View {
 
                 if viewModel.video != nil {
                     VideoTimelineView(viewModel: viewModel)
-                        .frame(height: 176)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
+                        .frame(height: 258)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 10)
+                        .padding(.bottom, 14)
                         .background(Color(NSColor.controlBackgroundColor))
                 }
             }
@@ -60,6 +62,7 @@ struct VideoEditorView: View {
             )
         }
         .frame(minWidth: 1180, minHeight: 720)
+        .id(languageManager.selectedLanguage.rawValue)
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
@@ -77,7 +80,7 @@ struct VideoEditorView: View {
         } catch {
             Logger.w("VideoEditorView: Could not read file size: \(error)")
         }
-        return "Unknown"
+        return "Unknown".localized
     }
 
     private func formatDate(_ url: URL) -> String {
@@ -92,7 +95,7 @@ struct VideoEditorView: View {
         } catch {
             Logger.w("VideoEditorView: Could not read creation date: \(error)")
         }
-        return "Unknown"
+        return "Unknown".localized
     }
 }
 
@@ -103,20 +106,15 @@ private struct VideoEmptyStateView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.secondary)
 
-            Text("No Video Selected")
+            Text("No Video Selected".localized)
                 .font(.title2)
                 .foregroundColor(.secondary)
 
-            Text("Select a video file to preview")
+            Text("Select a video file to preview".localized)
                 .font(.body)
                 .foregroundColor(.secondary)
         }
     }
-}
-
-#Preview {
-    VideoEditorView(viewModel: VideoEditorViewModel())
-        .frame(width: 800, height: 600)
 }
 
 #endif

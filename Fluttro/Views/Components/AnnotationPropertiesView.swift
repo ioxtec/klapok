@@ -321,16 +321,4 @@ struct ToolButton: View {
     }
 }
 
-#Preview {
-    VStack {
-        AnnotationPropertiesView(annotationManager: {
-            let manager = AnnotationManager()
-            manager.currentTool = .arrow
-            return manager
-        }())
-    }
-    .frame(width: 300)
-    .padding()
-}
-
 #endif

@@ -10,14 +10,33 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 
+@MainActor
+private final class DrawingCanvasViewState: ObservableObject {
+    @Published var lastDragLocation: CGPoint?
+    @Published var activeDragAnnotationId: UUID?
+    @Published var recordedDragUndo = false
+}
+
 struct DrawingCanvasView: View {
     @ObservedObject var annotationManager: AnnotationManager
     let canvasSize: CGSize
     let sourceImageSize: CGSize?
-    
-    @State private var lastDragLocation: CGPoint?
-    @State private var activeDragAnnotationId: UUID?
-    @State private var recordedDragUndo = false
+    @StateObject private var viewState = DrawingCanvasViewState()
+
+    private var lastDragLocation: CGPoint? {
+        get { viewState.lastDragLocation }
+        nonmutating set { viewState.lastDragLocation = newValue }
+    }
+
+    private var activeDragAnnotationId: UUID? {
+        get { viewState.activeDragAnnotationId }
+        nonmutating set { viewState.activeDragAnnotationId = newValue }
+    }
+
+    private var recordedDragUndo: Bool {
+        get { viewState.recordedDragUndo }
+        nonmutating set { viewState.recordedDragUndo = newValue }
+    }
 
     private var sourceSize: CGSize {
         sourceImageSize ?? canvasSize
@@ -397,42 +416,6 @@ extension DrawingCanvasView {
         }
         .frame(width: canvasSize.width, height: canvasSize.height, alignment: .topLeading)
     }
-}
-
-#Preview {
-    VStack {
-        DrawingCanvasView(
-            annotationManager: {
-                let manager = AnnotationManager()
-                manager.annotations = [
-                    Annotation(
-                        type: .text,
-                        startPoint: CGPoint(x: 100, y: 100),
-                        endPoint: CGPoint(x: 200, y: 120),
-                        text: "Sample Text",
-                        color: ColorData(color: .red)
-                    ),
-                    Annotation(
-                        type: .arrow,
-                        startPoint: CGPoint(x: 50, y: 200),
-                        endPoint: CGPoint(x: 250, y: 250),
-                        color: ColorData(color: .blue)
-                    ),
-                    Annotation(
-                        type: .rectangle,
-                        startPoint: CGPoint(x: 300, y: 100),
-                        endPoint: CGPoint(x: 450, y: 200),
-                        color: ColorData(color: .green)
-                    )
-                ]
-                return manager
-            }(),
-            canvasSize: CGSize(width: 500, height: 400),
-            sourceImageSize: CGSize(width: 500, height: 400)
-        )
-    }
-    .frame(width: 500, height: 400)
-    .background(Color.gray.opacity(0.2))
 }
 
 #endif

@@ -369,7 +369,25 @@ struct ArrowToolProperties: View {
 
 struct RectangleToolProperties: View {
     @ObservedObject var annotationManager: AnnotationManager
-    @State private var hasFill: Bool = true
+
+    private var hasFill: Bool {
+        annotationManager.defaultFillOpacity > 0
+    }
+
+    private var hasFillBinding: Binding<Bool> {
+        Binding(
+            get: { hasFill },
+            set: { shouldFill in
+                if shouldFill {
+                    annotationManager.defaultFillOpacity = hasFill
+                        ? annotationManager.defaultFillOpacity
+                        : 0.3
+                } else {
+                    annotationManager.defaultFillOpacity = 0
+                }
+            }
+        )
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -415,7 +433,7 @@ struct RectangleToolProperties: View {
             
             // Fill toggle and opacity
             HStack(spacing: 6) {
-                Toggle(isOn: $hasFill) {
+                Toggle(isOn: hasFillBinding) {
                     HStack(spacing: 4) {
                         Image(systemName: "paintbrush.fill")
                             .font(.system(size: 14))
@@ -426,9 +444,6 @@ struct RectangleToolProperties: View {
                     }
                 }
                 .toggleStyle(.checkbox)
-                .onChange(of: hasFill) {
-                    annotationManager.defaultFillOpacity = hasFill ? 0.3 : 0.0
-                }
                 
                 if hasFill {
                     Menu {
@@ -447,9 +462,6 @@ struct RectangleToolProperties: View {
                 }
             }
         }
-        .onAppear {
-            hasFill = annotationManager.defaultFillOpacity > 0
-        }
     }
 }
 
@@ -457,7 +469,25 @@ struct RectangleToolProperties: View {
 
 struct CircleToolProperties: View {
     @ObservedObject var annotationManager: AnnotationManager
-    @State private var hasFill: Bool = true
+
+    private var hasFill: Bool {
+        annotationManager.defaultFillOpacity > 0
+    }
+
+    private var hasFillBinding: Binding<Bool> {
+        Binding(
+            get: { hasFill },
+            set: { shouldFill in
+                if shouldFill {
+                    annotationManager.defaultFillOpacity = hasFill
+                        ? annotationManager.defaultFillOpacity
+                        : 0.3
+                } else {
+                    annotationManager.defaultFillOpacity = 0
+                }
+            }
+        )
+    }
     
     var body: some View {
         HStack(spacing: 12) {
@@ -503,7 +533,7 @@ struct CircleToolProperties: View {
             
             // Fill toggle and opacity
             HStack(spacing: 6) {
-                Toggle(isOn: $hasFill) {
+                Toggle(isOn: hasFillBinding) {
                     HStack(spacing: 4) {
                         Image(systemName: "paintbrush.fill")
                             .font(.system(size: 14))
@@ -514,9 +544,6 @@ struct CircleToolProperties: View {
                     }
                 }
                 .toggleStyle(.checkbox)
-                .onChange(of: hasFill) {
-                    annotationManager.defaultFillOpacity = hasFill ? 0.3 : 0.0
-                }
                 
                 if hasFill {
                     Menu {
@@ -534,9 +561,6 @@ struct CircleToolProperties: View {
                     .frame(height: 28)
                 }
             }
-        }
-        .onAppear {
-            hasFill = annotationManager.defaultFillOpacity > 0
         }
     }
 }
@@ -674,35 +698,6 @@ struct FreeDrawToolProperties: View {
             }
         }
     }
-}
-
-#Preview {
-    VStack(spacing: 20) {
-        Text("Text Tool")
-        TextToolProperties(annotationManager: AnnotationManager())
-        
-        Divider()
-        
-        Text("Arrow Tool")
-        ArrowToolProperties(annotationManager: AnnotationManager())
-        
-        Divider()
-        
-        Text("Rectangle Tool")
-        RectangleToolProperties(annotationManager: AnnotationManager())
-        
-        Divider()
-        
-        Text("Line Tool")
-        LineToolProperties(annotationManager: AnnotationManager())
-        
-        Divider()
-        
-        Text("Highlight Tool")
-        HighlightToolProperties(annotationManager: AnnotationManager())
-    }
-    .padding()
-    .frame(width: 800)
 }
 
 #endif

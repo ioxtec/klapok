@@ -480,25 +480,3 @@ struct SettingsProfilesSummary<ProfileType: Profile>: View {
         return "\(names)\(remainder)"
     }
 }
-
-#Preview {
-    VStack(spacing: 18) {
-        SettingsSection(title: "Capture", subtitle: "Real settings only.", systemImage: "camera") {
-            SettingsPickerOption(
-                title: "Resolution",
-                description: "Selected value appears on the right.",
-                selection: .constant("Source"),
-                options: [("Source", "Source"), ("1080p", "1080p")]
-            )
-
-            SettingsToggleOption(
-                title: "Show cursor",
-                description: "Include the pointer while recording.",
-                isLast: true,
-                isOn: .constant(true)
-            )
-        }
-    }
-    .padding(24)
-    .frame(width: 620)
-}

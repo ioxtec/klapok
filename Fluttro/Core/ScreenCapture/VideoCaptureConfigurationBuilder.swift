@@ -84,11 +84,11 @@ enum VideoCaptureConfigurationBuilder {
         settings: AppSettings = .shared
     ) -> CGSize {
         if settings.videoResolution == "Source" {
-            return sourceSize
+            return normalizedVideoSize(sourceSize)
         }
 
         let (width, height) = parseResolution(settings.videoResolution)
-        return CGSize(width: width, height: height)
+        return normalizedVideoSize(CGSize(width: width, height: height))
     }
 
     static func streamSettings(
@@ -130,6 +130,21 @@ enum VideoCaptureConfigurationBuilder {
         default:
             return (1920, 1080)
         }
+    }
+
+    private static func normalizedVideoSize(_ size: CGSize) -> CGSize {
+        CGSize(
+            width: normalizedPixelDimension(size.width),
+            height: normalizedPixelDimension(size.height)
+        )
+    }
+
+    private static func normalizedPixelDimension(_ value: CGFloat) -> CGFloat {
+        guard value.isFinite, value > 0 else { return 2 }
+
+        let rounded = max(2, Int(value.rounded()))
+        let even = rounded.isMultiple(of: 2) ? rounded : rounded + 1
+        return CGFloat(even)
     }
 }
 

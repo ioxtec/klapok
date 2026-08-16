@@ -54,6 +54,21 @@ import SwiftUI
         }
     }
 
+    @MainActor
+    final class AreaSelectionViewState: ObservableObject {
+        @Published var startPoint: CGPoint = .zero
+        @Published var currentPoint: CGPoint = .zero
+        @Published var selectionRect: CGRect = .zero
+        @Published var moveAnchorRect: CGRect = .zero
+        @Published var moveStartPoint: CGPoint = .zero
+        @Published var mode: SelectionMode = .idle
+        @Published var isEditingSelection = false
+        @Published var draftX = ""
+        @Published var draftY = ""
+        @Published var draftWidth = ""
+        @Published var draftHeight = ""
+    }
+
     // MARK: - Area Selection View
 
     struct AreaSelectionView: View {
@@ -61,19 +76,7 @@ import SwiftUI
         let screenFrame: CGRect
         let onSelection: (NSRect?) -> Void
         @ObservedObject var coordinator: AreaSelectionCoordinator
-
-        @State private var startPoint: CGPoint = .zero
-        @State private var currentPoint: CGPoint = .zero
-        @State private var selectionRect: CGRect = .zero
-        @State private var moveAnchorRect: CGRect = .zero
-        @State private var moveStartPoint: CGPoint = .zero
-        @State private var mode: SelectionMode = .idle
-        @State private var dragOffset: CGPoint = .zero
-        @State private var isEditingSelection = false
-        @State private var draftX = ""
-        @State private var draftY = ""
-        @State private var draftWidth = ""
-        @State private var draftHeight = ""
+        @StateObject private var viewState = AreaSelectionViewState()
         
         // MARK: - Computed Properties
         
@@ -85,6 +88,61 @@ import SwiftUI
         
         private var screenBounds: CGRect {
             CGRect(origin: .zero, size: screenFrame.size)
+        }
+
+        private var startPoint: CGPoint {
+            get { viewState.startPoint }
+            nonmutating set { viewState.startPoint = newValue }
+        }
+
+        private var currentPoint: CGPoint {
+            get { viewState.currentPoint }
+            nonmutating set { viewState.currentPoint = newValue }
+        }
+
+        private var selectionRect: CGRect {
+            get { viewState.selectionRect }
+            nonmutating set { viewState.selectionRect = newValue }
+        }
+
+        private var moveAnchorRect: CGRect {
+            get { viewState.moveAnchorRect }
+            nonmutating set { viewState.moveAnchorRect = newValue }
+        }
+
+        private var moveStartPoint: CGPoint {
+            get { viewState.moveStartPoint }
+            nonmutating set { viewState.moveStartPoint = newValue }
+        }
+
+        private var mode: SelectionMode {
+            get { viewState.mode }
+            nonmutating set { viewState.mode = newValue }
+        }
+
+        private var isEditingSelection: Bool {
+            get { viewState.isEditingSelection }
+            nonmutating set { viewState.isEditingSelection = newValue }
+        }
+
+        private var draftX: String {
+            get { viewState.draftX }
+            nonmutating set { viewState.draftX = newValue }
+        }
+
+        private var draftY: String {
+            get { viewState.draftY }
+            nonmutating set { viewState.draftY = newValue }
+        }
+
+        private var draftWidth: String {
+            get { viewState.draftWidth }
+            nonmutating set { viewState.draftWidth = newValue }
+        }
+
+        private var draftHeight: String {
+            get { viewState.draftHeight }
+            nonmutating set { viewState.draftHeight = newValue }
         }
 
         var body: some View {
@@ -147,10 +205,10 @@ import SwiftUI
 
                     if isEditingSelection && !coordinator.isRecording {
                         SelectionCoordinateEditorView(
-                            x: $draftX,
-                            y: $draftY,
-                            width: $draftWidth,
-                            height: $draftHeight,
+                            x: Binding(get: { draftX }, set: { draftX = $0 }),
+                            y: Binding(get: { draftY }, set: { draftY = $0 }),
+                            width: Binding(get: { draftWidth }, set: { draftWidth = $0 }),
+                            height: Binding(get: { draftHeight }, set: { draftHeight = $0 }),
                             onApply: applySelectionEdit,
                             onCancel: cancelSelectionEdit
                         )
@@ -998,21 +1056,12 @@ import SwiftUI
         let onApply: () -> Void
         let onCancel: () -> Void
 
-        @FocusState private var focusedField: CoordinateField?
-
-        private enum CoordinateField {
-            case x
-            case y
-            case width
-            case height
-        }
-
         var body: some View {
             HStack(spacing: 8) {
-                coordinateField("x", text: $x, field: .x)
-                coordinateField("y", text: $y, field: .y)
-                coordinateField("w", text: $width, field: .width)
-                coordinateField("h", text: $height, field: .height)
+                coordinateField("x", text: $x)
+                coordinateField("y", text: $y)
+                coordinateField("w", text: $width)
+                coordinateField("h", text: $height)
 
                 Button(action: onApply) {
                     Image(systemName: "checkmark")
@@ -1034,17 +1083,11 @@ import SwiftUI
             .padding(.vertical, 8)
             .background(Color.black.opacity(0.78))
             .cornerRadius(6)
-            .onAppear {
-                DispatchQueue.main.async {
-                    focusedField = .x
-                }
-            }
         }
 
         private func coordinateField(
             _ label: String,
-            text: Binding<String>,
-            field: CoordinateField
+            text: Binding<String>
         ) -> some View {
             HStack(spacing: 4) {
                 Text(label)
@@ -1056,7 +1099,6 @@ import SwiftUI
                     .font(.system(size: 12, design: .monospaced))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.trailing)
-                    .focused($focusedField, equals: field)
                     .onSubmit(onApply)
                     .frame(width: 48)
                     .padding(.horizontal, 5)
@@ -1083,15 +1125,6 @@ import SwiftUI
         func instructionTextStyle() -> some View {
             modifier(InstructionTextStyle())
         }
-    }
-
-    #Preview {
-        AreaSelectionView(
-            screenID: NSScreen.main.map(ScreenPixelGeometry.displayID(for:)) ?? CGMainDisplayID(),
-            screenFrame: NSScreen.main?.frame ?? CGRect(x: 0, y: 0, width: 1440, height: 900),
-            onSelection: { _ in },
-            coordinator: AreaSelectionCoordinator()
-        )
     }
 
 #endif

@@ -14,16 +14,19 @@ import ScreenCaptureKit
 final class VideoStreamOutput: NSObject, SCStreamOutput {
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
+    private var audioInput: AVAssetWriterInput?
     private var pixelBufferAdaptor: AVAssetWriterInputPixelBufferAdaptor?
     private let recordingURL: URL
     private var sessionStarted = false
     private let outputSize: CGSize?
+    private let capturesAudio: Bool
     private let stateLock = NSLock()
     private var firstFrameArrivalDate: Date?
 
-    init(recordingURL: URL, outputSize: CGSize? = nil) {
+    init(recordingURL: URL, outputSize: CGSize? = nil, capturesAudio: Bool = false) {
         self.recordingURL = recordingURL
         self.outputSize = outputSize
+        self.capturesAudio = capturesAudio
         super.init()
         setupAssetWriter()
     }
@@ -61,6 +64,27 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
                 assetWriter?.add(input)
             }
 
+            if capturesAudio {
+                let audioInput = AVAssetWriterInput(
+                    mediaType: .audio,
+                    outputSettings: [
+                        AVFormatIDKey: kAudioFormatMPEG4AAC,
+                        AVNumberOfChannelsKey: 2,
+                        AVSampleRateKey: 48_000,
+                        AVEncoderBitRateKey: 192_000
+                    ]
+                )
+                audioInput.expectsMediaDataInRealTime = true
+                self.audioInput = audioInput
+
+                if assetWriter?.canAdd(audioInput) == true {
+                    assetWriter?.add(audioInput)
+                } else {
+                    Logger.w("VideoStreamOutput: Could not add audio input to asset writer")
+                    self.audioInput = nil
+                }
+            }
+
             if assetWriter?.startWriting() != true {
                 Logger.e("VideoStreamOutput: Failed to start video writer: \(assetWriter?.error?.localizedDescription ?? "Unknown error")")
             }
@@ -70,23 +94,14 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of type: SCStreamOutputType) {
-        guard type == .screen else { return }
-        guard let videoInput, videoInput.isReadyForMoreMediaData else { return }
-
-        if let assetWriter, assetWriter.status == .writing {
-            let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
-            if !sessionStarted {
-                assetWriter.startSession(atSourceTime: presentationTime)
-                sessionStarted = true
-                stateLock.lock()
-                if firstFrameArrivalDate == nil {
-                    firstFrameArrivalDate = Date()
-                }
-                stateLock.unlock()
-            }
+        switch type {
+        case .screen:
+            appendVideoSampleBuffer(sampleBuffer)
+        case .audio:
+            appendAudioSampleBuffer(sampleBuffer)
+        default:
+            break
         }
-
-        videoInput.append(sampleBuffer)
     }
 
     var hasReceivedFirstFrame: Bool {
@@ -108,6 +123,7 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
         }
 
         videoInput.markAsFinished()
+        audioInput?.markAsFinished()
 
         guard let assetWriter else {
             Logger.e("VideoStreamOutput: No video writer to finish")
@@ -118,6 +134,64 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
         if assetWriter.status != .completed {
             Logger.e("VideoStreamOutput: Video writing failed: \(assetWriter.error?.localizedDescription ?? "Unknown error")")
         }
+    }
+
+    private func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard isCompleteVideoFrame(sampleBuffer) else { return }
+        guard let videoInput, videoInput.isReadyForMoreMediaData else { return }
+        guard let pixelBufferAdaptor, let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else {
+            return
+        }
+
+        let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+        if let assetWriter, assetWriter.status == .writing {
+            if !sessionStarted {
+                assetWriter.startSession(atSourceTime: presentationTime)
+                sessionStarted = true
+                stateLock.lock()
+                if firstFrameArrivalDate == nil {
+                    firstFrameArrivalDate = Date()
+                }
+                stateLock.unlock()
+            }
+        }
+
+        if !pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
+            Logger.e("VideoStreamOutput: Failed to append video sample buffer: \(assetWriter?.error?.localizedDescription ?? "Unknown writer error")")
+        }
+    }
+
+    private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+        guard capturesAudio, sessionStarted else { return }
+        guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
+        guard let audioInput, audioInput.isReadyForMoreMediaData else { return }
+
+        if !audioInput.append(sampleBuffer) {
+            Logger.e("VideoStreamOutput: Failed to append audio sample buffer: \(assetWriter?.error?.localizedDescription ?? "Unknown writer error")")
+        }
+    }
+
+    private func isCompleteVideoFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false)
+                as? [[SCStreamFrameInfo: Any]],
+            let firstAttachment = attachments.first
+        else {
+            return true
+        }
+
+        if let rawStatus = firstAttachment[.status] as? Int,
+           let status = SCFrameStatus(rawValue: rawStatus) {
+            return status == .complete
+        }
+
+        if let rawStatus = firstAttachment[.status] as? NSNumber,
+           let status = SCFrameStatus(rawValue: rawStatus.intValue) {
+            return status == .complete
+        }
+
+        return true
     }
 }
 

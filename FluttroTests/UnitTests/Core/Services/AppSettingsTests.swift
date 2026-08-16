@@ -127,32 +127,20 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(formatted.hasPrefix("Screenshot-"))
     }
     
-    // MARK: - Hotkey Tests
-    
-    func testHotkeyModifiersPersistence() {
-        let modifiers: NSEvent.ModifierFlags = [.command, .option]
-        settings.hotkeyModifiers = modifiers
-        
-        let saved = UserDefaults.standard.object(forKey: "hotkeyModifiers") as? UInt
-        XCTAssertEqual(saved, modifiers.rawValue)
+    func testSaveDirectoryBookmarkPersistence() {
+        let newDirectory = testDirectory.appendingPathComponent("Bookmarked Screenshots")
+        settings.saveDirectory = newDirectory
+
+        let bookmarkData = UserDefaults.standard.data(forKey: "saveDirectoryBookmark")
+        XCTAssertNotNil(bookmarkData)
     }
-    
-    func testHotkeyKeyCodePersistence() {
-        let keyCode: UInt16 = 0x1A
-        settings.hotkeyKeyCode = keyCode
-        
-        let saved = UserDefaults.standard.integer(forKey: "hotkeyKeyCode")
-        XCTAssertEqual(saved, Int(keyCode))
-    }
-    
-    func testHotkeyDisplayString() {
-        settings.hotkeyModifiers = [.command, .shift]
-        settings.hotkeyKeyCode = 0x1A // ]
-        
-        let displayString = settings.hotkeyDisplayString
-        XCTAssertTrue(displayString.contains("⌘"))
-        XCTAssertTrue(displayString.contains("⇧"))
-        XCTAssertTrue(displayString.contains("]"))
+
+    func testVideoSaveDirectoryBookmarkPersistence() {
+        let newDirectory = testDirectory.appendingPathComponent("Bookmarked Videos")
+        settings.videoSaveDirectory = newDirectory
+
+        let bookmarkData = UserDefaults.standard.data(forKey: "videoSaveDirectoryBookmark")
+        XCTAssertNotNil(bookmarkData)
     }
     
     // MARK: - Video Settings Tests
@@ -208,6 +196,8 @@ final class AppSettingsTests: XCTestCase {
         settings.fileNameTemplate = "Custom"
         settings.videoResolution = "720p"
         settings.videoFrameRate = 60
+        settings.saveDirectory = testDirectory.appendingPathComponent("Reset Screenshots")
+        settings.videoSaveDirectory = testDirectory.appendingPathComponent("Reset Videos")
         
         // Reset
         settings.resetToDefaults()
@@ -216,6 +206,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.fileNameTemplate, "Screenshot-{datetime}")
         XCTAssertEqual(settings.videoResolution, "Source")
         XCTAssertEqual(settings.videoFrameRate, 30)
+        XCTAssertNil(UserDefaults.standard.data(forKey: "saveDirectoryBookmark"))
+        XCTAssertNil(UserDefaults.standard.data(forKey: "videoSaveDirectoryBookmark"))
     }
     
     // MARK: - Save Screenshot Tests
@@ -275,7 +267,6 @@ final class AppSettingsTests: XCTestCase {
 }
 
 #endif
-
 
 
 

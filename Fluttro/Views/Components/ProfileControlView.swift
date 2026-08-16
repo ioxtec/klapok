@@ -9,15 +9,20 @@ import SwiftUI
 
 #if os(macOS)
 
+@MainActor
+private final class ProfileControlViewState<T: Profile>: ObservableObject {
+    @Published var showingAddProfile = false
+    @Published var showingDeleteAlert = false
+    @Published var showingProfileOptions = false
+    @Published var selectedProfile: T?
+    @Published var newProfileName = ""
+}
+
 // MARK: - Profile Control View
 
 struct ProfileControlView<T: Profile>: View {
     @ObservedObject var profileManager: ProfileManager
-    @State private var showingAddProfile = false
-    @State private var showingDeleteAlert = false
-    @State private var showingProfileOptions = false
-    @State private var selectedProfile: T?
-    @State private var newProfileName = ""
+    @StateObject private var viewState = ProfileControlViewState<T>()
     
     let profiles: [T]
     let activeProfile: T?
@@ -61,6 +66,47 @@ struct ProfileControlView<T: Profile>: View {
         self.onExportProfiles = onExportProfiles
         self.onResetProfiles = onResetProfiles
     }
+
+    private var showingAddProfile: Bool {
+        get { viewState.showingAddProfile }
+        nonmutating set { viewState.showingAddProfile = newValue }
+    }
+
+    private var showingDeleteAlert: Bool {
+        get { viewState.showingDeleteAlert }
+        nonmutating set { viewState.showingDeleteAlert = newValue }
+    }
+
+    private var showingProfileOptions: Bool {
+        get { viewState.showingProfileOptions }
+        nonmutating set { viewState.showingProfileOptions = newValue }
+    }
+
+    private var selectedProfile: T? {
+        get { viewState.selectedProfile }
+        nonmutating set { viewState.selectedProfile = newValue }
+    }
+
+    private var newProfileName: String {
+        get { viewState.newProfileName }
+        nonmutating set { viewState.newProfileName = newValue }
+    }
+
+    private var showingAddProfileBinding: Binding<Bool> {
+        Binding(get: { showingAddProfile }, set: { showingAddProfile = $0 })
+    }
+
+    private var showingDeleteAlertBinding: Binding<Bool> {
+        Binding(get: { showingDeleteAlert }, set: { showingDeleteAlert = $0 })
+    }
+
+    private var showingProfileOptionsBinding: Binding<Bool> {
+        Binding(get: { showingProfileOptions }, set: { showingProfileOptions = $0 })
+    }
+
+    private var newProfileNameBinding: Binding<String> {
+        Binding(get: { newProfileName }, set: { newProfileName = $0 })
+    }
     
     var body: some View {
         Group {
@@ -76,9 +122,9 @@ struct ProfileControlView<T: Profile>: View {
                 controlContent
             }
         }
-        .sheet(isPresented: $showingAddProfile) {
+        .sheet(isPresented: showingAddProfileBinding) {
             AddProfileSheet(
-                profileName: $newProfileName,
+                profileName: newProfileNameBinding,
                 profileTypeName: profileTypeName,
                 onSave: { name in
                     onProfileAdded(name)
@@ -86,7 +132,7 @@ struct ProfileControlView<T: Profile>: View {
                 }
             )
         }
-        .alert("Delete Profile", isPresented: $showingDeleteAlert) {
+        .alert("Delete Profile", isPresented: showingDeleteAlertBinding) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
                 if let profile = selectedProfile {
@@ -154,7 +200,7 @@ struct ProfileControlView<T: Profile>: View {
                 }
                 .buttonStyle(.plain)
                 .help("More profile actions")
-                .popover(isPresented: $showingProfileOptions, arrowEdge: .trailing) {
+                .popover(isPresented: showingProfileOptionsBinding, arrowEdge: .trailing) {
                     ProfileOptionsPopover(
                         onImportProfiles: {
                             showingProfileOptions = false
@@ -350,6 +396,7 @@ struct AddProfileSheet: View {
         }
         .padding(24)
         .frame(width: 400, height: 200)
+        .centeredSheetWindow()
     }
 }
 
@@ -397,28 +444,6 @@ struct ProfileInfoView<T: Profile>: View {
                 .fill(Color(NSColor.controlBackgroundColor).opacity(0.5))
         )
     }
-}
-
-// MARK: - Preview
-
-#Preview {
-    VStack {
-        ProfileControlView<ImageEditingProfile>(
-            profileManager: ProfileManager.shared,
-            profiles: ImageEditingProfile.createDefaultProfiles(),
-            activeProfile: ImageEditingProfile.createDefaultProfiles().first,
-            profileTypeName: "Image",
-            onProfileSelected: { _ in },
-            onProfileAdded: { _ in },
-            onProfileEdited: { _, _ in },
-            onProfileDeleted: { _ in },
-            onImportProfiles: { },
-            onExportProfiles: { },
-            onResetProfiles: { }
-        )
-    }
-    .padding()
-    .frame(width: 300)
 }
 
 #endif

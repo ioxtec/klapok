@@ -9,8 +9,6 @@ import XCTest
 @testable import Fluttro
 
 #if os(macOS)
-import AppKit
-
 @MainActor
 final class SettingsViewModelTests: XCTestCase {
     
@@ -61,45 +59,11 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertEqual(AppSettings.shared.fileNameTemplate, template)
     }
     
-    func testHotkeyModifiersSynchronization() {
-        let modifiers: NSEvent.ModifierFlags = [.command, .option]
-        settingsViewModel.hotkeyModifiers = modifiers
-        
-        // Should sync with AppSettings
-        XCTAssertEqual(AppSettings.shared.hotkeyModifiers, modifiers)
-    }
-    
-    func testHotkeyKeyCodeSynchronization() {
-        let keyCode: UInt16 = 0x1A
-        settingsViewModel.hotkeyKeyCode = keyCode
-        
-        // Should sync with AppSettings
-        XCTAssertEqual(AppSettings.shared.hotkeyKeyCode, keyCode)
-    }
-    
     func testShowInDockSynchronization() {
         settingsViewModel.showInDock = false
         
         // Should sync with AppSettings
         XCTAssertEqual(AppSettings.shared.showInDock, false)
-    }
-    
-    func testLaunchAtLoginSynchronization() {
-        settingsViewModel.launchAtLogin = true
-        
-        // Should sync with AppSettings
-        XCTAssertEqual(AppSettings.shared.launchAtLogin, true)
-    }
-    
-    // MARK: - Computed Properties Tests
-    
-    func testHotkeyDisplayString() {
-        settingsViewModel.hotkeyModifiers = [.command, .shift]
-        settingsViewModel.hotkeyKeyCode = 0x1A // ]
-        
-        let displayString = settingsViewModel.hotkeyDisplayString
-        XCTAssertTrue(displayString.contains("⌘"))
-        XCTAssertTrue(displayString.contains("⇧"))
     }
     
     func testPreviewFileName() {
@@ -113,7 +77,6 @@ final class SettingsViewModelTests: XCTestCase {
 }
 
 #endif
-
 
 
 

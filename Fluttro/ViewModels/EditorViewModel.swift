@@ -105,6 +105,7 @@ import UniformTypeIdentifiers
             savePanel.nameFieldStringValue = settings.formattedFileName + ".png"
             savePanel.title = "Zapisz zrzut ekranu jako..."
             savePanel.message = "Wybierz lokalizację i nazwę pliku"
+            WindowPlacement.centerModalPanel(savePanel)
 
             if savePanel.runModal() == .OK, let url = savePanel.url {
                 if CaptureFileStore.writeScreenshot(compositeImage, to: url) {

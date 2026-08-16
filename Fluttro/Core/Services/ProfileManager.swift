@@ -250,6 +250,7 @@ final class ProfileManager: ObservableObject {
         savePanel.allowedContentTypes = [.json]
         savePanel.nameFieldStringValue = "fluttro_image_profiles.json"
         savePanel.title = "Export Image Profiles"
+        WindowPlacement.centerModalPanel(savePanel)
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
             do {
@@ -268,6 +269,7 @@ final class ProfileManager: ObservableObject {
         savePanel.allowedContentTypes = [.json]
         savePanel.nameFieldStringValue = "fluttro_video_profiles.json"
         savePanel.title = "Export Video Profiles"
+        WindowPlacement.centerModalPanel(savePanel)
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
             do {
@@ -288,6 +290,7 @@ final class ProfileManager: ObservableObject {
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
         openPanel.allowsMultipleSelection = false
+        WindowPlacement.centerModalPanel(openPanel)
         
         if openPanel.runModal() == .OK, let url = openPanel.url {
             do {
@@ -311,6 +314,7 @@ final class ProfileManager: ObservableObject {
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
         openPanel.allowsMultipleSelection = false
+        WindowPlacement.centerModalPanel(openPanel)
         
         if openPanel.runModal() == .OK, let url = openPanel.url {
             do {

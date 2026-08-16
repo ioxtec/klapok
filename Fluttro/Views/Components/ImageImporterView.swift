@@ -8,14 +8,50 @@
 import SwiftUI
 import AppKit
 
+@MainActor
+private final class ImageImporterViewState: ObservableObject {
+    @Published var imageName = ""
+    @Published var selectedImage: NSImage?
+    @Published var opacity: Double = 1.0
+    @Published var scaleMode: BackgroundScaleMode = .fit
+}
+
 struct ImageImporterView: View {
     @ObservedObject var backgroundManager: BackgroundManager
     @Environment(\.dismiss) private var dismiss
-    
-    @State private var imageName = ""
-    @State private var selectedImage: NSImage?
-    @State private var opacity: Double = 1.0
-    @State private var scaleMode: BackgroundScaleMode = .fit
+    @StateObject private var viewState = ImageImporterViewState()
+
+    private var imageName: String {
+        get { viewState.imageName }
+        nonmutating set { viewState.imageName = newValue }
+    }
+
+    private var selectedImage: NSImage? {
+        get { viewState.selectedImage }
+        nonmutating set { viewState.selectedImage = newValue }
+    }
+
+    private var opacity: Double {
+        get { viewState.opacity }
+        nonmutating set { viewState.opacity = newValue }
+    }
+
+    private var scaleMode: BackgroundScaleMode {
+        get { viewState.scaleMode }
+        nonmutating set { viewState.scaleMode = newValue }
+    }
+
+    private var imageNameBinding: Binding<String> {
+        Binding(get: { imageName }, set: { imageName = $0 })
+    }
+
+    private var opacityBinding: Binding<Double> {
+        Binding(get: { opacity }, set: { opacity = $0 })
+    }
+
+    private var scaleModeBinding: Binding<BackgroundScaleMode> {
+        Binding(get: { scaleMode }, set: { scaleMode = $0 })
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -64,7 +100,7 @@ struct ImageImporterView: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                 
-                TextField("Enter image name", text: $imageName)
+                TextField("Enter image name", text: imageNameBinding)
                     .textFieldStyle(.roundedBorder)
             }
             
@@ -84,7 +120,7 @@ struct ImageImporterView: View {
                             .foregroundStyle(.secondary)
                     }
                     
-                    Slider(value: $opacity, in: 0.1...1.0, step: 0.1)
+                    Slider(value: opacityBinding, in: 0.1...1.0, step: 0.1)
                 }
                 
                 // Scale Mode Picker
@@ -93,7 +129,7 @@ struct ImageImporterView: View {
                         .font(.subheadline)
                         .fontWeight(.medium)
                     
-                    Picker("Scale Mode", selection: $scaleMode) {
+                    Picker("Scale Mode", selection: scaleModeBinding) {
                         ForEach(BackgroundScaleMode.allCases, id: \.id) { mode in
                             Text(mode.displayName).tag(mode)
                         }
@@ -122,6 +158,7 @@ struct ImageImporterView: View {
         }
         .padding(24)
         .frame(width: 400, height: 500)
+        .centeredSheetWindow()
     }
     
     private func selectImage() {
@@ -130,6 +167,7 @@ struct ImageImporterView: View {
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
+        WindowPlacement.centerModalPanel(panel)
         
         if panel.runModal() == .OK, let url = panel.url {
             if let image = NSImage(contentsOf: url) {
@@ -162,8 +200,4 @@ struct ImageImporterView: View {
         backgroundManager.selectImage(withId: backgroundImage.id)
         dismiss()
     }
-}
-
-#Preview {
-    ImageImporterView(backgroundManager: BackgroundManager(forPreview: true))
 }

@@ -77,11 +77,19 @@ import SwiftUI
         func startRecording() {
             isRecording = true
             selectionCoordinator.isRecording = true
+            overlayWindows.forEach { window in
+                window.ignoresMouseEvents = true
+                window.acceptsMouseMovedEvents = false
+            }
         }
         
         func stopRecording() {
             isRecording = false
             selectionCoordinator.isRecording = false
+            overlayWindows.forEach { window in
+                window.ignoresMouseEvents = false
+                window.acceptsMouseMovedEvents = true
+            }
         }
 
         // MARK: - Private Methods

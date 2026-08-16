@@ -15,7 +15,7 @@ struct ExportTypeSelector: View {
     @ObservedObject var exportManager: ExportManager
     
     var body: some View {
-        SidebarControlRow(title: "Format", systemImage: "rectangle.stack") {
+        SidebarControlRow(title: "Format".localized, systemImage: "rectangle.stack") {
             Picker("", selection: Binding(
                 get: { exportManager.settings.exportType },
                 set: { newType in
@@ -40,57 +40,82 @@ struct ExportTypeSelector: View {
 
 struct VideoExportSettingsView: View {
     @ObservedObject var exportManager: ExportManager
+    @ObservedObject var settings: AppSettings
     
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
             SidebarDivider()
 
             VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Video quality")
+                SidebarSubheading("Trimmed video export".localized)
 
-                SidebarControlRow(title: "Quality", systemImage: "sparkles") {
-                    Picker("Quality", selection: Binding(
-                        get: { exportManager.settings.videoSettings.quality },
-                        set: { exportManager.updateVideoQuality($0) }
+                SidebarValueRow(
+                    title: "Format".localized,
+                    value: settings.videoFormat == "MOV" ? "QuickTime MOV" : "MP4",
+                    systemImage: "film"
+                )
+
+                SidebarDivider()
+
+                SidebarValueRow(
+                    title: "Codec".localized,
+                    value: settings.videoCodec == "H.265" ? "HEVC (H.265)" : "H.264",
+                    systemImage: "cpu"
+                )
+
+                SidebarDivider()
+
+                SidebarControlRow(title: "Quality".localized, systemImage: "sparkles") {
+                    Picker("Quality".localized, selection: Binding(
+                        get: { settings.normalizedVideoQuality },
+                        set: { settings.applyVideoQuality($0) }
                     )) {
                         ForEach(VideoQuality.allCases) { quality in
-                            Text(quality.displayName).tag(quality)
+                            Text(quality.displayName.localized).tag(quality)
                         }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .frame(width: 118)
+                    .frame(width: 132)
                 }
-                
+
                 SidebarValueRow(
-                    title: "Bitrate",
-                    value: formatBitrate(exportManager.settings.videoSettings.quality.bitrate),
+                    title: "Export preset".localized,
+                    value: settings.normalizedVideoQuality.exportPresetDescription.localized,
                     systemImage: "speedometer"
                 )
-            }
-            
-            SidebarDivider()
-            
-            VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Scaling")
 
-                SidebarControlRow(title: "Scaling", systemImage: "arrow.up.left.and.arrow.down.right") {
-                    Picker("Scaling", selection: Binding(
+                SidebarDivider()
+
+                SidebarValueRow(
+                    title: "Source".localized,
+                    value: "Shared with the main video settings.".localized,
+                    systemImage: "link"
+                )
+            }
+
+            SidebarDivider()
+
+            VStack(alignment: .leading, spacing: 9) {
+                SidebarSubheading("Scaling".localized)
+
+                SidebarControlRow(title: "Scaling".localized, systemImage: "arrow.up.left.and.arrow.down.right") {
+                    Picker("Scaling".localized, selection: Binding(
                         get: { exportManager.settings.videoSettings.scaling },
                         set: { exportManager.updateVideoScaling($0) }
                     )) {
                         ForEach(VideoScaling.allCases) { scaling in
-                            Text(scaling.displayName).tag(scaling)
+                            Text(scaling.displayName.localized).tag(scaling)
                         }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .frame(width: 118)
+                    .frame(width: 132)
                 }
-                
+
                 if exportManager.settings.videoSettings.scaling == .custom {
                     SidebarSliderControl(
-                        title: "Scale factor",
+                        title: "Scale factor".localized,
                         valueText: String(format: "%.2fx", exportManager.settings.videoSettings.customScaleFactor),
                         systemImage: "plus.magnifyingglass",
                         value: Binding(
@@ -101,75 +126,49 @@ struct VideoExportSettingsView: View {
                         step: 0.25
                     )
                 }
-                
-                SidebarControlRow(title: "Keep proportions", systemImage: "lock") {
-                    Toggle("", isOn: Binding(
-                        get: { exportManager.settings.videoSettings.maintainAspectRatio },
-                        set: { newValue in
-                            exportManager.settings.videoSettings.maintainAspectRatio = newValue
-                            exportManager.saveSettings()
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                }
             }
-            
-            SidebarDivider()
-            
-            VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Audio")
 
-                SidebarControlRow(title: "Audio", systemImage: "speaker.wave.2") {
-                    Picker("Audio", selection: Binding(
+            SidebarDivider()
+
+            VStack(alignment: .leading, spacing: 9) {
+                SidebarSubheading("Audio".localized)
+
+                SidebarControlRow(title: "Audio".localized, systemImage: "speaker.wave.2") {
+                    Picker("Audio".localized, selection: Binding(
                         get: { exportManager.settings.videoSettings.audioOption },
                         set: { exportManager.updateAudioOption($0) }
                     )) {
                         ForEach(AudioExportOption.allCases) { option in
-                            Text(option.displayName).tag(option)
+                            Text(option.displayName.localized).tag(option)
                         }
                     }
                     .pickerStyle(.menu)
                     .labelsHidden()
-                    .frame(width: 118)
+                    .frame(width: 132)
                 }
-                
-                if exportManager.settings.videoSettings.audioOption == .include {
-                    SidebarDivider()
 
-                    SidebarControlRow(title: "System audio", systemImage: "speaker") {
-                        Toggle("", isOn: Binding(
-                            get: { exportManager.settings.videoSettings.includeSystemAudio },
-                            set: { newValue in
-                                exportManager.settings.videoSettings.includeSystemAudio = newValue
-                                exportManager.saveSettings()
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                    }
+                SidebarValueRow(
+                    title: "Source".localized,
+                    value: "Uses the edited timeline from this recording.".localized,
+                    systemImage: "timeline.selection"
+                )
 
-                    SidebarDivider()
+                SidebarDivider()
 
-                    SidebarControlRow(title: "Microphone", systemImage: "mic") {
-                        Toggle("", isOn: Binding(
-                            get: { exportManager.settings.videoSettings.includeMicrophone },
-                            set: { newValue in
-                                exportManager.settings.videoSettings.includeMicrophone = newValue
-                                exportManager.saveSettings()
-                            }
-                        ))
-                        .toggleStyle(.switch)
-                        .labelsHidden()
-                    }
-                }
+                SidebarValueRow(
+                    title: "Location".localized,
+                    value: "Saved next to the source recording as a new exported video file.".localized,
+                    systemImage: "folder"
+                )
+
+                SidebarDivider()
+
+                Text("Keeps the source audio, removes it, or mutes it in the exported video file.".localized)
+                    .font(SidebarStyle.bodyFont)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
-    }
-    
-    private func formatBitrate(_ bitrate: Int) -> String {
-        let mbps = Double(bitrate) / 1_000_000.0
-        return String(format: "%.1f Mbps", mbps)
     }
 }
 
@@ -189,15 +188,15 @@ struct GIFExportSettingsView: View {
             SidebarDivider()
 
             VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Color")
+                SidebarSubheading("Color".localized)
 
-                SidebarControlRow(title: "Colors", systemImage: "paintpalette") {
-                    Picker("Colors", selection: Binding(
+                SidebarControlRow(title: "Colors".localized, systemImage: "paintpalette") {
+                    Picker("Colors".localized, selection: Binding(
                         get: { exportManager.settings.gifSettings.colorDepth },
                         set: { exportManager.updateGIFColorDepth($0) }
                     )) {
                         ForEach(GIFColorDepth.allCases) { depth in
-                            Text(depth.displayName).tag(depth)
+                            Text(depth.displayName.localized).tag(depth)
                         }
                     }
                     .pickerStyle(.menu)
@@ -207,8 +206,8 @@ struct GIFExportSettingsView: View {
 
                 SidebarDivider()
 
-                SidebarControlRow(title: "Dithering", systemImage: "circle.grid.cross") {
-                    Picker("Dithering", selection: Binding(
+                SidebarControlRow(title: "Dithering".localized, systemImage: "circle.grid.cross") {
+                    Picker("Dithering".localized, selection: Binding(
                         get: { exportManager.settings.gifSettings.dithering },
                         set: { newValue in
                             exportManager.settings.gifSettings.dithering = newValue
@@ -216,7 +215,7 @@ struct GIFExportSettingsView: View {
                         }
                     )) {
                         ForEach(GIFDithering.allCases) { dithering in
-                            Text(dithering.displayName).tag(dithering)
+                            Text(dithering.displayName.localized).tag(dithering)
                         }
                     }
                     .pickerStyle(.menu)
@@ -228,10 +227,10 @@ struct GIFExportSettingsView: View {
             SidebarDivider()
             
             VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Frames")
+                SidebarSubheading("Frames".localized)
 
-                SidebarControlRow(title: "Frame format", systemImage: "film.stack") {
-                    Picker("Frame Format", selection: Binding(
+                SidebarControlRow(title: "Frame format".localized, systemImage: "film.stack") {
+                    Picker("Frame format".localized, selection: Binding(
                         get: { exportManager.settings.gifSettings.frameFormat },
                         set: { newValue in
                             exportManager.settings.gifSettings.frameFormat = newValue
@@ -239,7 +238,7 @@ struct GIFExportSettingsView: View {
                         }
                     )) {
                         ForEach(GIFFrameFormat.allCases) { format in
-                            Text(format.displayName).tag(format)
+                            Text(format.displayName.localized).tag(format)
                         }
                     }
                     .pickerStyle(.menu)
@@ -250,7 +249,7 @@ struct GIFExportSettingsView: View {
                 SidebarDivider()
 
                 SidebarSliderControl(
-                    title: "Frame rate",
+                    title: "Frame rate".localized,
                     valueText: "\(exportManager.settings.gifSettings.frameRate) FPS",
                     systemImage: "gauge.with.dots.needle.67percent",
                     value: Binding(
@@ -266,27 +265,27 @@ struct GIFExportSettingsView: View {
             
             VStack(alignment: .leading, spacing: 9) {
                 HStack {
-                    SidebarSubheading("Size")
+                    SidebarSubheading("Size".localized)
 
                     Spacer()
 
-                    Button("Reset") {
+                    Button("Reset".localized) {
                         resetGIFSize()
                     }
                     .controlSize(.small)
                     .disabled(sourceSize == nil)
-                    .help("Restore original video size")
+                    .help("Restore original video size".localized)
                 }
 
                 if let sourceSize {
                     SidebarValueRow(
-                        title: "Original",
+                        title: "Original".localized,
                         value: "\(Int(sourceSize.width.rounded())) x \(Int(sourceSize.height.rounded())) px",
                         systemImage: "video"
                     )
                 }
 
-                SidebarControlRow(title: "Keep proportions", systemImage: "lock") {
+                SidebarControlRow(title: "Keep proportions".localized, systemImage: "lock") {
                     Toggle("", isOn: Binding(
                         get: { exportManager.settings.gifSettings.maintainAspectRatio },
                         set: { newValue in
@@ -304,7 +303,7 @@ struct GIFExportSettingsView: View {
                 SidebarDivider()
 
                 SidebarSliderControl(
-                    title: "Max width",
+                    title: "Max width".localized,
                     valueText: "\(exportManager.settings.gifSettings.maxWidth) px",
                     systemImage: "arrow.left.and.right",
                     value: Binding(
@@ -318,7 +317,7 @@ struct GIFExportSettingsView: View {
                 SidebarDivider()
 
                 SidebarSliderControl(
-                    title: "Max height",
+                    title: "Max height".localized,
                     valueText: "\(exportManager.settings.gifSettings.maxHeight) px",
                     systemImage: "arrow.up.and.down",
                     value: Binding(
@@ -333,10 +332,10 @@ struct GIFExportSettingsView: View {
             SidebarDivider()
             
             VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Quality & loop")
+                SidebarSubheading("Quality & loop".localized)
 
                 SidebarSliderControl(
-                    title: "Quality",
+                    title: "Quality".localized,
                     valueText: "\(Int(exportManager.settings.gifSettings.quality * 100))%",
                     systemImage: "sparkles",
                     value: Binding(
@@ -349,8 +348,8 @@ struct GIFExportSettingsView: View {
 
                 SidebarDivider()
 
-                SidebarControlRow(title: "Loop mode", systemImage: "repeat") {
-                    Picker("Loop Mode", selection: Binding(
+                SidebarControlRow(title: "Loop mode".localized, systemImage: "repeat") {
+                    Picker("Loop mode".localized, selection: Binding(
                         get: { exportManager.settings.gifSettings.loopMode },
                         set: { newValue in
                             exportManager.settings.gifSettings.loopMode = newValue
@@ -358,7 +357,7 @@ struct GIFExportSettingsView: View {
                         }
                     )) {
                         ForEach(GIFLoopMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
+                            Text(mode.displayName.localized).tag(mode)
                         }
                     }
                     .pickerStyle(.menu)
@@ -370,7 +369,7 @@ struct GIFExportSettingsView: View {
                     SidebarDivider()
 
                     SidebarSliderControl(
-                        title: "Loop count",
+                        title: "Loop count".localized,
                         valueText: "\(exportManager.settings.gifSettings.loopCount)",
                         systemImage: "number",
                         value: Binding(
@@ -387,7 +386,7 @@ struct GIFExportSettingsView: View {
                 
                 SidebarDivider()
 
-                SidebarControlRow(title: "Optimize for web", systemImage: "globe") {
+                SidebarControlRow(title: "Optimize for web".localized, systemImage: "globe") {
                     Toggle("", isOn: Binding(
                         get: { exportManager.settings.gifSettings.optimizeForWeb },
                         set: { newValue in
