@@ -1,43 +1,43 @@
 #!/bin/bash
 
-# Script to run Fluttro tests from the command line.
+# Script to run Klapok tests from the command line.
 
 set -euo pipefail
 
-PROJECT="Fluttro.xcodeproj"
-SCHEME="Fluttro"
+PROJECT="Klapok.xcodeproj"
+SCHEME="Klapok"
 DESTINATION="platform=macOS,arch=arm64"
 TMP_ROOT="${TMPDIR:-/tmp}"
-UNIT_DERIVED_DATA="${TMP_ROOT%/}/FluttroUnitTestsDerivedData"
-UI_DERIVED_DATA="${TMP_ROOT%/}/FluttroUITestsDerivedData"
+UNIT_DERIVED_DATA="${TMP_ROOT%/}/KlapokUnitTestsDerivedData"
+UI_DERIVED_DATA="${TMP_ROOT%/}/KlapokUITestsDerivedData"
 
-echo "Running Fluttro unit and integration tests..."
+echo "Running Klapok unit and integration tests..."
 xcodebuild test \
   -quiet \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -destination "$DESTINATION" \
   -derivedDataPath "$UNIT_DERIVED_DATA" \
-  -skip-testing:FluttroUITests \
-  -only-testing:FluttroTests \
+  -skip-testing:KlapokUITests \
+  -only-testing:KlapokTests \
   CODE_SIGNING_ALLOWED=NO
 
 echo ""
-echo "Running Fluttro UI smoke tests..."
+echo "Running Klapok UI smoke tests..."
 xcodebuild test \
   -quiet \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -destination "$DESTINATION" \
   -derivedDataPath "$UI_DERIVED_DATA" \
-  -skip-testing:FluttroTests \
-  -only-testing:FluttroUITests \
+  -skip-testing:KlapokTests \
+  -only-testing:KlapokUITests \
   CODE_SIGN_STYLE=Manual \
   CODE_SIGN_IDENTITY=- \
   DEVELOPMENT_TEAM=
 
 echo ""
-echo "All Fluttro tests completed."
+echo "All Klapok tests completed."
 
 
 

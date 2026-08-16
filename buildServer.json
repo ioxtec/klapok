@@ -12,8 +12,8 @@
 	"argv": [
 		"/opt/homebrew/bin/xcode-build-server"
 	],
-	"workspace": "/Users/hoxim/Developer/Xcode/Fluttro/Fluttro.xcodeproj/project.xcworkspace",
-	"build_root": "/Users/hoxim/Library/Developer/Xcode/DerivedData/Fluttro-gkengmpwzequngepcwkyzptvwpct",
-	"scheme": "Fluttro",
+	"workspace": "/Users/hoxim/Developer/Xcode/Klapok/Klapok.xcodeproj/project.xcworkspace",
+	"build_root": "/Users/hoxim/Library/Developer/Xcode/DerivedData/Klapok-gkengmpwzequngepcwkyzptvwpct",
+	"scheme": "Klapok",
 	"kind": "xcode"
 }
