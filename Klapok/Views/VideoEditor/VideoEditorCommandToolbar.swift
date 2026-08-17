@@ -12,6 +12,10 @@ struct VideoEditorCommandToolbar: ToolbarContent {
     @ObservedObject var exportManager: ExportManager
 
     var body: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            KlapokToolbarBrandMark()
+        }
+
         ToolbarItemGroup(placement: .primaryAction) {
             Button {
                 viewModel.shareVideo()

@@ -55,6 +55,7 @@ import SwiftUI
         }
 
         func applicationDidFinishLaunching(_ notification: Notification) {
+            applyApplicationIcon()
             registerHotkeys()
             createOverlayWindow()  // Create overlay window at startup
             setupStatusBarItem()
@@ -392,12 +393,44 @@ import SwiftUI
             statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
             if let button = statusItem?.button {
-                button.image = NSImage(
-                    systemSymbolName: "camera.fill", accessibilityDescription: "Klapok")
+                button.image = statusItemBrandImage()
                 button.toolTip = LocalizationKeys.statusItemTooltip.localized
             }
 
             rebuildStatusBarMenu()
+        }
+
+        private func applyApplicationIcon() {
+            guard
+                let iconURL = Bundle.main.url(forResource: "klapok-app-icon", withExtension: "png"),
+                let iconImage = NSImage(contentsOf: iconURL)
+            else {
+                return
+            }
+
+            NSApp.applicationIconImage = iconImage
+        }
+
+        private func statusItemBrandImage() -> NSImage? {
+            if let assetImage = NSImage(named: "KlapokToolbarDark")?.copy() as? NSImage {
+                assetImage.size = NSSize(width: 18, height: 18)
+                assetImage.isTemplate = true
+                return assetImage
+            }
+
+            guard
+                let imageURL = Bundle.main.url(forResource: "klapok-toolbar-dark", withExtension: "png"),
+                let image = NSImage(contentsOf: imageURL)
+            else {
+                return NSImage(
+                    systemSymbolName: "camera.fill",
+                    accessibilityDescription: "Klapok"
+                )
+            }
+
+            image.size = NSSize(width: 18, height: 18)
+            image.isTemplate = true
+            return image
         }
 
         private func setupLocalizationObservation() {

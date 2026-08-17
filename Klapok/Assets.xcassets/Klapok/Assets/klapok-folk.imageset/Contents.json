@@ -1,15 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "klapok-folk.png",
+      "filename" : "klapok-folk@1x.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
+      "filename" : "klapok-folk@2x.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
+      "filename" : "klapok-folk@3x.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

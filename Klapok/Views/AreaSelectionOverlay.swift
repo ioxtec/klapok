@@ -1002,9 +1002,12 @@ import SwiftUI
 
                 if showActions {
                     Button(action: onCapture) {
-                        Image(systemName: "camera.fill")
-                            .font(.system(size: 11, weight: .semibold))
-                            .frame(width: 18, height: 18)
+                        KlapokToolbarBrandMark(
+                            variant: .template,
+                            size: 11,
+                            tint: .primary
+                        )
+                        .frame(width: 18, height: 18)
                     }
                     .buttonStyle(.plain)
                     .help("Capture selected area")

@@ -340,6 +340,10 @@ import SwiftUI
         @ObservedObject var annotationManager: AnnotationManager
 
         var body: some ToolbarContent {
+            ToolbarItem(placement: .navigation) {
+                KlapokToolbarBrandMark()
+            }
+
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     annotationManager.undo()

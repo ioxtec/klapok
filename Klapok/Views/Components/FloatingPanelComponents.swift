@@ -94,13 +94,15 @@ struct CaptureModeToggle: View {
                     viewModel.captureMode = .image
                 }
             }) {
-                Image(systemName: "camera.fill")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(viewModel.captureMode == .image ? .white : .secondary)
-                    .frame(
-                        width: FloatingPanelSegmentedMetrics.itemWidth,
-                        height: FloatingPanelSegmentedMetrics.itemHeight
-                    )
+                KlapokToolbarBrandMark(
+                    variant: .template,
+                    size: 15,
+                    tint: viewModel.captureMode == .image ? .white : .secondary
+                )
+                .frame(
+                    width: FloatingPanelSegmentedMetrics.itemWidth,
+                    height: FloatingPanelSegmentedMetrics.itemHeight
+                )
             }
             .buttonStyle(PlainButtonStyle())
             .accessibilityLabel("Image mode")
@@ -335,9 +337,17 @@ struct CaptureButton: View {
                         .foregroundColor(.white)
                         .transition(.opacity)
                 } else {
-                    Image(systemName: buttonIconName)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(.white)
+                    if viewModel.captureMode == .image {
+                        KlapokToolbarBrandMark(
+                            variant: .template,
+                            size: 16,
+                            tint: .white
+                        )
+                    } else {
+                        Image(systemName: buttonIconName)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.white)
+                    }
                 }
             }
         }
