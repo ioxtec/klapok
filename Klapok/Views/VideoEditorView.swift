@@ -46,7 +46,7 @@ struct VideoEditorView: View {
 
                 if viewModel.video != nil {
                     VideoTimelineView(viewModel: viewModel)
-                        .frame(height: 258)
+                        .frame(height: 352)
                         .padding(.horizontal, 18)
                         .padding(.top, 10)
                         .padding(.bottom, 14)

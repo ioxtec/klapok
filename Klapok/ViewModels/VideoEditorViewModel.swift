@@ -15,16 +15,6 @@ struct TimelineThumbnail: Identifiable, Equatable {
     let image: NSImage
 }
 
-struct VideoCutSegment: Identifiable, Equatable {
-    let id = UUID()
-    var startTime: TimeInterval
-    var endTime: TimeInterval
-
-    var duration: TimeInterval {
-        max(0, endTime - startTime)
-    }
-}
-
 struct TimelineTimeRange: Equatable {
     var start: TimeInterval
     var end: TimeInterval
@@ -32,142 +22,357 @@ struct TimelineTimeRange: Equatable {
     var duration: TimeInterval {
         max(0, end - start)
     }
+
+    func contains(_ time: TimeInterval) -> Bool {
+        time >= start && time <= end
+    }
+}
+
+struct VideoTimelineClip: Identifiable, Equatable {
+    let id: UUID
+    var name: String
+    var sourceRanges: [TimelineTimeRange]
+
+    init(id: UUID = UUID(), name: String, sourceRanges: [TimelineTimeRange]) {
+        self.id = id
+        self.name = name
+        self.sourceRanges = sourceRanges
+    }
+
+    var duration: TimeInterval {
+        sourceRanges.reduce(0) { $0 + $1.duration }
+    }
+
+    func sourceTime(forLocalOffset offset: TimeInterval) -> TimeInterval? {
+        guard !sourceRanges.isEmpty else { return nil }
+
+        var remaining = max(0, offset)
+        for range in sourceRanges {
+            if remaining <= range.duration {
+                return min(range.end, range.start + remaining)
+            }
+            remaining -= range.duration
+        }
+
+        return sourceRanges.last?.end
+    }
+}
+
+enum TimelineOverlayTrackKind: String, Equatable, CaseIterable {
+    case text
+    case callout
+}
+
+struct TimelineOverlayTrack: Identifiable, Equatable {
+    let id: UUID
+    var title: String
+    var kind: TimelineOverlayTrackKind
+
+    init(id: UUID = UUID(), title: String, kind: TimelineOverlayTrackKind) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+    }
+}
+
+private struct VideoTimelineHistoryState: Equatable {
+    var clips: [VideoTimelineClip]
+    var selectedClipIDs: Set<UUID>
+    var overlayTracks: [TimelineOverlayTrack]
+    var currentTime: TimeInterval
 }
 
 @MainActor
-class VideoEditorViewModel: ObservableObject {
+final class VideoEditorViewModel: ObservableObject {
     @Published var video: VideoRecording?
-    @Published var trimStartTime: TimeInterval = 0
-    @Published var trimEndTime: TimeInterval = 0
     @Published var currentTime: TimeInterval = 0
     @Published var isExporting: Bool = false
     @Published var timelineThumbnails: [TimelineThumbnail] = []
     @Published var isLoadingTimelineThumbnails: Bool = false
-    @Published var timelineCutSelection: VideoCutSegment?
-    @Published var cutSegments: [VideoCutSegment] = []
+    @Published var clips: [VideoTimelineClip] = []
+    @Published var selectedClipIDs: Set<UUID> = []
+    @Published var overlayTracks: [TimelineOverlayTrack] = []
+    @Published var zoomScale: Double = 1.0
+    @Published var timelineSidebarWidth: CGFloat = 178
+    @Published var draggedTimelineClipID: UUID?
+    @Published var timelineSidebarResizeAnchor: CGFloat = 178
 
     private var player: AVPlayer?
     private var timeObserver: Any?
     private var thumbnailRequestID = UUID()
     private var timelineThumbnailURL: URL?
+    private var undoStack: [VideoTimelineHistoryState] = []
+    private var redoStack: [VideoTimelineHistoryState] = []
+    private var isRestoringHistory = false
+
+    private let minimumClipDuration: TimeInterval = 0.08
+    private let maximumHistoryDepth = 80
 
     init(video: VideoRecording? = nil) {
-        self.video = video
-        if let video = video {
-            self.trimEndTime = video.duration
+        if let video {
+            loadVideo(video)
+        } else {
+            self.video = nil
         }
     }
 
+    var sourceDuration: TimeInterval {
+        video?.duration ?? 0
+    }
+
+    var editedDuration: TimeInterval {
+        clips.reduce(0) { $0 + $1.duration }
+    }
+
+    var currentTimePercentage: Double {
+        guard editedDuration > 0 else { return 0 }
+        return clampedEditedTime(currentTime) / editedDuration
+    }
+
+    var selectedClips: [VideoTimelineClip] {
+        clips.filter { selectedClipIDs.contains($0.id) }
+    }
+
+    var selectedDuration: TimeInterval {
+        selectedClips.reduce(0) { $0 + $1.duration }
+    }
+
+    var canUndo: Bool {
+        !undoStack.isEmpty
+    }
+
+    var canRedo: Bool {
+        !redoStack.isEmpty
+    }
+
+    var canSplit: Bool {
+        splitCandidate != nil
+    }
+
+    var canMerge: Bool {
+        contiguousSelectionIndices != nil
+    }
+
+    var canRemove: Bool {
+        !selectedClipIDs.isEmpty && clips.count > selectedClipIDs.count
+    }
+
+    var canResetTimeline: Bool {
+        guard let video else { return false }
+        return clips != [makeInitialClip(for: video)] || !overlayTracks.isEmpty
+    }
+
+    var canZoomIn: Bool {
+        zoomScale < 3.5
+    }
+
+    var canZoomOut: Bool {
+        zoomScale > 0.55
+    }
+
+    var activeTimelineRange: TimelineTimeRange? {
+        let indices = clips.indices.filter { selectedClipIDs.contains(clips[$0].id) }
+        if !indices.isEmpty {
+            guard
+                let firstIndex = indices.min(),
+                let lastIndex = indices.max()
+            else {
+                return nil
+            }
+
+            let start = timelineRange(for: clips[firstIndex]).start
+            let end = timelineRange(for: clips[lastIndex]).end
+            return TimelineTimeRange(start: start, end: end)
+        }
+
+        return clip(atEditedTime: currentTime).map { timelineRange(for: $0) }
+    }
+
     func loadVideo(_ video: VideoRecording) {
+        let clip = makeInitialClip(for: video)
         self.video = video
-        self.trimStartTime = 0
-        self.trimEndTime = video.duration
         self.currentTime = 0
         self.timelineThumbnails = []
         self.isLoadingTimelineThumbnails = false
         self.timelineThumbnailURL = nil
-        self.timelineCutSelection = nil
-        self.cutSegments = []
-    }
-
-    var trimmedDuration: TimeInterval {
-        return max(0, trimEndTime - trimStartTime)
-    }
-
-    var editedDuration: TimeInterval {
-        editedSourceRanges().reduce(0) { $0 + $1.duration }
-    }
-
-    var trimStartPercentage: Double {
-        guard let video = video, video.duration > 0 else { return 0 }
-        return trimStartTime / video.duration
-    }
-
-    var trimEndPercentage: Double {
-        guard let video = video, video.duration > 0 else { return 1 }
-        return trimEndTime / video.duration
-    }
-
-    var currentTimePercentage: Double {
-        guard let video = video, video.duration > 0 else { return 0 }
-        return clampedTime(currentTime) / video.duration
-    }
-
-    func updateTrimStart(from percentage: Double) {
-        guard let video = video else { return }
-        let newStartTime = percentage * video.duration
-        let maxStartTime = max(0, trimEndTime - 0.1)
-        if newStartTime >= 0 && newStartTime < maxStartTime {
-            trimStartTime = newStartTime
-            cutSegments = normalizedCutSegments(cutSegments)
-            timelineCutSelection = nil
-            clampCurrentTimeToTrim(seek: true)
-        }
-    }
-
-    func updateTrimEnd(from percentage: Double) {
-        guard let video = video else { return }
-        let newEndTime = percentage * video.duration
-        let minEndTime = min(video.duration, trimStartTime + 0.1)
-        if newEndTime > minEndTime && newEndTime <= video.duration {
-            trimEndTime = newEndTime
-            cutSegments = normalizedCutSegments(cutSegments)
-            timelineCutSelection = nil
-            clampCurrentTimeToTrim(seek: true)
-        }
+        self.clips = [clip]
+        self.selectedClipIDs = [clip.id]
+        self.overlayTracks = []
+        self.zoomScale = 1
+        self.timelineSidebarWidth = 178
+        self.draggedTimelineClipID = nil
+        self.timelineSidebarResizeAnchor = 178
+        self.undoStack.removeAll()
+        self.redoStack.removeAll()
     }
 
     func updateCurrentTime(from percentage: Double) {
-        guard let video = video else { return }
-        currentTime = clampedTime(percentage * video.duration)
-        seekToCurrentTime()
+        updateCurrentTime(to: editedDuration * max(0, min(1, percentage)))
     }
 
-    func updateCutSelection(startPercentage: Double, endPercentage: Double) {
-        guard let video else { return }
-        let start = max(trimStartTime, min(trimEndTime, startPercentage * video.duration))
-        let end = max(trimStartTime, min(trimEndTime, endPercentage * video.duration))
-        let normalizedStart = min(start, end)
-        let normalizedEnd = max(start, end)
-
-        guard normalizedEnd - normalizedStart >= 0.05 else {
-            timelineCutSelection = nil
-            return
+    func updateCurrentTime(to editedTime: TimeInterval, seek: Bool = true) {
+        currentTime = clampedEditedTime(editedTime)
+        if seek {
+            seekToCurrentTime()
         }
+    }
 
-        let proposedSelection = VideoCutSegment(
-            startTime: normalizedStart,
-            endTime: normalizedEnd
+    func selectClip(_ clipID: UUID, extendSelection: Bool) {
+        guard clips.contains(where: { $0.id == clipID }) else { return }
+
+        if extendSelection {
+            if selectedClipIDs.contains(clipID) {
+                selectedClipIDs.remove(clipID)
+            } else {
+                selectedClipIDs.insert(clipID)
+            }
+        } else {
+            selectedClipIDs = [clipID]
+        }
+    }
+
+    func splitAtPlayhead() {
+        guard let candidate = splitCandidate else { return }
+
+        let clip = clips[candidate.index]
+        let split = splitSourceRanges(clip.sourceRanges, at: candidate.localOffset)
+        guard !split.left.isEmpty, !split.right.isEmpty else { return }
+
+        recordUndoSnapshot()
+
+        let leftClip = VideoTimelineClip(name: clip.name, sourceRanges: split.left)
+        let rightClip = VideoTimelineClip(name: clip.name, sourceRanges: split.right)
+
+        clips.replaceSubrange(candidate.index...candidate.index, with: [leftClip, rightClip])
+        selectedClipIDs = [rightClip.id]
+        currentTime = timelineRange(for: rightClip).start
+    }
+
+    func mergeSelectedClips() {
+        guard let indices = contiguousSelectionIndices else { return }
+        let mergedRanges = indices.flatMap { clips[$0].sourceRanges }
+        guard let firstIndex = indices.first else { return }
+
+        recordUndoSnapshot()
+
+        let mergedClip = VideoTimelineClip(
+            name: clips[firstIndex].name,
+            sourceRanges: mergedRanges
         )
 
-        guard !overlapsExistingCut(proposedSelection) else {
-            timelineCutSelection = nil
+        clips.replaceSubrange(firstIndex...indices.last!, with: [mergedClip])
+        selectedClipIDs = [mergedClip.id]
+        currentTime = timelineRange(for: mergedClip).start
+    }
+
+    func removeSelectedClips() {
+        guard canRemove else { return }
+
+        recordUndoSnapshot()
+
+        let remaining = clips.filter { !selectedClipIDs.contains($0.id) }
+        clips = remaining
+        if let replacement = clip(atEditedTime: currentTime) ?? remaining.first {
+            selectedClipIDs = [replacement.id]
+            currentTime = min(currentTime, timelineRange(for: replacement).end)
+        } else {
+            selectedClipIDs.removeAll()
+            currentTime = 0
+        }
+        clampCurrentTimeToEditedDuration(seek: true)
+    }
+
+    func resetTimeline() {
+        guard let video else { return }
+        guard canResetTimeline else { return }
+
+        recordUndoSnapshot()
+
+        let clip = makeInitialClip(for: video)
+        clips = [clip]
+        overlayTracks = []
+        selectedClipIDs = [clip.id]
+        currentTime = 0
+    }
+
+    func addOverlayTrack() {
+        recordUndoSnapshot()
+
+        let title = "Layer \(overlayTracks.count + 1)"
+        overlayTracks.append(
+            TimelineOverlayTrack(
+                title: title,
+                kind: overlayTracks.isEmpty ? .text : .callout
+            )
+        )
+    }
+
+    func moveClip(_ clipID: UUID, before destinationID: UUID?) {
+        guard clips.contains(where: { $0.id == clipID }) else { return }
+
+        if selectedClipIDs.contains(clipID), selectedClipIDs.count > 1 {
+            moveSelectedClips(before: destinationID)
             return
         }
 
-        timelineCutSelection = proposedSelection
+        selectedClipIDs = [clipID]
+        moveSelectedClips(before: destinationID)
     }
 
-    func commitCutSelection() {
-        guard let selection = timelineCutSelection, selection.duration >= 0.05 else { return }
+    func moveSelectedClips(before destinationID: UUID?) {
+        let movingIDs = clips.map(\.id).filter { selectedClipIDs.contains($0) }
+        guard !movingIDs.isEmpty else { return }
 
-        let candidateSegments = normalizedCutSegments(cutSegments + [selection])
-        guard !editedSourceRanges(using: candidateSegments).isEmpty else {
-            timelineCutSelection = nil
+        if let destinationID, movingIDs.contains(destinationID) {
             return
         }
 
-        cutSegments = candidateSegments
-        timelineCutSelection = nil
+        let movingClips = clips.filter { movingIDs.contains($0.id) }
+        var remainingClips = clips.filter { !movingIDs.contains($0.id) }
+        let insertionIndex: Int
+        if let destinationID, let index = remainingClips.firstIndex(where: { $0.id == destinationID }) {
+            insertionIndex = index
+        } else {
+            insertionIndex = remainingClips.count
+        }
+
+        remainingClips.insert(contentsOf: movingClips, at: insertionIndex)
+        guard remainingClips != clips else { return }
+
+        recordUndoSnapshot()
+        clips = remainingClips
     }
 
-    func removeCut(_ cut: VideoCutSegment) {
-        cutSegments.removeAll { $0.id == cut.id }
+    func undo() {
+        guard let previousState = undoStack.popLast() else { return }
+
+        let currentState = historyState
+        isRestoringHistory = true
+        redoStack.append(currentState)
+        restore(historyState: previousState)
+        isRestoringHistory = false
     }
 
-    func clearCuts() {
-        cutSegments = []
-        timelineCutSelection = nil
+    func redo() {
+        guard let nextState = redoStack.popLast() else { return }
+
+        let currentState = historyState
+        isRestoringHistory = true
+        undoStack.append(currentState)
+        restore(historyState: nextState)
+        isRestoringHistory = false
+    }
+
+    func zoomIn() {
+        zoomScale = min(3.5, zoomScale * 1.18)
+    }
+
+    func zoomOut() {
+        zoomScale = max(0.55, zoomScale / 1.18)
+    }
+
+    func updateZoomScale(_ value: Double) {
+        zoomScale = max(0.55, min(3.5, value))
     }
 
     func loadTimelineThumbnails(for width: CGFloat) async {
@@ -188,16 +393,50 @@ class VideoEditorViewModel: ObservableObject {
         }
 
         let thumbnails = await TimelineThumbnailGenerator.generate(for: video, width: width)
-
         guard thumbnailRequestID == requestID else { return }
+
         timelineThumbnails = thumbnails
         timelineThumbnailURL = video.url
     }
 
-    private func seekToCurrentTime() {
-        guard let player = player else { return }
-        let time = CMTime(seconds: currentTime, preferredTimescale: 1000)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    func timelineRange(for clip: VideoTimelineClip) -> TimelineTimeRange {
+        var cursor: TimeInterval = 0
+        for existingClip in clips {
+            let end = cursor + existingClip.duration
+            if existingClip.id == clip.id {
+                return TimelineTimeRange(start: cursor, end: end)
+            }
+            cursor = end
+        }
+
+        return TimelineTimeRange(start: 0, end: 0)
+    }
+
+    func clipThumbnails(for clip: VideoTimelineClip, targetCount: Int) -> [NSImage] {
+        guard !timelineThumbnails.isEmpty else { return [] }
+        let count = max(1, targetCount)
+
+        return (0..<count).compactMap { index in
+            let progress = count == 1 ? 0.5 : Double(index) / Double(count - 1)
+            let localOffset = clip.duration * progress
+            guard let sourceTime = clip.sourceTime(forLocalOffset: localOffset) else { return nil }
+            return nearestThumbnailImage(to: sourceTime)
+        }
+    }
+
+    func audioLevels(for clip: VideoTimelineClip, sampleCount: Int) -> [CGFloat] {
+        let count = max(12, sampleCount)
+        guard clip.duration > 0 else { return Array(repeating: 0.2, count: count) }
+
+        return (0..<count).map { index in
+            let progress = Double(index) / Double(max(1, count - 1))
+            let localOffset = clip.duration * progress
+            let sourceTime = clip.sourceTime(forLocalOffset: localOffset) ?? localOffset
+            let primary = abs(sin(sourceTime * 4.1))
+            let secondary = abs(cos(sourceTime * 1.7 + Double(index) * 0.11))
+            let envelope = 0.18 + primary * 0.45 + secondary * 0.24
+            return CGFloat(min(1, envelope))
+        }
     }
 
     func setPlayer(_ player: AVPlayer) {
@@ -205,61 +444,13 @@ class VideoEditorViewModel: ObservableObject {
             return
         }
 
-        if let timeObserver = timeObserver {
+        if let timeObserver {
             self.player?.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
 
         self.player = player
         setupTimeObserver()
-    }
-
-    private func setupTimeObserver() {
-        guard let player = player else { return }
-
-        let timeScale = CMTimeScale(1000)
-        let time = CMTime(seconds: 0.1, preferredTimescale: timeScale)
-
-        timeObserver = player.addPeriodicTimeObserver(forInterval: time, queue: .main) { [weak self] time in
-            guard let self = self else { return }
-            let seconds = CMTimeGetSeconds(time)
-            if seconds.isFinite {
-                Task { @MainActor in
-                    self.syncCurrentTimeFromPlayer(seconds)
-                }
-            }
-        }
-    }
-
-    private func syncCurrentTimeFromPlayer(_ seconds: TimeInterval) {
-        let clamped = clampedTime(seconds)
-        currentTime = clamped
-
-        guard abs(clamped - seconds) > 0.05 else { return }
-        player?.pause()
-        seekToCurrentTime()
-    }
-
-    private func clampCurrentTimeToTrim(seek: Bool) {
-        let clamped = clampedTime(currentTime)
-        guard clamped != currentTime else { return }
-        currentTime = clamped
-        if seek {
-            seekToCurrentTime()
-        }
-    }
-
-    private func clampedTime(_ time: TimeInterval) -> TimeInterval {
-        guard let video, video.duration > 0 else { return time }
-        let lowerBound = max(0, min(video.duration, trimStartTime))
-        let upperBound = max(lowerBound, min(video.duration, trimEndTime))
-        return max(lowerBound, min(upperBound, time))
-    }
-
-    deinit {
-        if let timeObserver = timeObserver {
-            player?.removeTimeObserver(timeObserver)
-        }
     }
 
     func exportTrimmedVideo(settings: VideoExportSettings) async {
@@ -302,81 +493,21 @@ class VideoEditorViewModel: ObservableObject {
         }
     }
 
-    private func editedSourceRanges() -> [TimelineTimeRange] {
-        editedSourceRanges(using: cutSegments)
-    }
-
-    private func editedSourceRanges(using segments: [VideoCutSegment]) -> [TimelineTimeRange] {
-        guard trimEndTime > trimStartTime else { return [] }
-
-        let cuts = normalizedCutSegments(segments)
-        var ranges: [TimelineTimeRange] = []
-        var cursor = trimStartTime
-
-        for cut in cuts {
-            if cut.startTime > cursor {
-                ranges.append(TimelineTimeRange(start: cursor, end: cut.startTime))
-            }
-            cursor = max(cursor, cut.endTime)
-        }
-
-        if cursor < trimEndTime {
-            ranges.append(TimelineTimeRange(start: cursor, end: trimEndTime))
-        }
-
-        return ranges.filter { $0.duration >= 0.05 }
-    }
-
-    private func normalizedCutSegments(_ segments: [VideoCutSegment]) -> [VideoCutSegment] {
-        let clipped = segments
-            .map { segment in
-                VideoCutSegment(
-                    startTime: max(trimStartTime, min(trimEndTime, segment.startTime)),
-                    endTime: max(trimStartTime, min(trimEndTime, segment.endTime))
-                )
-            }
-            .filter { $0.duration >= 0.05 }
-            .sorted { $0.startTime < $1.startTime }
-
-        var merged: [VideoCutSegment] = []
-
-        for segment in clipped {
-            guard let last = merged.last else {
-                merged.append(segment)
-                continue
-            }
-
-            if segment.startTime <= last.endTime {
-                merged[merged.count - 1] = VideoCutSegment(
-                    startTime: last.startTime,
-                    endTime: max(last.endTime, segment.endTime)
-                )
-            } else {
-                merged.append(segment)
-            }
-        }
-
-        return merged
-    }
-
-    private func overlapsExistingCut(_ selection: VideoCutSegment) -> Bool {
-        cutSegments.contains { existing in
-            max(existing.startTime, selection.startTime) < min(existing.endTime, selection.endTime)
-        }
-    }
-
     func shareVideo() {
         guard let video else { return }
 
         let picker = NSSharingServicePicker(items: [video.url])
-        if let window = NSApplication.shared.keyWindow {
-            picker.show(relativeTo: .zero, of: window.contentView!, preferredEdge: .minY)
+        if let window = NSApplication.shared.keyWindow, let contentView = window.contentView {
+            picker.show(relativeTo: .zero, of: contentView, preferredEdge: .minY)
         }
     }
 
     func openInFinder() {
         guard let video else { return }
-        NSWorkspace.shared.selectFile(video.url.path, inFileViewerRootedAtPath: video.url.deletingLastPathComponent().path)
+        NSWorkspace.shared.selectFile(
+            video.url.path,
+            inFileViewerRootedAtPath: video.url.deletingLastPathComponent().path
+        )
     }
 
     func deleteVideo() {
@@ -393,10 +524,229 @@ class VideoEditorViewModel: ObservableObject {
             do {
                 try FileManager.default.removeItem(at: video.url)
                 self.video = nil
+                self.clips = []
+                self.selectedClipIDs.removeAll()
+                self.overlayTracks = []
+                self.currentTime = 0
+                self.draggedTimelineClipID = nil
             } catch {
                 Logger.e("VideoEditorViewModel: Error deleting video: \(error)")
             }
         }
+    }
+
+    deinit {
+        if let timeObserver {
+            player?.removeTimeObserver(timeObserver)
+        }
+    }
+
+    private func makeInitialClip(for video: VideoRecording) -> VideoTimelineClip {
+        VideoTimelineClip(
+            name: "Main Clip".localized,
+            sourceRanges: [TimelineTimeRange(start: 0, end: video.duration)]
+        )
+    }
+
+    private func seekToCurrentTime() {
+        guard let player, let sourceTime = sourceTime(forEditedTime: currentTime) else { return }
+
+        let time = CMTime(seconds: sourceTime, preferredTimescale: 1000)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
+    private func setupTimeObserver() {
+        guard let player else { return }
+
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 1000)
+        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
+            guard let self else { return }
+            let seconds = CMTimeGetSeconds(time)
+            guard seconds.isFinite else { return }
+            Task { @MainActor in
+                self.syncCurrentTimeFromPlayer(seconds)
+            }
+        }
+    }
+
+    private func syncCurrentTimeFromPlayer(_ sourceTime: TimeInterval) {
+        currentTime = clampedEditedTime(editedTime(forSourceTime: sourceTime))
+    }
+
+    private func sourceTime(forEditedTime editedTime: TimeInterval) -> TimeInterval? {
+        let clamped = clampedEditedTime(editedTime)
+        var cursor: TimeInterval = 0
+
+        for clip in clips {
+            let nextCursor = cursor + clip.duration
+            if clamped <= nextCursor || clip.id == clips.last?.id {
+                let localOffset = max(0, min(clip.duration, clamped - cursor))
+                return clip.sourceTime(forLocalOffset: localOffset)
+            }
+            cursor = nextCursor
+        }
+
+        return clips.last?.sourceRanges.last?.end
+    }
+
+    private func editedTime(forSourceTime sourceTime: TimeInterval) -> TimeInterval {
+        var cursor: TimeInterval = 0
+
+        for clip in clips {
+            for range in clip.sourceRanges {
+                if sourceTime < range.start {
+                    return cursor
+                }
+                if range.contains(sourceTime) {
+                    return cursor + max(0, min(range.duration, sourceTime - range.start))
+                }
+                cursor += range.duration
+            }
+        }
+
+        return min(sourceTime, editedDuration)
+    }
+
+    private func editedSourceRanges() -> [TimelineTimeRange] {
+        clips
+            .flatMap(\.sourceRanges)
+            .filter { $0.duration >= minimumClipDuration }
+    }
+
+    private var splitCandidate: (index: Int, localOffset: TimeInterval)? {
+        guard !clips.isEmpty else { return nil }
+
+        let targetClip = selectedClips.first(where: { timelineRange(for: $0).contains(currentTime) })
+            ?? clip(atEditedTime: currentTime)
+
+        guard
+            let targetClip,
+            let index = clips.firstIndex(where: { $0.id == targetClip.id })
+        else {
+            return nil
+        }
+
+        let range = timelineRange(for: targetClip)
+        let localOffset = currentTime - range.start
+        guard
+            localOffset > minimumClipDuration,
+            targetClip.duration - localOffset > minimumClipDuration
+        else {
+            return nil
+        }
+
+        return (index, localOffset)
+    }
+
+    private var contiguousSelectionIndices: [Int]? {
+        let indices = clips.indices.filter { selectedClipIDs.contains(clips[$0].id) }.sorted()
+        guard indices.count >= 2 else { return nil }
+
+        for pair in zip(indices, indices.dropFirst()) {
+            if pair.1 != pair.0 + 1 {
+                return nil
+            }
+        }
+
+        return indices
+    }
+
+    private func clip(atEditedTime editedTime: TimeInterval) -> VideoTimelineClip? {
+        var cursor: TimeInterval = 0
+
+        for clip in clips {
+            let nextCursor = cursor + clip.duration
+            if editedTime <= nextCursor || clip.id == clips.last?.id {
+                return clip
+            }
+            cursor = nextCursor
+        }
+
+        return clips.last
+    }
+
+    private func splitSourceRanges(
+        _ ranges: [TimelineTimeRange],
+        at offset: TimeInterval
+    ) -> (left: [TimelineTimeRange], right: [TimelineTimeRange]) {
+        var remaining = max(0, offset)
+        var left: [TimelineTimeRange] = []
+        var right: [TimelineTimeRange] = []
+
+        for range in ranges {
+            if remaining <= 0 {
+                right.append(range)
+                continue
+            }
+
+            if remaining >= range.duration {
+                left.append(range)
+                remaining -= range.duration
+                continue
+            }
+
+            let splitPoint = range.start + remaining
+            let leftRange = TimelineTimeRange(start: range.start, end: splitPoint)
+            let rightRange = TimelineTimeRange(start: splitPoint, end: range.end)
+
+            if leftRange.duration >= minimumClipDuration {
+                left.append(leftRange)
+            }
+            if rightRange.duration >= minimumClipDuration {
+                right.append(rightRange)
+            }
+
+            remaining = 0
+        }
+
+        return (left, right)
+    }
+
+    private func nearestThumbnailImage(to time: TimeInterval) -> NSImage? {
+        timelineThumbnails.min(by: { abs($0.time - time) < abs($1.time - time) })?.image
+    }
+
+    private func clampedEditedTime(_ time: TimeInterval) -> TimeInterval {
+        max(0, min(editedDuration, time))
+    }
+
+    private func clampCurrentTimeToEditedDuration(seek: Bool) {
+        let clamped = clampedEditedTime(currentTime)
+        guard clamped != currentTime else { return }
+        currentTime = clamped
+        if seek {
+            seekToCurrentTime()
+        }
+    }
+
+    private var historyState: VideoTimelineHistoryState {
+        VideoTimelineHistoryState(
+            clips: clips,
+            selectedClipIDs: selectedClipIDs,
+            overlayTracks: overlayTracks,
+            currentTime: currentTime
+        )
+    }
+
+    private func restore(historyState: VideoTimelineHistoryState) {
+        clips = historyState.clips
+        selectedClipIDs = historyState.selectedClipIDs
+        overlayTracks = historyState.overlayTracks
+        currentTime = historyState.currentTime
+        clampCurrentTimeToEditedDuration(seek: true)
+    }
+
+    private func recordUndoSnapshot() {
+        guard !isRestoringHistory else { return }
+
+        let state = historyState
+        guard undoStack.last != state else { return }
+
+        undoStack.append(state)
+        if undoStack.count > maximumHistoryDepth {
+            undoStack.removeFirst(undoStack.count - maximumHistoryDepth)
+        }
+        redoStack.removeAll()
     }
 }
 
