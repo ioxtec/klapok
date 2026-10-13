@@ -17,12 +17,23 @@ struct VideoEditorCommandToolbar: ToolbarContent {
         }
 
         ToolbarItemGroup(placement: .primaryAction) {
+            Button { viewModel.undo() } label: { Image(systemName: "arrow.uturn.backward") }
+                .disabled(!viewModel.canUndo).keyboardShortcut("z", modifiers: .command).help("Undo".localized)
+            Button { viewModel.redo() } label: { Image(systemName: "arrow.uturn.forward") }
+                .disabled(!viewModel.canRedo).keyboardShortcut("z", modifiers: [.command, .shift]).help("Redo".localized)
+            Menu("Trim".localized) {
+                Button("Keep before playhead".localized) { viewModel.keepBeforePlayhead() }
+                Button("Keep after playhead".localized) { viewModel.keepAfterPlayhead() }
+            }
             Button {
-                viewModel.shareVideo()
+                Task {
+                    await viewModel.exportTrimmedVideo(settings: exportManager.effectiveVideoSettings())
+                    if viewModel.exportedURL != nil { viewModel.shareVideo() }
+                }
             } label: {
                 Image(systemName: "square.and.arrow.up")
             }
-            .disabled(viewModel.video == nil)
+            .disabled(viewModel.video == nil || viewModel.isExporting)
             .help("Share video".localized)
 
             Button {

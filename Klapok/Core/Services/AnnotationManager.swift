@@ -16,11 +16,13 @@ final class AnnotationManager: ObservableObject {
     private struct AnnotationHistoryState: Equatable {
         var annotations: [Annotation]
         var selectedAnnotationId: UUID?
+        var editedImage: NSImage?
     }
 
     // MARK: - Published Properties
     
     @Published var annotations: [Annotation] = []
+    @Published var editedImage: NSImage?
     @Published var selectedAnnotationId: UUID?
     @Published var currentTool: DrawingTool = .none
     @Published private var undoStack: [AnnotationHistoryState] = []
@@ -116,6 +118,7 @@ final class AnnotationManager: ObservableObject {
     }
 
     func resetForNewImage() {
+        editedImage = nil
         annotations.removeAll()
         selectedAnnotationId = nil
         currentDraft = nil
@@ -124,6 +127,25 @@ final class AnnotationManager: ObservableObject {
         isEditingText = false
         undoStack.removeAll()
         redoStack.removeAll()
+    }
+
+    func cropImage(_ normalizedRect: CGRect) {
+        guard let image = editedImage,
+              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+        let crop = QuickEditGeometry.normalizedCrop(normalizedRect)
+        let rect = CGRect(x: crop.minX * Double(cgImage.width), y: crop.minY * Double(cgImage.height),
+                          width: crop.width * Double(cgImage.width), height: crop.height * Double(cgImage.height)).integral
+        guard let cropped = cgImage.cropping(to: rect) else { return }
+        recordUndoSnapshotIfNeeded(true)
+        editedImage = NSImage(cgImage: cropped, size: CGSize(width: cropped.width, height: cropped.height))
+        annotations = annotations.map { annotation in
+            var shifted = annotation
+            shifted.startPoint.x -= rect.minX; shifted.startPoint.y -= rect.minY
+            shifted.endPoint.x -= rect.minX; shifted.endPoint.y -= rect.minY
+            shifted.pathPoints = annotation.pathPoints.map { CGPoint(x: $0.x - rect.minX, y: $0.y - rect.minY) }
+            return shifted
+        }
+        selectedAnnotationId = nil
     }
     
     // MARK: Selection
@@ -452,6 +474,7 @@ final class AnnotationManager: ObservableObject {
         isRestoringHistory = true
         redoStack.append(currentState)
         annotations = previousState.annotations
+        editedImage = previousState.editedImage
         selectedAnnotationId = previousState.selectedAnnotationId
         currentDraft = nil
         isDrawing = false
@@ -467,6 +490,7 @@ final class AnnotationManager: ObservableObject {
         isRestoringHistory = true
         undoStack.append(currentState)
         annotations = nextState.annotations
+        editedImage = nextState.editedImage
         selectedAnnotationId = nextState.selectedAnnotationId
         currentDraft = nil
         isDrawing = false
@@ -478,7 +502,8 @@ final class AnnotationManager: ObservableObject {
     private var historyState: AnnotationHistoryState {
         AnnotationHistoryState(
             annotations: annotations,
-            selectedAnnotationId: selectedAnnotationId
+            selectedAnnotationId: selectedAnnotationId,
+            editedImage: editedImage
         )
     }
 

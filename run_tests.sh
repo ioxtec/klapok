@@ -17,6 +17,7 @@ xcodebuild test \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -destination "$DESTINATION" \
+  -parallel-testing-enabled NO \
   -derivedDataPath "$UNIT_DERIVED_DATA" \
   -skip-testing:KlapokUITests \
   -only-testing:KlapokTests \
@@ -29,6 +30,7 @@ xcodebuild test \
   -project "$PROJECT" \
   -scheme "$SCHEME" \
   -destination "$DESTINATION" \
+  -parallel-testing-enabled NO \
   -derivedDataPath "$UI_DERIVED_DATA" \
   -skip-testing:KlapokTests \
   -only-testing:KlapokUITests \

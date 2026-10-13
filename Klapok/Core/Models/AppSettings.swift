@@ -62,7 +62,7 @@ import Foundation
         private static let videoSaveDirectoryPathKey = "videoSaveDirectory"
         private static let videoSaveDirectoryBookmarkKey = "videoSaveDirectoryBookmark"
         private static let supportedVideoResolutions = ["Source", "1080p", "720p", "480p"]
-        private static let supportedVideoFrameRates = [24, 30, 60]
+        private static let supportedVideoFrameRates = [24, 25, 30, 60]
         private static let supportedVideoCodecs = ["H.264", "H.265"]
         private static let supportedVideoFormats = ["MP4", "MOV"]
 
@@ -534,7 +534,7 @@ import Foundation
         }
 
         private static func normalizedVideoBitrate(_ value: Int) -> Int {
-            VideoQuality.fromBitrate(value).bitrate
+            max(100_000, min(50_000_000, value))
         }
 
         private static func normalizedVideoCodec(_ value: String) -> String {

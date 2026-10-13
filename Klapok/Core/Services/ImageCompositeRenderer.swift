@@ -64,12 +64,23 @@ enum ImageCompositeRenderer {
         annotations: [Annotation],
         padding: CGFloat,
         aspectRatio: BackgroundAspectRatio,
-        shadowIntensity: CGFloat
+        shadowIntensity: CGFloat,
+        cornerRadius: CGFloat = 0
     ) -> NSImage {
         let imageSize = originalImage.pixelSize
 
         guard backgroundManager.collections.backgroundType != .none else {
-            return originalImage
+            guard !annotations.isEmpty || cornerRadius > 0 else { return originalImage }
+            guard let bitmap = bitmap(for: imageSize), let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return originalImage }
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = context
+            NSBezierPath(roundedRect: NSRect(origin: .zero, size: imageSize), xRadius: cornerRadius, yRadius: cornerRadius).addClip()
+            originalImage.draw(in: NSRect(origin: .zero, size: imageSize))
+            drawAnnotations(annotations, in: NSRect(origin: .zero, size: imageSize), imageSize: imageSize)
+            NSGraphicsContext.restoreGraphicsState()
+            let rendered = NSImage(size: imageSize)
+            rendered.addRepresentation(bitmap)
+            return rendered
         }
 
         let exportSize = calculateExportSize(for: imageSize, aspectRatio: aspectRatio)
@@ -86,9 +97,9 @@ enum ImageCompositeRenderer {
         let scaleY = imageSize.height > maxImageHeight ? maxImageHeight / imageSize.height : 1.0
         let scale = min(scaleX, scaleY)
         let finalImageSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
-        let compositeImage = NSImage(size: backgroundSize)
-
-        compositeImage.lockFocus()
+        guard let bitmap = bitmap(for: backgroundSize), let graphics = NSGraphicsContext(bitmapImageRep: bitmap) else { return originalImage }
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = graphics
 
         if let context = NSGraphicsContext.current?.cgContext {
             drawBackground(
@@ -106,6 +117,10 @@ enum ImageCompositeRenderer {
         )
 
         drawShadow(intensity: shadowIntensity)
+        NSGraphicsContext.saveGraphicsState()
+        if cornerRadius > 0 {
+            NSBezierPath(roundedRect: imageRect, xRadius: cornerRadius * scale, yRadius: cornerRadius * scale).addClip()
+        }
         originalImage.draw(
             in: imageRect,
             from: NSRect(origin: .zero, size: originalImage.size),
@@ -117,8 +132,18 @@ enum ImageCompositeRenderer {
             drawAnnotations(annotations, in: imageRect, imageSize: imageSize)
         }
 
-        compositeImage.unlockFocus()
+        NSGraphicsContext.restoreGraphicsState()
+
+        NSGraphicsContext.restoreGraphicsState()
+        let compositeImage = NSImage(size: backgroundSize)
+        compositeImage.addRepresentation(bitmap)
         return compositeImage
+    }
+
+    private static func bitmap(for size: CGSize) -> NSBitmapImageRep? {
+        NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: max(1, Int(size.width.rounded())),
+            pixelsHigh: max(1, Int(size.height.rounded())), bitsPerSample: 8, samplesPerPixel: 4,
+            hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
     }
 
     private static func calculateExportSize(
@@ -251,7 +276,7 @@ enum ImageCompositeRenderer {
         shadow.set()
     }
 
-    private static func drawAnnotations(
+    static func drawAnnotations(
         _ annotations: [Annotation],
         in imageRect: NSRect,
         imageSize: CGSize

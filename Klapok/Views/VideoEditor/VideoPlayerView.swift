@@ -12,7 +12,7 @@ import AVKit
 
 struct VideoPlayerView: NSViewRepresentable {
     let videoURL: URL
-    let viewModel: VideoEditorViewModel
+    @ObservedObject var viewModel: VideoEditorViewModel
 
     final class Coordinator {
         var player: AVPlayer?
@@ -35,28 +35,33 @@ struct VideoPlayerView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
-        if context.coordinator.videoURL != videoURL || context.coordinator.player == nil {
-            let asset = AVURLAsset(url: videoURL)
-            let item = AVPlayerItem(asset: asset)
-            let player = AVPlayer(playerItem: item)
+        if context.coordinator.player == nil {
+            let player = AVPlayer()
             player.automaticallyWaitsToMinimizeStalling = true
-            context.coordinator.statusObservation = item.observe(\.status, options: [.new]) { item, _ in
-                if item.status == .failed {
-                    Logger.e("VideoPlayerView: Player item failed: \(item.error?.localizedDescription ?? "Unknown error")")
-                }
-            }
             context.coordinator.player = player
             context.coordinator.videoURL = videoURL
         }
 
         guard let player = context.coordinator.player else { return }
 
+        if let item = viewModel.previewItem, player.currentItem !== item {
+            let wasPlaying = player.rate > 0
+            player.replaceCurrentItem(with: item)
+            player.seek(to: CMTime(seconds: viewModel.currentTime, preferredTimescale: 1000),
+                        toleranceBefore: .zero, toleranceAfter: .zero)
+            if wasPlaying { player.play() }
+        }
+
         if nsView.player !== player {
             nsView.player = player
-            player.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
         }
 
         viewModel.setPlayer(player)
+    }
+
+    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: Coordinator) {
+        coordinator.player?.pause()
+        nsView.player = nil
     }
 }
 

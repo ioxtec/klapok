@@ -20,6 +20,7 @@ struct VideoEditorView: View {
     var body: some View {
         NavigationSplitView {
             VideoEditorSidebarView(
+                viewModel: viewModel,
                 video: viewModel.video,
                 settings: settings,
                 profileManager: profileManager,
@@ -33,7 +34,7 @@ struct VideoEditorView: View {
             VStack(spacing: 0) {
                 GeometryReader { _ in
                     if let video = viewModel.video {
-                        VideoPlayerView(videoURL: video.url, viewModel: viewModel)
+                        VideoPreviewView(viewModel: viewModel, video: video)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(Color(NSColor.controlBackgroundColor))
                     } else {
@@ -62,7 +63,24 @@ struct VideoEditorView: View {
             )
         }
         .frame(minWidth: 1180, minHeight: 720)
+        .disabled(viewModel.isExporting)
+        .overlay {
+            if viewModel.isCropping {
+                ZStack {
+                    Color.black.opacity(0.25).ignoresSafeArea().contentShape(Rectangle())
+                    QuickCropView(image: viewModel.timelineThumbnails.first?.image,
+                        sourceSize: viewModel.video?.size ?? CGSize(width: 16, height: 9),
+                        onApply: viewModel.applyCrop, onClose: { viewModel.isCropping = false })
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                        .shadow(radius: 16)
+                }
+            }
+        }
         .id(languageManager.selectedLanguage.rawValue)
+        .alert("Could not complete the operation".localized, isPresented: Binding(
+            get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
+            Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+        } message: { Text(viewModel.errorMessage ?? "") }
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {

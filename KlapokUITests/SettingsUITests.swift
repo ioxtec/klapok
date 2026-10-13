@@ -38,7 +38,7 @@ final class SettingsUITests: XCTestCase {
     func testGeneralSettings() throws {
         XCTAssertTrue(app.windows["Klapok Settings"].waitForExistence(timeout: 5))
 
-        app.buttons["settings.tab.general"].tap()
+        app.buttons["settings.tab.general"].click()
 
         XCTAssertTrue(element("settings.content.general").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.general"].value as? String, "selected")
@@ -49,7 +49,7 @@ final class SettingsUITests: XCTestCase {
     func testImageSettings() throws {
         XCTAssertTrue(app.windows["Klapok Settings"].waitForExistence(timeout: 5))
 
-        app.buttons["settings.tab.image"].tap()
+        app.buttons["settings.tab.image"].click()
 
         XCTAssertTrue(element("settings.content.image").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.image"].value as? String, "selected")
@@ -60,7 +60,7 @@ final class SettingsUITests: XCTestCase {
     func testVideoSettings() throws {
         XCTAssertTrue(app.windows["Klapok Settings"].waitForExistence(timeout: 5))
 
-        app.buttons["settings.tab.video"].tap()
+        app.buttons["settings.tab.video"].click()
 
         XCTAssertTrue(element("settings.content.video").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.video"].value as? String, "selected")
@@ -69,7 +69,7 @@ final class SettingsUITests: XCTestCase {
     func testKeyboardShortcutsSettings() throws {
         XCTAssertTrue(app.windows["Klapok Settings"].waitForExistence(timeout: 5))
 
-        app.buttons["settings.tab.shortcuts"].tap()
+        app.buttons["settings.tab.shortcuts"].click()
 
         XCTAssertTrue(element("settings.content.shortcuts").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.shortcuts"].value as? String, "selected")

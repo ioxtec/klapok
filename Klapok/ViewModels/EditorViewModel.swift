@@ -19,6 +19,13 @@ import UniformTypeIdentifiers
         @Published var image: NSImage?
         @Published var isPresented: Bool = false
         @Published var isCapturing: Bool = false
+        @Published var errorMessage: String?
+        @Published var statusMessage: String?
+        private var imageSubscription: AnyCancellable?
+
+        init() {
+            imageSubscription = annotationManager.$editedImage.sink { [weak self] image in self?.image = image }
+        }
 
         // Editor properties
         @Published var enableRoundedCorners: Bool = false
@@ -49,6 +56,8 @@ import UniformTypeIdentifiers
             Logger.s("EditorViewModel: Showing editor with image size: \(image.size), pixel size: \(image.pixelSize)")
             annotationManager.resetForNewImage()
             self.image = image
+            annotationManager.editedImage = image
+            statusMessage = nil
             self.isPresented = true
             Logger.s("EditorViewModel: isPresented set to true")
         }
@@ -71,8 +80,11 @@ import UniformTypeIdentifiers
 
             if let savedURL = settings.saveScreenshot(compositeImage) {
                 Logger.s("EditorViewModel: Composite image saved to: \(savedURL.path)")
+                statusMessage = "Saved".localized
+                NSWorkspace.shared.activateFileViewerSelecting([savedURL])
             } else {
                 Logger.e("EditorViewModel: Failed to save composite image")
+                errorMessage = "Could not save the image. Choose another folder with Save As.".localized
             }
         }
 
@@ -88,6 +100,7 @@ import UniformTypeIdentifiers
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
             pasteboard.writeObjects([compositeImage])
+            statusMessage = "Copied to clipboard".localized
             Logger.s("EditorViewModel: Composite image copied to clipboard")
         }
 
@@ -103,13 +116,17 @@ import UniformTypeIdentifiers
             let savePanel = NSSavePanel()
             savePanel.allowedContentTypes = [.png, .jpeg]
             savePanel.nameFieldStringValue = settings.formattedFileName + ".png"
-            savePanel.title = "Zapisz zrzut ekranu jako..."
-            savePanel.message = "Wybierz lokalizację i nazwę pliku"
+            savePanel.title = "Save As...".localized
+            savePanel.message = "Choose a location and filename.".localized
             WindowPlacement.centerModalPanel(savePanel)
 
             if savePanel.runModal() == .OK, let url = savePanel.url {
                 if CaptureFileStore.writeScreenshot(compositeImage, to: url) {
                     Logger.s("EditorViewModel: Composite image saved as: \(url.path)")
+                    statusMessage = "Saved".localized
+                    NSWorkspace.shared.activateFileViewerSelecting([url])
+                } else {
+                    errorMessage = "Could not save the image. Choose another folder with Save As.".localized
                 }
             }
         }
@@ -167,7 +184,8 @@ import UniformTypeIdentifiers
                 annotations: annotationManager.annotations,
                 padding: backgroundPadding,
                 aspectRatio: selectedAspectRatio,
-                shadowIntensity: shadowIntensity
+                shadowIntensity: shadowIntensity,
+                cornerRadius: enableRoundedCorners ? cornerRadius : 0
             )
         }
     }

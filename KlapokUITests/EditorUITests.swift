@@ -14,6 +14,7 @@ final class EditorUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
+        app.launchArguments = ["-UITests", "-UITestOpenImageEditor", "-AppleLanguages", "(en)"]
         app.launch()
     }
     
@@ -24,19 +25,26 @@ final class EditorUITests: XCTestCase {
     // MARK: - Editor Display Tests
     
     func testEditorOpens() throws {
-        throw XCTSkip("Editor UI needs a launch argument or fixture image to open the editor deterministically.")
+        XCTAssertTrue(app.buttons["editor.crop"].waitForExistence(timeout: 5))
     }
     
     // MARK: - Save Tests
     
-    func testSaveButton() throws {
-        throw XCTSkip("Save UI needs a deterministic editor fixture image before it can be tested safely.")
+    func testCropSheetAppliesAndCloses() throws {
+        XCTAssertTrue(app.buttons["editor.crop"].waitForExistence(timeout: 5))
+        app.buttons["editor.crop"].click()
+        XCTAssertTrue(app.buttons["editor.applyCrop"].waitForExistence(timeout: 3))
+        app.buttons["editor.applyCrop"].click()
+        XCTAssertTrue(app.buttons["editor.crop"].waitForExistence(timeout: 3))
     }
     
     // MARK: - Settings Tests
     
-    func testBackgroundSettings() throws {
-        throw XCTSkip("Background UI needs a deterministic editor fixture image before it can be tested safely.")
+    func testEditorScreenshot() throws {
+        XCTAssertTrue(app.buttons["editor.crop"].waitForExistence(timeout: 5))
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 }
 

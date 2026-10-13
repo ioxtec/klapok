@@ -44,7 +44,9 @@ enum VideoExportService {
     static func exportEditedVideo(
         video: VideoRecording,
         ranges: [TimelineTimeRange],
-        settings: VideoExportSettings
+        settings: VideoExportSettings,
+        crop: CGRect = QuickEditGeometry.fullFrame,
+        overlays: [TimelineOverlayTrack] = []
     ) async throws -> URL {
         let asset = AVURLAsset(url: video.url)
         let exportAsset = try await editedExportAsset(
@@ -53,14 +55,12 @@ enum VideoExportService {
             includeAudio: settings.audioOption != .exclude
         )
         let targetSize = targetVideoSize(
-            from: video.size,
+            from: CGSize(width: video.size.width * crop.width, height: video.size.height * crop.height),
             scaling: settings.scaling,
             customScaleFactor: settings.customScaleFactor
         )
-        let videoComposition = try await makeVideoComposition(
-            for: exportAsset,
-            targetSize: targetSize
-        )
+        let videoComposition = try await VideoFrameRenderer.composition(asset: exportAsset, size: targetSize,
+            crop: crop, overlays: overlays)
         let appSettings = AppSettings.shared
         let sourceFrameRate = try await sourceFrameRate(for: exportAsset)
         let outputConfiguration = editedVideoOutputConfiguration(
@@ -90,29 +90,28 @@ enum VideoExportService {
     static func exportGIF(
         video: VideoRecording,
         ranges: [TimelineTimeRange],
-        settings: GIFExportSettings
+        settings: GIFExportSettings,
+        crop: CGRect = QuickEditGeometry.fullFrame,
+        overlays: [TimelineOverlayTrack] = []
     ) async throws -> URL {
         let asset = AVURLAsset(url: video.url)
-        let generator = AVAssetImageGenerator(asset: asset)
+        let editedAsset = try await editedExportAsset(from: asset, ranges: ranges, includeAudio: false)
+        let generator = AVAssetImageGenerator(asset: editedAsset)
         generator.appliesPreferredTrackTransform = true
         generator.requestedTimeToleranceBefore = .zero
         generator.requestedTimeToleranceAfter = .zero
 
-        let targetSize = gifTargetSize(for: video.size, settings: settings)
+        let targetSize = gifTargetSize(for: CGSize(width: video.size.width * crop.width,
+            height: video.size.height * crop.height), settings: settings)
+        generator.videoComposition = try await VideoFrameRenderer.composition(asset: editedAsset,
+            size: targetSize, crop: crop, overlays: overlays)
         generator.maximumSize = targetSize
 
         let duration = max(0.1, ranges.reduce(0) { $0 + $1.duration })
         let frameCount = max(1, Int(duration * Double(settings.frameRate)))
         let frameDuration = duration / Double(frameCount)
-        let frameTimes = (0..<frameCount).compactMap { index -> CMTime? in
-            guard let sourceSeconds = sourceTime(
-                forEditedOffset: Double(index) * frameDuration,
-                in: ranges
-            ) else {
-                return nil
-            }
-
-            return CMTime(seconds: sourceSeconds, preferredTimescale: 600)
+        let frameTimes = (0..<frameCount).map { index in
+            CMTime(seconds: Double(index) * frameDuration, preferredTimescale: 600)
         }
 
         let outputURL = uniqueOutputURL(
@@ -156,6 +155,17 @@ enum VideoExportService {
             "VideoExportService: GIF exported with \(generatedFrameCount) frames, \(settings.frameRate) fps, \(Int(targetSize.width))x\(Int(targetSize.height))px"
         )
         return outputURL
+    }
+
+    @MainActor
+    static func previewItem(video: VideoRecording, ranges: [TimelineTimeRange], crop: CGRect,
+                            overlays: [TimelineOverlayTrack]) async throws -> AVPlayerItem {
+        let asset = try await editedExportAsset(from: AVURLAsset(url: video.url), ranges: ranges, includeAudio: true)
+        let item = AVPlayerItem(asset: asset)
+        let size = targetVideoSize(from: CGSize(width: video.size.width * crop.width,
+            height: video.size.height * crop.height), scaling: .custom, customScaleFactor: 1)
+        item.videoComposition = try await VideoFrameRenderer.composition(asset: asset, size: size, crop: crop, overlays: overlays)
+        return item
     }
 
     private static func editedExportAsset(

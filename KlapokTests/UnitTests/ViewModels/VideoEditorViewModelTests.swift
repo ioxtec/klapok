@@ -1,158 +1,66 @@
-//
-//  VideoEditorViewModelTests.swift
-//  KlapokTests
-//
-
 import XCTest
 @testable import Klapok
-
-#if os(macOS)
 import AppKit
 
 @MainActor
 final class VideoEditorViewModelTests: XCTestCase {
-    private func makeRecording(duration: TimeInterval = 100) -> VideoRecording {
-        VideoRecording(
-            url: URL(fileURLWithPath: "/tmp/test-video.mov"),
-            duration: duration,
-            size: CGSize(width: 1920, height: 1080),
-            frameRate: 30
-        )
+    private func model() -> VideoEditorViewModel {
+        VideoEditorViewModel(video: VideoRecording(url: URL(fileURLWithPath: "/tmp/test-video.mov"),
+            duration: 10, size: CGSize(width: 1920, height: 1080), frameRate: 30))
     }
 
-    func testInitializationWithVideoSetsTrimEnd() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 42))
-
-        XCTAssertEqual(viewModel.trimStartTime, 0)
-        XCTAssertEqual(viewModel.trimEndTime, 42)
-        XCTAssertEqual(viewModel.trimmedDuration, 42)
-        XCTAssertEqual(viewModel.editedDuration, 42)
+    func testSplitDeleteUndoRedoPreservesSourceRanges() {
+        let vm = model()
+        XCTAssertFalse(vm.canResetTimeline)
+        vm.updateCurrentTime(to: 4); vm.splitAtPlayhead()
+        XCTAssertEqual(vm.clips.count, 2)
+        XCTAssertEqual(vm.clips[1].sourceRanges, [TimelineTimeRange(start: 4, end: 10)])
+        vm.removeSelectedClips(); XCTAssertEqual(vm.editedDuration, 4)
+        vm.undo(); XCTAssertEqual(vm.editedDuration, 10)
+        vm.redo(); XCTAssertEqual(vm.editedDuration, 4)
     }
 
-    func testLoadVideoResetsEditingState() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-        viewModel.updateTrimStart(from: 0.25)
-        viewModel.updateCutSelection(startPercentage: 0.4, endPercentage: 0.5)
-        viewModel.commitCutSelection()
-
-        viewModel.loadVideo(makeRecording(duration: 12))
-
-        XCTAssertEqual(viewModel.trimStartTime, 0)
-        XCTAssertEqual(viewModel.trimEndTime, 12)
-        XCTAssertEqual(viewModel.currentTime, 0)
-        XCTAssertTrue(viewModel.cutSegments.isEmpty)
-        XCTAssertNil(viewModel.timelineCutSelection)
-        XCTAssertTrue(viewModel.timelineThumbnails.isEmpty)
+    func testReorderAndMergeKeepsEditedSourceOrder() {
+        let vm = model()
+        vm.updateCurrentTime(to: 4); vm.splitAtPlayhead()
+        let first = vm.clips[0].id, second = vm.clips[1].id
+        vm.moveClip(second, before: first)
+        XCTAssertEqual(vm.clips.first?.sourceRanges.first?.start, 4)
+        vm.selectClip(first, extendSelection: true); vm.mergeSelectedClips()
+        XCTAssertEqual(vm.clips.count, 1)
+        XCTAssertEqual(vm.clips[0].sourceRanges, [TimelineTimeRange(start: 4, end: 10), TimelineTimeRange(start: 0, end: 4)])
     }
 
-    func testTrimPercentagesAndDuration() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateTrimStart(from: 0.2)
-        viewModel.updateTrimEnd(from: 0.8)
-
-        XCTAssertEqual(viewModel.trimStartTime, 20, accuracy: 0.001)
-        XCTAssertEqual(viewModel.trimEndTime, 80, accuracy: 0.001)
-        XCTAssertEqual(viewModel.trimmedDuration, 60, accuracy: 0.001)
-        XCTAssertEqual(viewModel.trimStartPercentage, 0.2, accuracy: 0.001)
-        XCTAssertEqual(viewModel.trimEndPercentage, 0.8, accuracy: 0.001)
+    func testTrimMovesAnnotationsToNewTimelineAndUndoRestores() {
+        let vm = model()
+        vm.updateCurrentTime(to: 3); vm.addOverlayTrack()
+        vm.updateCurrentTime(to: 2); vm.keepAfterPlayhead()
+        XCTAssertEqual(vm.editedDuration, 8)
+        XCTAssertEqual(vm.overlayTracks[0].start, 1)
+        XCTAssertEqual(vm.overlayTracks[0].end, 6)
+        vm.undo(); XCTAssertEqual(vm.overlayTracks[0].start, 3)
+        XCTAssertEqual(vm.editedDuration, 10)
     }
 
-    func testInvalidTrimUpdatesAreIgnored() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateTrimEnd(from: 0.001)
-        viewModel.updateTrimStart(from: 1.0)
-
-        XCTAssertEqual(viewModel.trimStartTime, 0)
-        XCTAssertEqual(viewModel.trimEndTime, 100)
+    func testCropAndAnnotationHistory() {
+        let vm = model()
+        vm.applyCrop(CGRect(x: 0.2, y: 0.1, width: 0.5, height: 0.5)); vm.addOverlayTrack()
+        var track = vm.overlayTracks[0]; track.text = "Important"; track.kind = .callout
+        vm.updateOverlay(track); XCTAssertEqual(vm.overlayTracks[0].kind, .callout)
+        vm.undo(); XCTAssertEqual(vm.overlayTracks[0].kind, .text)
+        vm.undo(); XCTAssertTrue(vm.overlayTracks.isEmpty)
+        vm.undo(); XCTAssertEqual(vm.cropRect, QuickEditGeometry.fullFrame)
     }
 
-    func testCurrentTimeIsClampedToTrimRange() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-        viewModel.updateTrimStart(from: 0.2)
-        viewModel.updateTrimEnd(from: 0.8)
-
-        viewModel.updateCurrentTime(from: 0.1)
-        XCTAssertEqual(viewModel.currentTime, 20, accuracy: 0.001)
-        XCTAssertEqual(viewModel.currentTimePercentage, 0.2, accuracy: 0.001)
-
-        viewModel.updateCurrentTime(from: 0.9)
-        XCTAssertEqual(viewModel.currentTime, 80, accuracy: 0.001)
-        XCTAssertEqual(viewModel.currentTimePercentage, 0.8, accuracy: 0.001)
+    func testTimeIsClampedToEditedDurationAndLastClipCannotBeRemoved() {
+        let vm = model()
+        vm.updateCurrentTime(to: 2); vm.keepBeforePlayhead(); vm.updateCurrentTime(to: 100)
+        XCTAssertEqual(vm.currentTime, 2); XCTAssertFalse(vm.canRemove)
+        vm.removeSelectedClips(); XCTAssertEqual(vm.editedDuration, 2)
     }
 
-    func testCutSelectionNormalizesDirectionAndCommits() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateCutSelection(startPercentage: 0.4, endPercentage: 0.2)
-        viewModel.commitCutSelection()
-
-        XCTAssertEqual(viewModel.cutSegments.count, 1)
-        XCTAssertEqual(viewModel.cutSegments[0].startTime, 20, accuracy: 0.001)
-        XCTAssertEqual(viewModel.cutSegments[0].endTime, 40, accuracy: 0.001)
-        XCTAssertEqual(viewModel.editedDuration, 80, accuracy: 0.001)
-        XCTAssertNil(viewModel.timelineCutSelection)
-    }
-
-    func testTinyCutSelectionIsDiscarded() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateCutSelection(startPercentage: 0.2, endPercentage: 0.2001)
-
-        XCTAssertNil(viewModel.timelineCutSelection)
-        XCTAssertTrue(viewModel.cutSegments.isEmpty)
-    }
-
-    func testOverlappingCutSelectionsAreMerged() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateCutSelection(startPercentage: 0.2, endPercentage: 0.4)
-        viewModel.commitCutSelection()
-        viewModel.updateCutSelection(startPercentage: 0.35, endPercentage: 0.5)
-        viewModel.commitCutSelection()
-
-        XCTAssertEqual(viewModel.cutSegments.count, 1)
-        XCTAssertEqual(viewModel.cutSegments[0].startTime, 20, accuracy: 0.001)
-        XCTAssertEqual(viewModel.cutSegments[0].endTime, 50, accuracy: 0.001)
-        XCTAssertEqual(viewModel.editedDuration, 70, accuracy: 0.001)
-    }
-
-    func testCutCoveringEntireTrimRangeIsRejected() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-
-        viewModel.updateCutSelection(startPercentage: 0, endPercentage: 1)
-        viewModel.commitCutSelection()
-
-        XCTAssertTrue(viewModel.cutSegments.isEmpty)
-        XCTAssertNil(viewModel.timelineCutSelection)
-        XCTAssertEqual(viewModel.editedDuration, 100, accuracy: 0.001)
-    }
-
-    func testClearCutsRemovesSelectionAndCommittedCuts() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-        viewModel.updateCutSelection(startPercentage: 0.2, endPercentage: 0.3)
-        viewModel.commitCutSelection()
-        viewModel.updateCutSelection(startPercentage: 0.4, endPercentage: 0.5)
-
-        viewModel.clearCuts()
-
-        XCTAssertTrue(viewModel.cutSegments.isEmpty)
-        XCTAssertNil(viewModel.timelineCutSelection)
-        XCTAssertEqual(viewModel.editedDuration, 100, accuracy: 0.001)
-    }
-
-    func testRemoveCutRestoresEditedDuration() {
-        let viewModel = VideoEditorViewModel(video: makeRecording(duration: 100))
-        viewModel.updateCutSelection(startPercentage: 0.2, endPercentage: 0.3)
-        viewModel.commitCutSelection()
-        let cut = try! XCTUnwrap(viewModel.cutSegments.first)
-
-        viewModel.removeCut(cut)
-
-        XCTAssertTrue(viewModel.cutSegments.isEmpty)
-        XCTAssertEqual(viewModel.editedDuration, 100, accuracy: 0.001)
+    func testNoAudioDoesNotInventWaveform() {
+        let vm = model()
+        XCTAssertEqual(vm.audioLevels(for: vm.clips[0], sampleCount: 12), Array(repeating: 0, count: 12))
     }
 }
-
-#endif

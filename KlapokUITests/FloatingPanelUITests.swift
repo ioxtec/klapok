@@ -51,11 +51,11 @@ final class FloatingPanelUITests: XCTestCase {
 
         XCTAssertEqual(fullScreen.value as? String, "selected")
 
-        area.tap()
+        area.click()
         XCTAssertEqual(area.value as? String, "selected")
         XCTAssertEqual(fullScreen.value as? String, "unselected")
 
-        window.tap()
+        window.click()
         XCTAssertEqual(window.value as? String, "selected")
         XCTAssertEqual(area.value as? String, "unselected")
     }
@@ -79,11 +79,11 @@ final class FloatingPanelUITests: XCTestCase {
         XCTAssertEqual(imageMode.value as? String, "selected")
         XCTAssertEqual(videoMode.value as? String, "unselected")
 
-        videoMode.tap()
+        videoMode.click()
         XCTAssertEqual(videoMode.value as? String, "selected")
         XCTAssertEqual(imageMode.value as? String, "unselected")
 
-        imageMode.tap()
+        imageMode.click()
         XCTAssertEqual(imageMode.value as? String, "selected")
         XCTAssertEqual(videoMode.value as? String, "unselected")
     }

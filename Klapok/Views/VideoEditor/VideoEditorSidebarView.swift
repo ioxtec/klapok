@@ -8,6 +8,7 @@ import SwiftUI
 #if os(macOS)
 
 struct VideoEditorSidebarView: View {
+    @ObservedObject var viewModel: VideoEditorViewModel
     let video: VideoRecording?
     @ObservedObject var settings: AppSettings
     @ObservedObject var profileManager: ProfileManager
@@ -22,6 +23,10 @@ struct VideoEditorSidebarView: View {
 
     private var sidebarContent: some View {
         SidebarScrollContainer(leadingInset: 2, trailingInset: 4) {
+            SidebarDisclosureSection(id: "video.annotations", title: "Crop and annotate".localized,
+                systemImage: "pencil.tip.crop.circle") {
+                VideoAnnotationInspector(viewModel: viewModel)
+            }
             SidebarDisclosureSection(
                 id: "video.profiles",
                 title: "Profiles".localized,

@@ -82,6 +82,15 @@ import SwiftUI
                 openSettingsWindow()
             }
 
+            if arguments.contains("-UITestOpenImageEditor") {
+                let image = NSImage(size: CGSize(width: 800, height: 500))
+                image.lockFocus()
+                NSColor.systemBlue.setFill()
+                NSRect(x: 0, y: 0, width: 800, height: 500).fill()
+                image.unlockFocus()
+                editorViewModel.show(image: image)
+            }
+
             if arguments.contains("-UITestShowFloatingPanel") {
                 hideEditorWindowsForNewCapture()
                 let mode: CaptureMode = arguments.contains("-UITestShowVideoPanel") ? .video : .image

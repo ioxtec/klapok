@@ -78,6 +78,7 @@ struct VideoSettingsView: View {
                         options: [
                             ("60", "60 FPS"),
                             ("30", "30 FPS"),
+                            ("25", "25 FPS"),
                             ("24", "24 FPS")
                         ]
                     )

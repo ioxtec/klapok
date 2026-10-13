@@ -216,7 +216,10 @@ struct VideoTimelineView: View {
             TimelineOverlayLane(
                 title: row.title,
                 width: contentWidth,
-                height: row.height
+                height: row.height,
+                start: row.overlay?.start ?? 0,
+                end: row.overlay?.end ?? 0,
+                pixelsPerSecond: pixelsPerSecond
             )
         case .video:
             TimelineClipLane(
@@ -259,7 +262,8 @@ struct VideoTimelineView: View {
                 title: $0.title,
                 subtitle: $0.kind == .text ? "Text / arrows" : "Callouts",
                 kind: .overlay,
-                height: overlayTrackHeight
+                height: overlayTrackHeight,
+                overlay: $0
             )
         }
 
@@ -497,6 +501,7 @@ private struct TimelineRowKind: Identifiable {
     let subtitle: String
     let kind: Kind
     let height: CGFloat
+    var overlay: TimelineOverlayTrack? = nil
 }
 
 private struct TimelineSidebarRow: View {
@@ -716,6 +721,9 @@ private struct TimelineOverlayLane: View {
     let title: String
     let width: CGFloat
     let height: CGFloat
+    let start: Double
+    let end: Double
+    let pixelsPerSecond: CGFloat
 
     var body: some View {
         RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -728,12 +736,15 @@ private struct TimelineOverlayLane: View {
             }
             .overlay(alignment: .leading) {
                 HStack(spacing: 8) {
-                    Image(systemName: "plus.circle")
-                    Text("\(title) ready for labels, arrows, or callouts")
+                    Image(systemName: "pencil.tip")
+                    Text(title).lineLimit(1)
                 }
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 10)
+                .frame(width: max(24, CGFloat(max(0, end - start)) * pixelsPerSecond), height: height)
+                .background(Color.accentColor.opacity(0.3), in: RoundedRectangle(cornerRadius: 8))
+                .offset(x: CGFloat(start) * pixelsPerSecond)
             }
     }
 }
@@ -843,11 +854,6 @@ private struct TimelineVideoClipCell: View {
             }
             .frame(height: max(36, height - 16))
 
-            TimelineMiniWaveform(levels: waveformLevels)
-                .frame(height: 11)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color(red: 0.04, green: 0.6, blue: 0.53))
         }
         .frame(width: width, height: height)
         .background(
@@ -894,13 +900,6 @@ private struct TimelineVideoClipCell: View {
         }
     }
 
-    private var waveformLevels: [CGFloat] {
-        let count = max(14, Int(width / 10))
-        return (0..<count).map { index in
-            let value = 0.16 + abs(sin(Double(index) * 0.35)) * 0.52
-            return CGFloat(value)
-        }
-    }
 }
 
 private struct TimelineAudioLane: View {

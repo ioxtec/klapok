@@ -13,6 +13,7 @@ import SwiftUI
         @StateObject private var settings = AppSettings.shared
         @StateObject private var profileManager = ProfileManager.shared
         @ObservedObject private var backgroundManager = BackgroundManager.shared
+        @State private var isCropping = false
 
         var body: some View {
             NavigationSplitView {
@@ -27,6 +28,11 @@ import SwiftUI
                 VStack(spacing: 0) {
                     // Top toolbar
                     HStack(spacing: 0) {
+                        Button("Crop".localized, systemImage: "crop") {
+                            isCropping = true
+                        }
+                            .accessibilityIdentifier("editor.crop")
+                            .padding(.leading, 12)
                         // Drawing tools on the left
                         AnnotationToolPickerView(annotationManager: viewModel.annotationManager)
                         .padding(.leading, 12)
@@ -39,6 +45,9 @@ import SwiftUI
                         AnnotationToolbarPropertiesView(annotationManager: viewModel.annotationManager)
                         
                         Spacer()
+                        if let message = viewModel.statusMessage {
+                            Text(message).font(.caption).foregroundStyle(.secondary).padding(.trailing, 12)
+                        }
                     }
                     .frame(height: 48)
                     .background(Color(NSColor.controlBackgroundColor))
@@ -195,6 +204,21 @@ import SwiftUI
                 )
             }
             .frame(minWidth: 1180, minHeight: 720)
+            .overlay {
+                if isCropping {
+                    ZStack {
+                        Color.black.opacity(0.25).ignoresSafeArea().contentShape(Rectangle())
+                        QuickCropView(image: viewModel.image, sourceSize: viewModel.image?.pixelSize ?? .zero,
+                            onApply: viewModel.annotationManager.cropImage, onClose: { isCropping = false })
+                            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                            .shadow(radius: 16)
+                    }
+                }
+            }
+            .alert("Could not complete the operation".localized, isPresented: Binding(
+                get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
+                Button("OK", role: .cancel) { viewModel.errorMessage = nil }
+            } message: { Text(viewModel.errorMessage ?? "") }
         }
 
         // Background color options
@@ -309,6 +333,7 @@ import SwiftUI
             .rectangle,
             .circle,
             .line,
+            .highlight,
             .freeDraw,
         ]
 

@@ -8,6 +8,7 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 import AVFoundation
+import Combine
 
 struct TimelineThumbnail: Identifiable, Equatable {
     let id = UUID()
@@ -61,12 +62,21 @@ struct VideoTimelineClip: Identifiable, Equatable {
 enum TimelineOverlayTrackKind: String, Equatable, CaseIterable {
     case text
     case callout
+    case highlight
 }
 
 struct TimelineOverlayTrack: Identifiable, Equatable {
     let id: UUID
     var title: String
     var kind: TimelineOverlayTrackKind
+    var text = "Note"
+    var start: TimeInterval = 0
+    var end: TimeInterval = 5
+    var x: Double = 0.15
+    var y: Double = 0.15
+    var width: Double = 0.35
+    var height: Double = 0.18
+    var color: ColorData = ColorData(color: .red)
 
     init(id: UUID = UUID(), title: String, kind: TimelineOverlayTrackKind) {
         self.id = id
@@ -80,6 +90,7 @@ private struct VideoTimelineHistoryState: Equatable {
     var selectedClipIDs: Set<UUID>
     var overlayTracks: [TimelineOverlayTrack]
     var currentTime: TimeInterval
+    var cropRect: CGRect
 }
 
 @MainActor
@@ -96,6 +107,17 @@ final class VideoEditorViewModel: ObservableObject {
     @Published var timelineSidebarWidth: CGFloat = 178
     @Published var draggedTimelineClipID: UUID?
     @Published var timelineSidebarResizeAnchor: CGFloat = 178
+    @Published var cropRect = QuickEditGeometry.fullFrame
+    @Published var previewItem: AVPlayerItem?
+    @Published var errorMessage: String?
+    @Published var exportedURL: URL?
+    @Published var isPreparingPreview = false
+    @Published var audioSamples: [Float] = []
+    @Published var placingOverlayID: UUID?
+    @Published var isCropping = false
+
+    private var previewTask: Task<Void, Never>?
+    private var subscriptions = Set<AnyCancellable>()
 
     private var player: AVPlayer?
     private var timeObserver: Any?
@@ -109,6 +131,10 @@ final class VideoEditorViewModel: ObservableObject {
     private let maximumHistoryDepth = 80
 
     init(video: VideoRecording? = nil) {
+        Publishers.CombineLatest3($clips, $overlayTracks, $cropRect)
+            .dropFirst().debounce(for: .milliseconds(150), scheduler: RunLoop.main)
+            .sink { [weak self] _ in self?.rebuildPreview() }
+            .store(in: &subscriptions)
         if let video {
             loadVideo(video)
         } else {
@@ -159,7 +185,8 @@ final class VideoEditorViewModel: ObservableObject {
 
     var canResetTimeline: Bool {
         guard let video else { return false }
-        return clips != [makeInitialClip(for: video)] || !overlayTracks.isEmpty
+        return clips.count != 1 || clips.first?.sourceRanges != [TimelineTimeRange(start: 0, end: video.duration)]
+            || !overlayTracks.isEmpty || cropRect != QuickEditGeometry.fullFrame
     }
 
     var canZoomIn: Bool {
@@ -198,12 +225,21 @@ final class VideoEditorViewModel: ObservableObject {
         self.clips = [clip]
         self.selectedClipIDs = [clip.id]
         self.overlayTracks = []
+        self.cropRect = QuickEditGeometry.fullFrame
+        self.exportedURL = nil
+        self.audioSamples = []
         self.zoomScale = 1
         self.timelineSidebarWidth = 178
         self.draggedTimelineClipID = nil
         self.timelineSidebarResizeAnchor = 178
         self.undoStack.removeAll()
         self.redoStack.removeAll()
+        rebuildPreview()
+        Task { [weak self] in
+            let samples = await VideoAudioWaveform.samples(from: video.url)
+            guard self?.video?.url == video.url else { return }
+            self?.audioSamples = samples
+        }
     }
 
     func updateCurrentTime(from percentage: Double) {
@@ -291,6 +327,7 @@ final class VideoEditorViewModel: ObservableObject {
         let clip = makeInitialClip(for: video)
         clips = [clip]
         overlayTracks = []
+        cropRect = QuickEditGeometry.fullFrame
         selectedClipIDs = [clip.id]
         currentTime = 0
     }
@@ -298,13 +335,56 @@ final class VideoEditorViewModel: ObservableObject {
     func addOverlayTrack() {
         recordUndoSnapshot()
 
-        let title = "Layer \(overlayTracks.count + 1)"
-        overlayTracks.append(
-            TimelineOverlayTrack(
-                title: title,
-                kind: overlayTracks.isEmpty ? .text : .callout
-            )
-        )
+        var track = TimelineOverlayTrack(title: "Note".localized, kind: .text)
+        track.text = "Note".localized
+        track.start = min(currentTime, max(0, editedDuration - 0.1))
+        track.end = min(editedDuration, track.start + 5)
+        overlayTracks.append(track)
+    }
+
+    func updateOverlay(_ track: TimelineOverlayTrack) {
+        guard let index = overlayTracks.firstIndex(where: { $0.id == track.id }) else { return }
+        recordUndoSnapshot()
+        var normalized = track
+        normalized.start = max(0, min(track.start, max(0, editedDuration - 0.1)))
+        normalized.end = max(normalized.start + 0.1, min(track.end, editedDuration))
+        normalized.x = max(0, min(0.95, track.x))
+        normalized.y = max(0, min(0.95, track.y))
+        normalized.title = track.text.isEmpty ? track.kind.rawValue.localized : track.text
+        overlayTracks[index] = normalized
+    }
+
+    func removeOverlay(_ id: UUID) {
+        recordUndoSnapshot()
+        overlayTracks.removeAll { $0.id == id }
+    }
+
+    func applyCrop(_ rect: CGRect) {
+        recordUndoSnapshot()
+        cropRect = QuickEditGeometry.normalizedCrop(rect)
+    }
+
+    func rebuildPreview() {
+        previewTask?.cancel()
+        guard let video else { return }
+        let ranges = editedSourceRanges()
+        let overlays = overlayTracks
+        let crop = cropRect
+        exportedURL = nil
+        isPreparingPreview = true
+        previewTask = Task { [weak self] in
+            do {
+                let item = try await VideoExportService.previewItem(video: video, ranges: ranges,
+                    crop: crop, overlays: overlays)
+                guard !Task.isCancelled, let self else { return }
+                self.previewItem = item
+                self.isPreparingPreview = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                self?.isPreparingPreview = false
+                self?.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func moveClip(_ clipID: UUID, before destinationID: UUID?) {
@@ -428,14 +508,13 @@ final class VideoEditorViewModel: ObservableObject {
         let count = max(12, sampleCount)
         guard clip.duration > 0 else { return Array(repeating: 0.2, count: count) }
 
+        guard !audioSamples.isEmpty, sourceDuration > 0 else { return Array(repeating: 0, count: count) }
         return (0..<count).map { index in
             let progress = Double(index) / Double(max(1, count - 1))
             let localOffset = clip.duration * progress
             let sourceTime = clip.sourceTime(forLocalOffset: localOffset) ?? localOffset
-            let primary = abs(sin(sourceTime * 4.1))
-            let secondary = abs(cos(sourceTime * 1.7 + Double(index) * 0.11))
-            let envelope = 0.18 + primary * 0.45 + secondary * 0.24
-            return CGFloat(min(1, envelope))
+            let sampleIndex = min(audioSamples.count - 1, max(0, Int(sourceTime / sourceDuration * Double(audioSamples.count))))
+            return CGFloat(audioSamples[sampleIndex])
         }
     }
 
@@ -463,13 +542,16 @@ final class VideoEditorViewModel: ObservableObject {
             let outputURL = try await VideoExportService.exportEditedVideo(
                 video: video,
                 ranges: editedSourceRanges(),
-                settings: settings
+                settings: settings,
+                crop: cropRect, overlays: overlayTracks
             )
 
             Logger.s("VideoEditorViewModel: Edited video exported to \(outputURL.path)")
-            NSWorkspace.shared.open(outputURL)
+            exportedURL = outputURL
+            NSWorkspace.shared.activateFileViewerSelecting([outputURL])
         } catch {
             Logger.e("VideoEditorViewModel: Export error: \(error)")
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -483,23 +565,62 @@ final class VideoEditorViewModel: ObservableObject {
             let outputURL = try await VideoExportService.exportGIF(
                 video: video,
                 ranges: editedSourceRanges(),
-                settings: settings
+                settings: settings,
+                crop: cropRect, overlays: overlayTracks
             )
 
             Logger.s("VideoEditorViewModel: GIF exported to \(outputURL.path)")
-            NSWorkspace.shared.open(outputURL)
+            exportedURL = outputURL
+            NSWorkspace.shared.activateFileViewerSelecting([outputURL])
         } catch {
             Logger.e("VideoEditorViewModel: GIF export error: \(error)")
+            errorMessage = error.localizedDescription
         }
     }
 
     func shareVideo() {
         guard let video else { return }
 
-        let picker = NSSharingServicePicker(items: [video.url])
+        let picker = NSSharingServicePicker(items: [exportedURL ?? video.url])
         if let window = NSApplication.shared.keyWindow, let contentView = window.contentView {
             picker.show(relativeTo: .zero, of: contentView, preferredEdge: .minY)
         }
+    }
+
+    func keepBeforePlayhead() {
+        trimTimeline(keep: TimelineTimeRange(start: 0, end: currentTime))
+    }
+
+    func keepAfterPlayhead() {
+        trimTimeline(keep: TimelineTimeRange(start: currentTime, end: editedDuration))
+    }
+
+    private func trimTimeline(keep: TimelineTimeRange) {
+        guard keep.duration >= minimumClipDuration else { return }
+        recordUndoSnapshot()
+        var result: [VideoTimelineClip] = []
+        var cursor: Double = 0
+        for clip in clips {
+            var ranges: [TimelineTimeRange] = []
+            for source in clip.sourceRanges {
+                let start = max(cursor, keep.start), end = min(cursor + source.duration, keep.end)
+                if end - start >= minimumClipDuration {
+                    ranges.append(TimelineTimeRange(start: source.start + start - cursor, end: source.start + end - cursor))
+                }
+                cursor += source.duration
+            }
+            if !ranges.isEmpty { result.append(VideoTimelineClip(name: clip.name, sourceRanges: ranges)) }
+        }
+        guard !result.isEmpty else { return }
+        clips = result
+        overlayTracks = overlayTracks.compactMap { track in
+            let start = max(track.start, keep.start), end = min(track.end, keep.end)
+            guard end > start else { return nil }
+            var updated = track; updated.start = start - keep.start; updated.end = end - keep.start
+            return updated
+        }
+        selectedClipIDs = [result[0].id]
+        currentTime = 0
     }
 
     func openInFinder() {
@@ -549,9 +670,9 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     private func seekToCurrentTime() {
-        guard let player, let sourceTime = sourceTime(forEditedTime: currentTime) else { return }
+        guard let player else { return }
 
-        let time = CMTime(seconds: sourceTime, preferredTimescale: 1000)
+        let time = CMTime(seconds: currentTime, preferredTimescale: 1000)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
     }
 
@@ -570,7 +691,7 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     private func syncCurrentTimeFromPlayer(_ sourceTime: TimeInterval) {
-        currentTime = clampedEditedTime(editedTime(forSourceTime: sourceTime))
+        currentTime = clampedEditedTime(sourceTime)
     }
 
     private func sourceTime(forEditedTime editedTime: TimeInterval) -> TimeInterval? {
@@ -724,7 +845,8 @@ final class VideoEditorViewModel: ObservableObject {
             clips: clips,
             selectedClipIDs: selectedClipIDs,
             overlayTracks: overlayTracks,
-            currentTime: currentTime
+            currentTime: currentTime,
+            cropRect: cropRect
         )
     }
 
@@ -733,6 +855,7 @@ final class VideoEditorViewModel: ObservableObject {
         selectedClipIDs = historyState.selectedClipIDs
         overlayTracks = historyState.overlayTracks
         currentTime = historyState.currentTime
+        cropRect = historyState.cropRect
         clampCurrentTimeToEditedDuration(seek: true)
     }
 
