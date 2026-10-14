@@ -19,19 +19,17 @@ struct VideoEditorSidebarView: View {
 
     var body: some View {
         sidebarContent
+            .environment(\.compactEditorSidebar, true)
     }
 
     private var sidebarContent: some View {
         SidebarScrollContainer(leadingInset: 2, trailingInset: 4) {
-            SidebarDisclosureSection(id: "video.annotations", title: "Crop and annotate".localized,
-                systemImage: "pencil.tip.crop.circle") {
-                VideoAnnotationInspector(viewModel: viewModel)
-            }
             SidebarDisclosureSection(
                 id: "video.profiles",
                 title: "Profiles".localized,
                 systemImage: "slider.horizontal.3",
-                subtitle: "Presets for new recordings: size, frame rate, audio, cursor, and countdown.".localized
+                subtitle: "Presets for new recordings: size, frame rate, audio, cursor, and countdown.".localized,
+                defaultExpanded: false
             ) {
                 profileControl
             }
@@ -43,17 +41,12 @@ struct VideoEditorSidebarView: View {
                 subtitle: "Source file, duration, and capture details.".localized
             ) {
                 if let video {
-                    VStack(alignment: .leading, spacing: 9) {
+                    VStack(alignment: .leading, spacing: 2) {
                         SidebarValueRow(title: "File".localized, value: video.url.lastPathComponent, systemImage: "doc")
-                        SidebarDivider()
                         SidebarValueRow(title: "Duration".localized, value: formatDuration(video.duration), systemImage: "clock")
-                        SidebarDivider()
                         SidebarValueRow(title: "Size".localized, value: formatFileSize(video.url), systemImage: "internaldrive")
-                        SidebarDivider()
                         SidebarValueRow(title: "Created".localized, value: formatDate(video.url), systemImage: "calendar")
-                        SidebarDivider()
                         SidebarValueRow(title: "Frame rate".localized, value: "\(Int(video.frameRate)) FPS", systemImage: "speedometer")
-                        SidebarDivider()
                         SidebarValueRow(
                             title: "Resolution".localized,
                             value: "\(Int(video.size.width)) x \(Int(video.size.height))",
@@ -144,7 +137,7 @@ private struct VideoSidebarHint: View {
 
     var body: some View {
         Text(text)
-            .font(SidebarStyle.bodyFont)
+            .font(.system(size: 13, weight: .regular))
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
     }

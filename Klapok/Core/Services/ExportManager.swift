@@ -15,23 +15,28 @@ class ExportManager: ObservableObject {
     @Published var settings = ExportSettings()
     
     private let documentsPath: URL
+    private let persistsSettings: Bool
     
     private init() {
+        self.persistsSettings = true
         self.documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         loadSettings()
     }
     
     // Public initializer for previews
-    init(forPreview: Bool) {
+    init(forPreview: Bool, preserveVideoDimensions: Bool = false) {
+        self.persistsSettings = !forPreview
         self.documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         if !forPreview {
             loadSettings()
         }
+        if preserveVideoDimensions { resetVideoScalingForNewEditor() }
     }
     
     // MARK: - Persistence
     
     func saveSettings() {
+        guard persistsSettings else { return }
         let url = documentsPath.appendingPathComponent("export_settings.json")
         do {
             let data = try JSONEncoder().encode(settings)
@@ -60,6 +65,11 @@ class ExportManager: ObservableObject {
     }
     
     // MARK: - Video Settings
+
+    func resetVideoScalingForNewEditor() {
+        settings.videoSettings.scaling = .original
+        settings.videoSettings.customScaleFactor = 1
+    }
     
     func updateVideoQuality(_ quality: VideoQuality) {
         settings.videoSettings.quality = quality

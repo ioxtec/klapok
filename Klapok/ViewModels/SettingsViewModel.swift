@@ -87,7 +87,7 @@ import Foundation
             panel.canChooseDirectories = true
             panel.canCreateDirectories = true
             panel.allowsMultipleSelection = false
-            panel.title = "Wybierz folder do zapisywania zrzutów"
+            panel.title = String(localized: "Choose a folder for screenshots")
             panel.directoryURL = saveDirectory
             WindowPlacement.centerModalPanel(panel)
 

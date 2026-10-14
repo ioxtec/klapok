@@ -1,421 +1,44 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Place on preview" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Place on preview"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Umieść na podglądzie"
-          }
-        }
-      }
+    "Select a window to capture" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz okno do zrzutu" } } }
     },
-    "Click to place text, or drag to draw an arrow or highlight." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Click to place text, or drag to draw an arrow or highlight."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kliknij, aby umieścić tekst, lub przeciągnij, aby narysować strzałkę albo wyróżnienie."
-          }
-        }
-      }
+    "Application" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Aplikacja" } } }
     },
-    "Crop" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Crop"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kadruj"
-          }
-        }
-      }
+    "Window title" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Tytuł okna" } } }
     },
-    "Drag to select the area to keep." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Drag to select the area to keep."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Przeciągnij, aby zaznaczyć obszar do zachowania."
-          }
-        }
-      }
+    "Choose a window and click Select, or double-click it." : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz okno z listy i kliknij Wybierz lub kliknij dwukrotnie na okno." } } }
     },
-    "Apply crop" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Apply crop"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zastosuj kadr"
-          }
-        }
-      }
+    "Select" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz" } } }
     },
-    "Add annotation" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add annotation"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dodaj adnotację"
-          }
-        }
-      }
+    "Untitled" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Bez tytułu" } } }
     },
-    "Annotations use the edited timeline. Position is relative to the cropped frame." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Annotations use the edited timeline. Position is relative to the cropped frame."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Adnotacje dotyczą zmontowanego filmu. Pozycja jest liczona względem wykadrowanego obrazu."
-          }
-        }
-      }
+    "Choose a folder for screenshots" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Wybierz folder do zapisywania zrzutów" } } }
     },
-    "Crop and annotate" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Crop and annotate"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kadr i adnotacje"
-          }
-        }
-      }
+    "Capture full screen" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zrób zrzut całego ekranu" } } }
     },
-    "Type" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Type"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Typ"
-          }
-        }
-      }
+    "Capture screen area" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zrób zrzut fragmentu ekranu" } } }
     },
-    "Highlight" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Highlight"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wyróżnienie"
-          }
-        }
-      }
+    "Capture application window" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Zrób zrzut okna aplikacji" } } }
     },
-    "Annotation text" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Annotation text"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tekst adnotacji"
-          }
-        }
-      }
+    "Record full screen" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Nagraj cały ekran" } } }
     },
-    "Horizontal" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Horizontal"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Poziomo"
-          }
-        }
-      }
+    "Record screen area" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Nagraj fragment ekranu" } } }
     },
-    "Vertical" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vertical"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Pionowo"
-          }
-        }
-      }
-    },
-    "Width" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Width"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Szerokość"
-          }
-        }
-      }
-    },
-    "Height" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Height"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wysokość"
-          }
-        }
-      }
-    },
-    "Start" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Start"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Początek"
-          }
-        }
-      }
-    },
-    "End" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "End"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koniec"
-          }
-        }
-      }
-    },
-    "Note" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Note"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Notatka"
-          }
-        }
-      }
-    },
-    "Could not complete the operation" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not complete the operation"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nie udało się wykonać operacji"
-          }
-        }
-      }
-    },
-    "Could not save the image. Choose another folder with Save As." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Could not save the image. Choose another folder with Save As."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nie udało się zapisać obrazu. Wybierz inny folder przez Zapisz jako."
-          }
-        }
-      }
-    },
-    "Choose a location and filename." : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Choose a location and filename."
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Wybierz lokalizację i nazwę pliku."
-          }
-        }
-      }
-    },
-    "Saved" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saved"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zapisano"
-          }
-        }
-      }
-    },
-    "Copied to clipboard" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copied to clipboard"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skopiowano do schowka"
-          }
-        }
-      }
-    },
-    "Keep before playhead" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep before playhead"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zachowaj fragment przed znacznikiem"
-          }
-        }
-      }
-    },
-    "Keep after playhead" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keep after playhead"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Zachowaj fragment za znacznikiem"
-          }
-        }
-      }
-    },
-    "Trim" : {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Trim"
-          }
-        },
-        "pl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Przytnij"
-          }
-        }
-      }
+    "Record application window" : {
+      "localizations" : { "pl" : { "stringUnit" : { "state" : "translated", "value" : "Nagraj okno aplikacji" } } }
     },
     "" : {
 
@@ -436,8 +59,15 @@
     "%@ (Space)" : {
 
     },
-    "%@ ready for labels, arrows, or callouts" : {
-
+    "%@ / %@" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "%1$@ / %2$@"
+          }
+        }
+      }
     },
     "%@, %@" : {
       "comment" : "A tooltip that describes the keyboard shortcut. The first argument is the title of the keyboard shortcut. The second argument is the keyboard shortcut.",
@@ -457,6 +87,9 @@
     "%lld FPS" : {
 
     },
+    "%lld pt" : {
+
+    },
     "%lld px" : {
 
     },
@@ -469,15 +102,34 @@
     "%lldpx" : {
 
     },
-    "Active range" : {
+    "1:1" : {
+
+    },
+    "4:3" : {
+
+    },
+    "16:9" : {
 
     },
     "Add" : {
       "comment" : "A button that adds a new color stop to a gradient.",
       "isCommentAutoGenerated" : true
     },
-    "Add a new annotation layer" : {
-
+    "Add annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Add annotation"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj adnotację"
+          }
+        }
+      }
     },
     "Add New %@ Profile" : {
 
@@ -503,8 +155,41 @@
         }
       }
     },
+    "Annotation text" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annotation text"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tekst adnotacji"
+          }
+        }
+      }
+    },
     "Annotations" : {
 
+    },
+    "Annotations use the edited timeline. Position is relative to the cropped frame." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annotations use the edited timeline. Position is relative to the cropped frame."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adnotacje dotyczą zmontowanego filmu. Pozycja jest liczona względem wykadrowanego obrazu."
+          }
+        }
+      }
     },
     "app_behavior_description" : {
       "extractionState" : "manual",
@@ -565,6 +250,22 @@
     },
     "Apply coordinates" : {
 
+    },
+    "Apply crop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apply crop"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zastosuj kadr"
+          }
+        }
+      }
     },
     "Are you sure you want to delete the profile '%@'? This action cannot be undone." : {
 
@@ -737,6 +438,9 @@
           }
         }
       }
+    },
+    "available" : {
+
     },
     "Background" : {
 
@@ -1030,6 +734,22 @@
         }
       }
     },
+    "Choose a location and filename." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choose a location and filename."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz lokalizację i nazwę pliku."
+          }
+        }
+      }
+    },
     "Choose how many seconds to wait before recording begins." : {
       "localizations" : {
         "pl" : {
@@ -1063,6 +783,22 @@
         }
       }
     },
+    "Circle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Circle"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okrąg"
+          }
+        }
+      }
+    },
     "Clear all annotations" : {
 
     },
@@ -1074,6 +810,23 @@
     },
     "Click the camera button to capture • ESC to cancel" : {
 
+    },
+    "Click to place text, or drag to draw an arrow or highlight." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Click to place text, or drag to draw an arrow or highlight."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kliknij, aby umieścić tekst, lub przeciągnij, aby narysować strzałkę albo wyróżnienie."
+          }
+        }
+      }
     },
     "Close floating panel" : {
 
@@ -1175,8 +928,75 @@
         }
       }
     },
+    "copied" : {
+
+    },
+    "Copied to clipboard" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copied to clipboard"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skopiowano do schowka"
+          }
+        }
+      }
+    },
+    "Copy file" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copy file"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kopiuj plik"
+          }
+        }
+      }
+    },
     "Copy to Clipboard" : {
 
+    },
+    "Could not complete the operation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not complete the operation"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się wykonać operacji"
+          }
+        }
+      }
+    },
+    "Could not save the image. Choose another folder with Save As." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Could not save the image. Choose another folder with Save As."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się zapisać obrazu. Wybierz inny folder przez Zapisz jako."
+          }
+        }
+      }
     },
     "Countdown duration" : {
       "localizations" : {
@@ -1204,6 +1024,39 @@
     },
     "Created: %@" : {
 
+    },
+    "Crop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crop"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kadruj"
+          }
+        }
+      }
+    },
+    "Crop and annotate" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crop and annotate"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kadr i adnotacje"
+          }
+        }
+      }
     },
     "Custom" : {
       "localizations" : {
@@ -1389,6 +1242,7 @@
       "isCommentAutoGenerated" : true
     },
     "Delete video" : {
+      "extractionState" : "stale",
       "localizations" : {
         "pl" : {
           "stringUnit" : {
@@ -1468,8 +1322,72 @@
         }
       }
     },
+    "Drag annotation edges on the timeline to change when it appears." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag annotation edges on the timeline to change when it appears."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeciągnij krawędzie adnotacji na osi czasu, aby zmienić czas wyświetlania."
+          }
+        }
+      }
+    },
+    "Drag to change the duration" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to change the duration"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeciągnij, aby zmienić czas trwania"
+          }
+        }
+      }
+    },
+    "Drag to change the start" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to change the start"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeciągnij, aby zmienić początek"
+          }
+        }
+      }
+    },
     "Drag to select area" : {
 
+    },
+    "Drag to select the area to keep." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Drag to select the area to keep."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przeciągnij, aby zaznaczyć obszar do zachowania."
+          }
+        }
+      }
     },
     "Drawing Tool" : {
 
@@ -1480,6 +1398,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Czas trwania"
+          }
+        }
+      }
+    },
+    "Edit" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Edytuj"
           }
         }
       }
@@ -1533,6 +1467,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Włącz odliczanie przed nagrywaniem ekranu"
+          }
+        }
+      }
+    },
+    "End" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "End"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koniec"
           }
         }
       }
@@ -1604,6 +1555,22 @@
         }
       }
     },
+    "File copied" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File copied"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plik skopiowany"
+          }
+        }
+      }
+    },
     "filename_template_option_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1663,6 +1630,22 @@
     },
     "Fill" : {
 
+    },
+    "Fit" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fit"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopasuj"
+          }
+        }
+      }
     },
     "Fixed preset selected instead of source size." : {
       "localizations" : {
@@ -1871,6 +1854,22 @@
         }
       }
     },
+    "Height" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Height"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysokość"
+          }
+        }
+      }
+    },
     "High" : {
       "localizations" : {
         "pl" : {
@@ -1897,6 +1896,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Wyższa jakość"
+          }
+        }
+      }
+    },
+    "Highlight" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Highlight"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyróżnienie"
+          }
+        }
+      }
+    },
+    "Horizontal" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Horizontal"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poziomo"
           }
         }
       }
@@ -1964,6 +1995,38 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Zachowaj audio"
+          }
+        }
+      }
+    },
+    "Keep after playhead" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep after playhead"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zachowaj fragment za znacznikiem"
+          }
+        }
+      }
+    },
+    "Keep before playhead" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep before playhead"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zachowaj fragment przed znacznikiem"
           }
         }
       }
@@ -2165,8 +2228,21 @@
         }
       }
     },
-    "Layers and clip order" : {
-
+    "Line" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Line"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Linia"
+          }
+        }
+      }
     },
     "Loading available windows..." : {
 
@@ -2321,6 +2397,22 @@
         }
       }
     },
+    "Merge" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merge"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz"
+          }
+        }
+      }
+    },
     "Modified: %@" : {
 
     },
@@ -2360,6 +2452,38 @@
       "comment" : "A label for the name of a gradient.",
       "isCommentAutoGenerated" : true
     },
+    "Next frame" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Next frame"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Następna klatka"
+          }
+        }
+      }
+    },
+    "No audio" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No audio"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak dźwięku"
+          }
+        }
+      }
+    },
     "No image" : {
 
     },
@@ -2383,6 +2507,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nie wybrano nagrania."
+          }
+        }
+      }
+    },
+    "Note" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Note"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notatka"
           }
         }
       }
@@ -2436,6 +2576,25 @@
           }
         }
       }
+    },
+    "Pause" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pause"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pauza"
+          }
+        }
+      }
+    },
+    "paused" : {
+
     },
     "permission_accessibility_description" : {
       "extractionState" : "manual",
@@ -2595,9 +2754,60 @@
         }
       }
     },
+    "Place on preview" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Place on preview"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umieść na podglądzie"
+          }
+        }
+      }
+    },
+    "Play" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odtwórz"
+          }
+        }
+      }
+    },
+    "playing" : {
+
+    },
     "Position" : {
       "comment" : "A label displayed above the location slider.",
       "isCommentAutoGenerated" : true
+    },
+    "Position and size" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Position and size"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozycja i rozmiar"
+          }
+        }
+      }
     },
     "Presets for new recordings: size, frame rate, audio, cursor, and countdown." : {
       "localizations" : {
@@ -2618,6 +2828,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Podgląd: %1$@"
+          }
+        }
+      }
+    },
+    "Previous frame" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Previous frame"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poprzednia klatka"
           }
         }
       }
@@ -2950,6 +3176,22 @@
         }
       }
     },
+    "Rectangle" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rectangle"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prostokąt"
+          }
+        }
+      }
+    },
     "Redo" : {
 
     },
@@ -2958,6 +3200,22 @@
     },
     "Remember selected area" : {
 
+    },
+    "Remove" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remove"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usuń"
+          }
+        }
+      }
     },
     "Remove Audio" : {
       "localizations" : {
@@ -3193,6 +3451,9 @@
         }
       }
     },
+    "s" : {
+
+    },
     "Save" : {
 
     },
@@ -3249,6 +3510,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Folder zapisywania"
+          }
+        }
+      }
+    },
+    "Saved" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisano"
           }
         }
       }
@@ -3311,6 +3588,22 @@
     "Select a window to capture" : {
 
     },
+    "Select an annotation on the timeline to edit it." : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Select an annotation on the timeline to edit it."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz adnotację na osi czasu, aby ją edytować."
+          }
+        }
+      }
+    },
     "Select Image" : {
       "comment" : "The label of a button that allows the user to select an image from their file system.",
       "isCommentAutoGenerated" : true
@@ -3327,6 +3620,22 @@
     },
     "selected" : {
 
+    },
+    "Selected annotation" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selected annotation"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaznaczona adnotacja"
+          }
+        }
+      }
     },
     "Selected image" : {
       "comment" : "A label displayed under the image slider.",
@@ -3352,6 +3661,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Ustawienia…"
+          }
+        }
+      }
+    },
+    "Share" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Udostępnij"
           }
         }
       }
@@ -3603,6 +3928,38 @@
         }
       }
     },
+    "Split" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Split"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podziel"
+          }
+        }
+      }
+    },
+    "Start" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Start"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Początek"
+          }
+        }
+      }
+    },
     "status_item_tooltip" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3616,6 +3973,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Klapok"
+          }
+        }
+      }
+    },
+    "Stop" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stop"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zatrzymaj"
           }
         }
       }
@@ -3679,6 +4052,22 @@
     "Tracks" : {
 
     },
+    "Trim" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trim"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przytnij"
+          }
+        }
+      }
+    },
     "Trimmed video export" : {
       "localizations" : {
         "pl" : {
@@ -3688,6 +4077,25 @@
           }
         }
       }
+    },
+    "Type" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Type"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Typ"
+          }
+        }
+      }
+    },
+    "unavailable" : {
+
     },
     "Undo" : {
 
@@ -3738,6 +4146,22 @@
         }
       }
     },
+    "Vertical" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vertical"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pionowo"
+          }
+        }
+      }
+    },
     "Very High" : {
       "localizations" : {
         "pl" : {
@@ -3770,6 +4194,38 @@
     },
     "Video mode" : {
 
+    },
+    "Video preview" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video preview"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podgląd wideo"
+          }
+        }
+      }
+    },
+    "Video preview, annotation selected" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Video preview, annotation selected"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Podgląd wideo, zaznaczona adnotacja"
+          }
+        }
+      }
     },
     "video_quality_title" : {
       "extractionState" : "manual",
@@ -3833,6 +4289,22 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Miejsce zapisu nagrań ekranu."
+          }
+        }
+      }
+    },
+    "Width" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Width"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szerokość"
           }
         }
       }

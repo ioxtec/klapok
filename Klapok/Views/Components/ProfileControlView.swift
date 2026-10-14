@@ -21,6 +21,7 @@ private final class ProfileControlViewState<T: Profile>: ObservableObject {
 // MARK: - Profile Control View
 
 struct ProfileControlView<T: Profile>: View {
+    @Environment(\.compactEditorSidebar) private var compact
     @ObservedObject var profileManager: ProfileManager
     @StateObject private var viewState = ProfileControlViewState<T>()
     
@@ -154,7 +155,7 @@ struct ProfileControlView<T: Profile>: View {
 
             HStack(spacing: 9) {
                 Text("Profile")
-                    .font(SidebarStyle.bodyFont)
+                    .font(compact ? .system(size: 13, weight: .regular) : SidebarStyle.bodyFont)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)

@@ -6,7 +6,7 @@ task_mode="${1:-run}"
 pkill -x Klapok >/dev/null 2>&1 || true
 xcodebuild -quiet -project "$task_root/Klapok.xcodeproj" -scheme Klapok -configuration Debug \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath "$task_build" \
-  CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM=
+  CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY='Apple Development' DEVELOPMENT_TEAM=HPVQSJDB42
 task_app="$task_build/Build/Products/Debug/Klapok.app"
 case "$task_mode" in
   run) open -n "$task_app" ;;

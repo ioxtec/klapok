@@ -127,6 +127,17 @@ import SwiftUI
         // MARK: - Public Methods
 
         @MainActor
+        private func ensureScreenCapturePermission() -> Bool {
+            guard !ScreenCapturePermissionGate.isTestSession else { return false }
+            return ScreenCapturePermissionGate.shared.ensureAccess {
+                hideAreaSelection()
+                hideWindowSelection()
+                hideFloatingPanel()
+                NSApp.activate(ignoringOtherApps: true)
+            }
+        }
+
+        @MainActor
         func setScreenshotType(_ newType: CaptureType) {
             let oldType = screenshotType
             screenshotType = newType
@@ -176,6 +187,7 @@ import SwiftUI
                 return
             }
 
+            guard ensureScreenCapturePermission() else { return }
             if screenshotType == .fullScreen {
                 presentDisplayPickerOrRunDefault()
                 return
@@ -265,6 +277,7 @@ import SwiftUI
 
         @MainActor
         private func captureFullScreen(displayID: CGDirectDisplayID?) async {
+            guard ensureScreenCapturePermission() else { return }
             isCapturing = true
             hideFloatingPanel()
 
@@ -290,6 +303,7 @@ import SwiftUI
                 return
             }
 
+            guard ensureScreenCapturePermission() else { return }
             isCapturing = true
 
             do {
@@ -394,6 +408,7 @@ import SwiftUI
 
         @MainActor
         private func performScreenshotShortcut(type: CaptureType) {
+            guard ensureScreenCapturePermission() else { return }
             setShortcutCaptureType(type)
 
             switch type {
@@ -422,6 +437,7 @@ import SwiftUI
                 return
             }
 
+            guard ensureScreenCapturePermission() else { return }
             setShortcutCaptureType(type)
 
             switch type {
@@ -486,6 +502,7 @@ import SwiftUI
 
         @MainActor
         private func showAreaSelection() {
+            guard ensureScreenCapturePermission() else { return }
             Logger.d("FloatingPanelViewModel: Showing area selection")
             WindowDepthManager.shared.logCurrentLevels()
 
@@ -538,6 +555,7 @@ import SwiftUI
 
         @MainActor
         private func captureSelectedArea(rect: NSRect) async {
+            guard ensureScreenCapturePermission() else { return }
             Logger.d("FloatingPanelViewModel: Capturing selected area: \(rect)")
             isCapturing = true
             rememberAreaSelection(rect)
@@ -578,6 +596,7 @@ import SwiftUI
         
         @MainActor
         private func showWindowSelection() {
+            guard ensureScreenCapturePermission() else { return }
             Logger.d("FloatingPanelViewModel: Showing window selection")
 
             hideWindowSelection()
@@ -649,6 +668,7 @@ import SwiftUI
 
         @MainActor
         private func captureSelectedWindow(window: SCWindow) async {
+            guard ensureScreenCapturePermission() else { return }
             Logger.d(
                 "FloatingPanelViewModel: Capturing selected window: \(window.title ?? "Unknown")")
 
@@ -693,6 +713,7 @@ import SwiftUI
                 return
             }
 
+            guard ensureScreenCapturePermission() else { return }
             // Activate current mode if not fullScreen
             switch screenshotType {
             case .area:
@@ -729,6 +750,7 @@ import SwiftUI
         @MainActor
         func startVideoRecording(displayID: CGDirectDisplayID? = nil) {
             guard videoRecordingState == .idle else { return }
+            guard ensureScreenCapturePermission() else { return }
             
             // Store selected window and area before hiding overlays
             let windowToRecord = selectedWindow

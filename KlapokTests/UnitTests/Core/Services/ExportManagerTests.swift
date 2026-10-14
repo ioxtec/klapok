@@ -34,6 +34,16 @@ final class ExportManagerTests: XCTestCase {
     func testInitialization() {
         XCTAssertNotNil(exportManager.settings)
     }
+
+    func testNewEditorResetsInheritedScalingWithoutChangingAudio() {
+        exportManager.settings.videoSettings.scaling = .custom
+        exportManager.settings.videoSettings.customScaleFactor = 1.25
+        exportManager.settings.videoSettings.audioOption = .mute
+        exportManager.resetVideoScalingForNewEditor()
+        XCTAssertEqual(exportManager.settings.videoSettings.scaling, .original)
+        XCTAssertEqual(exportManager.settings.videoSettings.customScaleFactor, 1)
+        XCTAssertEqual(exportManager.settings.videoSettings.audioOption, .mute)
+    }
     
     // MARK: - Export Type Tests
     

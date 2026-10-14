@@ -162,6 +162,11 @@ enum VideoExportService {
                             overlays: [TimelineOverlayTrack]) async throws -> AVPlayerItem {
         let asset = try await editedExportAsset(from: AVURLAsset(url: video.url), ranges: ranges, includeAudio: true)
         let item = AVPlayerItem(asset: asset)
+        // Interactive annotations are SwiftUI overlays. Uncropped playback needs
+        // only the edited asset, not an asynchronous Core Image filter pipeline.
+        if overlays.isEmpty && QuickEditGeometry.normalizedCrop(crop) == QuickEditGeometry.fullFrame {
+            return item
+        }
         let size = targetVideoSize(from: CGSize(width: video.size.width * crop.width,
             height: video.size.height * crop.height), scaling: .custom, customScaleFactor: 1)
         item.videoComposition = try await VideoFrameRenderer.composition(asset: asset, size: size, crop: crop, overlays: overlays)

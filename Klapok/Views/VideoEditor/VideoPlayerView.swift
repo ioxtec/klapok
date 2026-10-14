@@ -28,9 +28,9 @@ struct VideoPlayerView: NSViewRepresentable {
         let playerView = AVPlayerView()
         playerView.wantsLayer = true
         playerView.layer?.backgroundColor = NSColor.controlBackgroundColor.cgColor
-        playerView.controlsStyle = .floating
-        playerView.showsFrameSteppingButtons = true
-        playerView.showsSharingServiceButton = true
+        playerView.controlsStyle = .none
+        playerView.showsFrameSteppingButtons = false
+        playerView.showsSharingServiceButton = false
         return playerView
     }
 

@@ -94,11 +94,9 @@ struct CaptureModeToggle: View {
                     viewModel.captureMode = .image
                 }
             }) {
-                KlapokToolbarBrandMark(
-                    variant: .template,
-                    size: 15,
-                    tint: viewModel.captureMode == .image ? .white : .secondary
-                )
+                Image(systemName: "camera")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(viewModel.captureMode == .image ? Color.white : Color.secondary)
                 .frame(
                     width: FloatingPanelSegmentedMetrics.itemWidth,
                     height: FloatingPanelSegmentedMetrics.itemHeight
@@ -337,17 +335,9 @@ struct CaptureButton: View {
                         .foregroundColor(.white)
                         .transition(.opacity)
                 } else {
-                    if viewModel.captureMode == .image {
-                        KlapokToolbarBrandMark(
-                            variant: .template,
-                            size: 16,
-                            tint: .white
-                        )
-                    } else {
-                        Image(systemName: buttonIconName)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white)
-                    }
+                    Image(systemName: viewModel.captureMode == .image ? "camera.fill" : buttonIconName)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundColor(.white)
                 }
             }
         }

@@ -4,73 +4,82 @@ struct VideoAnnotationInspector: View {
     @ObservedObject var viewModel: VideoEditorViewModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Button("Crop".localized, systemImage: "crop") {
-                    viewModel.isCropping = true
-                }
+                Button("Crop".localized, systemImage: "crop") { viewModel.isCropping = true }
                 if viewModel.cropRect != QuickEditGeometry.fullFrame {
                     Button("Reset".localized) { viewModel.applyCrop(QuickEditGeometry.fullFrame) }
                 }
+                Spacer(minLength: 0)
             }
-            Button("Add annotation".localized, systemImage: "plus") { viewModel.addOverlayTrack() }
-            Text("Annotations use the edited timeline. Position is relative to the cropped frame.".localized)
-                .font(.caption).foregroundStyle(.secondary)
-            ForEach(viewModel.overlayTracks) { track in
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Picker("Type".localized, selection: binding(track, \.kind)) {
-                            Text("Text".localized).tag(TimelineOverlayTrackKind.text)
-                            Text("Arrow".localized).tag(TimelineOverlayTrackKind.callout)
-                            Text("Highlight".localized).tag(TimelineOverlayTrackKind.highlight)
+            AnnotationLayerMenu(viewModel: viewModel)
+            if let track = viewModel.overlayTracks.first(where: { $0.id == viewModel.selectedOverlayID }) {
+                Divider()
+                HStack {
+                    Picker("Type".localized, selection: binding(track, \.kind)) {
+                        ForEach(TimelineOverlayTrackKind.allCases, id: \.self) { kind in
+                            Label(kind.displayName, systemImage: kind.icon).tag(kind)
                         }
-                        Button(role: .destructive) { viewModel.removeOverlay(track.id) } label: {
-                            Image(systemName: "trash")
-                        }.help("Delete annotation".localized)
                     }
-                    if track.kind == .text {
-                        TextField("Annotation text".localized, text: binding(track, \.text), axis: .vertical)
+                    Button(role: .destructive) { viewModel.removeOverlay(track.id) } label: { Image(systemName: "trash") }
+                        .help("Delete annotation".localized)
+                }
+                if track.kind == .text {
+                    TextField("Annotation text".localized, text: binding(track, \.text), axis: .vertical)
+                        .lineLimit(2...4).textFieldStyle(.roundedBorder)
+                }
+                HStack(spacing: 8) {
+                    timeField("Start".localized, binding(track, \.start))
+                    timeField("Duration".localized, Binding(get: { track.end - track.start }, set: { duration in
+                        guard var current = current(track.id) else { return }
+                        current.end = current.start + max(0.1, duration); viewModel.updateOverlay(current)
+                    }))
+                }
+                ColorPicker("Color".localized, selection: Binding(get: { track.color.toColor() }, set: { color in
+                    guard var current = current(track.id) else { return }
+                    current.color = ColorData(color: color); viewModel.updateOverlay(current)
+                }))
+                Button("Place on preview".localized, systemImage: "cursorarrow.and.square.on.square.dashed") {
+                    viewModel.placingOverlayID = track.id
+                    viewModel.updateCurrentTime(to: track.start)
+                }
+                DisclosureGroup("Position and size".localized) {
+                    VStack(spacing: 4) {
+                        slider("Horizontal".localized, track, \.x, 0...0.95)
+                        slider("Vertical".localized, track, \.y, 0...0.95)
+                        slider("Width".localized, track, \.width, directional(track) ? -1...1 : 0.02...1)
+                        slider("Height".localized, track, \.height, directional(track) ? -1...1 : 0.02...1)
                     }
-                    ColorPicker("Color".localized, selection: Binding(
-                        get: { track.color.toColor() }, set: { color in
-                            var updated = track; updated.color = ColorData(color: color)
-                            viewModel.updateOverlay(updated)
-                        }))
-                    Button("Place on preview".localized, systemImage: "cursorarrow.and.square.on.square.dashed") {
-                        viewModel.placingOverlayID = track.id
-                        viewModel.updateCurrentTime(to: track.start)
-                    }
-                    HStack {
-                        Text("Start".localized)
-                        TextField("", value: binding(track, \.start), format: .number.precision(.fractionLength(1)))
-                        Text("End".localized)
-                        TextField("", value: binding(track, \.end), format: .number.precision(.fractionLength(1)))
-                        Text("s")
-                    }.textFieldStyle(.roundedBorder)
-                    positionSlider("Horizontal".localized, track, \.x, 0...0.95)
-                    positionSlider("Vertical".localized, track, \.y, 0...0.95)
-                    if track.kind != .text {
-                        positionSlider("Width".localized, track, \.width, track.kind == .callout ? -1...1 : 0.02...1)
-                        positionSlider("Height".localized, track, \.height, track.kind == .callout ? -1...1 : 0.02...1)
-                    }
-                }.padding(10).background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                }
+            } else {
+                Text("Select an annotation on the timeline to edit it.".localized)
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
+        .font(.system(size: 12)).controlSize(.small)
         .disabled(viewModel.video == nil)
+        .help("Drag annotation edges on the timeline to change when it appears.".localized)
+    }
+
+    private func current(_ id: UUID) -> TimelineOverlayTrack? { viewModel.overlayTracks.first(where: { $0.id == id }) }
+    private func directional(_ track: TimelineOverlayTrack) -> Bool { track.kind == .callout || track.kind == .line }
+
+    private func timeField(_ title: String, _ value: Binding<Double>) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 3) { TextField("", value: value, format: .number.precision(.fractionLength(2))); Text("s").foregroundStyle(.secondary) }
+                .textFieldStyle(.roundedBorder)
+        }
     }
 
     private func binding<T>(_ track: TimelineOverlayTrack, _ keyPath: WritableKeyPath<TimelineOverlayTrack, T>) -> Binding<T> {
-        Binding(get: { viewModel.overlayTracks.first(where: { $0.id == track.id })?[keyPath: keyPath] ?? track[keyPath: keyPath] },
-            set: { value in
-                guard var current = viewModel.overlayTracks.first(where: { $0.id == track.id }) else { return }
-                current[keyPath: keyPath] = value; viewModel.updateOverlay(current)
-            })
+        Binding(get: { current(track.id)?[keyPath: keyPath] ?? track[keyPath: keyPath] }, set: { value in
+            guard var current = current(track.id) else { return }
+            current[keyPath: keyPath] = value; viewModel.updateOverlay(current)
+        })
     }
 
-    private func positionSlider(_ title: String, _ track: TimelineOverlayTrack,
-                                _ keyPath: WritableKeyPath<TimelineOverlayTrack, Double>, _ range: ClosedRange<Double>) -> some View {
-        HStack { Text(title).font(.caption).frame(width: 76, alignment: .leading)
-            Slider(value: binding(track, keyPath), in: range)
-        }
+    private func slider(_ title: String, _ track: TimelineOverlayTrack, _ keyPath: WritableKeyPath<TimelineOverlayTrack, Double>, _ range: ClosedRange<Double>) -> some View {
+        HStack { Text(title).font(.caption).frame(width: 65, alignment: .leading); Slider(value: binding(track, keyPath), in: range) }
     }
 }

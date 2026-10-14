@@ -12,6 +12,7 @@ import SwiftUI
 // MARK: - Export Type Selector
 
 struct ExportTypeSelector: View {
+    @Environment(\.compactEditorSidebar) private var compact
     @ObservedObject var exportManager: ExportManager
     
     var body: some View {
@@ -31,7 +32,7 @@ struct ExportTypeSelector: View {
             }
             .pickerStyle(.segmented)
             .labelsHidden()
-            .frame(width: 146)
+            .frame(width: compact ? 116 : 146)
         }
     }
 }
@@ -39,14 +40,15 @@ struct ExportTypeSelector: View {
 // MARK: - Video Export Settings View
 
 struct VideoExportSettingsView: View {
+    @Environment(\.compactEditorSidebar) private var compact
     @ObservedObject var exportManager: ExportManager
     @ObservedObject var settings: AppSettings
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: compact ? 4 : 9) {
             SidebarDivider()
 
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: compact ? 3 : 9) {
                 SidebarSubheading("Trimmed video export".localized)
 
                 SidebarValueRow(
@@ -96,7 +98,7 @@ struct VideoExportSettingsView: View {
 
             SidebarDivider()
 
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: compact ? 3 : 9) {
                 SidebarSubheading("Scaling".localized)
 
                 SidebarControlRow(title: "Scaling".localized, systemImage: "arrow.up.left.and.arrow.down.right") {
@@ -130,7 +132,7 @@ struct VideoExportSettingsView: View {
 
             SidebarDivider()
 
-            VStack(alignment: .leading, spacing: 9) {
+            VStack(alignment: .leading, spacing: compact ? 3 : 9) {
                 SidebarSubheading("Audio".localized)
 
                 SidebarControlRow(title: "Audio".localized, systemImage: "speaker.wave.2") {

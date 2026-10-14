@@ -10,12 +10,24 @@ import SwiftUI
 #if os(macOS)
 import AppKit
 
+private struct CompactEditorSidebarKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var compactEditorSidebar: Bool {
+        get { self[CompactEditorSidebarKey.self] }
+        set { self[CompactEditorSidebarKey.self] = newValue }
+    }
+}
+
 @MainActor
 private final class SidebarDisclosureSectionHoverState: ObservableObject {
     @Published var isHovering = false
 }
 
 struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
+    @Environment(\.compactEditorSidebar) private var compact
     private let content: Content
     private let fillsAvailableWidth: Bool
     private let leadingInset: CGFloat
@@ -68,6 +80,7 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .environment(\.compactEditorSidebar, compact)
     }
 
     final class Coordinator {
@@ -252,6 +265,7 @@ final class SidebarScrollHostView: NSView {
 }
 
 struct SidebarDisclosureSection<Content: View>: View {
+    @Environment(\.compactEditorSidebar) private var compact
     private let id: String
     private let title: String
     private let subtitle: String?
@@ -329,7 +343,7 @@ struct SidebarDisclosureSection<Content: View>: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 8)
+        .padding(.vertical, compact ? 4 : 8)
     }
 
     private var headerBackground: Color {
@@ -342,6 +356,7 @@ struct SidebarDisclosureSection<Content: View>: View {
 }
 
 struct SidebarContentCard<Content: View>: View {
+    @Environment(\.compactEditorSidebar) private var compact
     let content: Content
 
     init(@ViewBuilder content: () -> Content) {
@@ -349,12 +364,13 @@ struct SidebarContentCard<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
+        VStack(alignment: .leading, spacing: compact ? 4 : 9) {
             content
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .padding(.vertical, compact ? 6 : 9)
+        .fixedSize(horizontal: false, vertical: true)
         .background {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .fill(SidebarStyle.sectionFill)
@@ -377,6 +393,7 @@ struct SidebarDivider: View {
 }
 
 struct SidebarControlRow<Accessory: View>: View {
+    @Environment(\.compactEditorSidebar) private var compact
     let title: String
     let systemImage: String?
     let accessory: Accessory
@@ -392,7 +409,7 @@ struct SidebarControlRow<Accessory: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 9) {
+        HStack(alignment: .center, spacing: compact ? 6 : 9) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(.system(size: 13, weight: .medium))
@@ -401,19 +418,19 @@ struct SidebarControlRow<Accessory: View>: View {
             }
 
             Text(title)
-                .font(SidebarStyle.bodyFont)
+                .font(compact ? .system(size: 13, weight: .regular) : SidebarStyle.bodyFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
                 .layoutPriority(1)
 
-            Spacer(minLength: 10)
+            Spacer(minLength: compact ? 4 : 10)
 
             accessory
-                .font(SidebarStyle.bodyFont)
+                .font(compact ? .system(size: 13, weight: .regular) : SidebarStyle.bodyFont)
                 .controlSize(.small)
                 .layoutPriority(0)
         }
-        .frame(minHeight: 29)
+        .frame(height: compact ? 25 : 29)
     }
 }
 
@@ -514,6 +531,7 @@ struct SidebarSliderControl: View {
 }
 
 struct SidebarValuePill: View {
+    @Environment(\.compactEditorSidebar) private var compact
     let value: String
     let minWidth: CGFloat
 
@@ -524,7 +542,7 @@ struct SidebarValuePill: View {
 
     var body: some View {
         Text(value)
-            .font(SidebarStyle.valueFont)
+            .font(compact ? .system(size: 12, weight: .regular) : SidebarStyle.valueFont)
             .foregroundStyle(.primary)
             .lineLimit(1)
             .truncationMode(.middle)

@@ -7,6 +7,7 @@
 
 import Combine
 import SwiftUI
+import AVFoundation
 
 #if os(macOS)
     import AppKit
@@ -20,6 +21,15 @@ import SwiftUI
         private var cancellables = Set<AnyCancellable>()
 
         private var editorWindow: NSWindow?
+        #if DEBUG
+        private var uiTestVideoFolder: URL?
+        #endif
+
+        func applicationWillTerminate(_ notification: Notification) {
+            #if DEBUG
+            if let uiTestVideoFolder { try? FileManager.default.removeItem(at: uiTestVideoFolder) }
+            #endif
+        }
         private var settingsWindow: NSWindow?
         private var panelWindow: NSPanel?
         private var overlayWindow: NSWindow?  // Pre-created overlay window
@@ -66,6 +76,7 @@ import SwiftUI
 
             Task { @MainActor in
                 runUITestLaunchActionsIfNeeded()
+                ScreenCapturePermissionGate.shared.requestOnFirstLaunch()
             }
         }
 
@@ -90,6 +101,35 @@ import SwiftUI
                 image.unlockFocus()
                 editorViewModel.show(image: image)
             }
+
+            #if DEBUG
+            if let index = arguments.firstIndex(of: "-UITestVideoURL"), arguments.indices.contains(index + 1) {
+                let fixtureURL = URL(fileURLWithPath: arguments[index + 1])
+                Task { @MainActor in
+                    // The test runner's temp directory is readable but not writable
+                    // by the sandboxed app. Export beside an app-owned fixture copy.
+                    let folder = FileManager.default.temporaryDirectory.appendingPathComponent("KlapokUITest-\(UUID().uuidString)")
+                    let url = folder.appendingPathComponent(fixtureURL.lastPathComponent)
+                    do {
+                        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        try FileManager.default.copyItem(at: fixtureURL, to: url)
+                        self.uiTestVideoFolder = folder
+                    } catch { return }
+                    let asset = AVURLAsset(url: url)
+                    guard let duration = try? await asset.load(.duration),
+                          let track = try? await asset.loadTracks(withMediaType: .video).first,
+                          let size = try? await track.load(.naturalSize) else { return }
+                    let recording = VideoRecording(url: url, duration: duration.seconds, size: size, frameRate: 30)
+                    let host = NSHostingController(rootView: VideoEditorView(viewModel: VideoEditorViewModel(video: recording)))
+                    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1360, height: 850),
+                        styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false)
+                    window.title = "Klapok Video Editor"
+                    window.contentViewController = host; window.isReleasedWhenClosed = false
+                    self.editorWindow = window
+                    window.center(); window.makeKeyAndOrderFront(nil); NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+            #endif
 
             if arguments.contains("-UITestShowFloatingPanel") {
                 hideEditorWindowsForNewCapture()

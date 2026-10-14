@@ -63,6 +63,42 @@ enum TimelineOverlayTrackKind: String, Equatable, CaseIterable {
     case text
     case callout
     case highlight
+    case rectangle
+    case circle
+    case line
+
+    var displayName: String {
+        switch self {
+        case .text: return "Text".localized
+        case .callout: return "Arrow".localized
+        case .highlight: return "Highlight".localized
+        case .rectangle: return "Rectangle".localized
+        case .circle: return "Circle".localized
+        case .line: return "Line".localized
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .text: return "textformat"
+        case .callout: return "arrow.up.right"
+        case .highlight: return "highlighter"
+        case .rectangle: return "rectangle"
+        case .circle: return "circle"
+        case .line: return "line.diagonal"
+        }
+    }
+
+    var annotationType: AnnotationType {
+        switch self {
+        case .text: return .text
+        case .callout: return .arrow
+        case .highlight: return .highlight
+        case .rectangle: return .rectangle
+        case .circle: return .circle
+        case .line: return .line
+        }
+    }
 }
 
 struct TimelineOverlayTrack: Identifiable, Equatable {
@@ -77,6 +113,19 @@ struct TimelineOverlayTrack: Identifiable, Equatable {
     var width: Double = 0.35
     var height: Double = 0.18
     var color: ColorData = ColorData(color: .red)
+    var fontScale: Double = 0.035
+    var strokeScale: Double = 0.004
+
+    mutating func moveEndpoint(start: Bool, to point: CGPoint) {
+        let point = CGPoint(x: max(0, min(0.95, point.x)), y: max(0, min(0.95, point.y)))
+        if start {
+            let end = CGPoint(x: x + width, y: y + height)
+            x = point.x; y = point.y
+            width = end.x - x; height = end.y - y
+        } else {
+            width = point.x - x; height = point.y - y
+        }
+    }
 
     init(id: UUID = UUID(), title: String, kind: TimelineOverlayTrackKind) {
         self.id = id
@@ -91,6 +140,7 @@ private struct VideoTimelineHistoryState: Equatable {
     var overlayTracks: [TimelineOverlayTrack]
     var currentTime: TimeInterval
     var cropRect: CGRect
+    var selectedOverlayID: UUID?
 }
 
 @MainActor
@@ -110,17 +160,29 @@ final class VideoEditorViewModel: ObservableObject {
     @Published var cropRect = QuickEditGeometry.fullFrame
     @Published var previewItem: AVPlayerItem?
     @Published var errorMessage: String?
-    @Published var exportedURL: URL?
+    @Published var exportedURL: URL? { didSet { copiedExport = false } }
+    @Published var copiedExport = false
     @Published var isPreparingPreview = false
     @Published var audioSamples: [Float] = []
     @Published var placingOverlayID: UUID?
     @Published var isCropping = false
+    @Published var selectedOverlayID: UUID?
+    @Published var hasAudioTrack = false
+    @Published var activeAnnotationTool: TimelineOverlayTrackKind?
+    @Published var editingOverlayID: UUID?
+    @Published var annotationColor: Color = .red
+    @Published var annotationFontSize: Double = 28
+    @Published var annotationStrokeWidth: Double = 3
+    @Published var isPlaying = false
 
     private var previewTask: Task<Void, Never>?
     private var subscriptions = Set<AnyCancellable>()
 
     private var player: AVPlayer?
     private var timeObserver: Any?
+    private var pendingSeekTime: TimeInterval?
+    private var isSeeking = false
+    private var seekGeneration = 0
     private var thumbnailRequestID = UUID()
     private var timelineThumbnailURL: URL?
     private var undoStack: [VideoTimelineHistoryState] = []
@@ -131,7 +193,7 @@ final class VideoEditorViewModel: ObservableObject {
     private let maximumHistoryDepth = 80
 
     init(video: VideoRecording? = nil) {
-        Publishers.CombineLatest3($clips, $overlayTracks, $cropRect)
+        Publishers.CombineLatest($clips, $cropRect)
             .dropFirst().debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.rebuildPreview() }
             .store(in: &subscriptions)
@@ -228,6 +290,10 @@ final class VideoEditorViewModel: ObservableObject {
         self.cropRect = QuickEditGeometry.fullFrame
         self.exportedURL = nil
         self.audioSamples = []
+        self.selectedOverlayID = nil
+        self.hasAudioTrack = false
+        self.activeAnnotationTool = nil
+        self.editingOverlayID = nil
         self.zoomScale = 1
         self.timelineSidebarWidth = 178
         self.draggedTimelineClipID = nil
@@ -236,6 +302,9 @@ final class VideoEditorViewModel: ObservableObject {
         self.redoStack.removeAll()
         rebuildPreview()
         Task { [weak self] in
+            let audioTracks = try? await AVURLAsset(url: video.url).loadTracks(withMediaType: .audio)
+            guard self?.video?.url == video.url else { return }
+            self?.hasAudioTrack = !(audioTracks ?? []).isEmpty
             let samples = await VideoAudioWaveform.samples(from: video.url)
             guard self?.video?.url == video.url else { return }
             self?.audioSamples = samples
@@ -255,6 +324,9 @@ final class VideoEditorViewModel: ObservableObject {
 
     func selectClip(_ clipID: UUID, extendSelection: Bool) {
         guard clips.contains(where: { $0.id == clipID }) else { return }
+        selectedOverlayID = nil
+        editingOverlayID = nil
+        activeAnnotationTool = nil
 
         if extendSelection {
             if selectedClipIDs.contains(clipID) {
@@ -308,6 +380,12 @@ final class VideoEditorViewModel: ObservableObject {
 
         let remaining = clips.filter { !selectedClipIDs.contains($0.id) }
         clips = remaining
+        overlayTracks = overlayTracks.compactMap { track in
+            guard track.start < editedDuration else { return nil }
+            var shortened = track; shortened.end = min(track.end, editedDuration)
+            return shortened
+        }
+        if !overlayTracks.contains(where: { $0.id == selectedOverlayID }) { selectedOverlayID = nil }
         if let replacement = clip(atEditedTime: currentTime) ?? remaining.first {
             selectedClipIDs = [replacement.id]
             currentTime = min(currentTime, timelineRange(for: replacement).end)
@@ -327,36 +405,117 @@ final class VideoEditorViewModel: ObservableObject {
         let clip = makeInitialClip(for: video)
         clips = [clip]
         overlayTracks = []
+        selectedOverlayID = nil
         cropRect = QuickEditGeometry.fullFrame
         selectedClipIDs = [clip.id]
         currentTime = 0
     }
 
-    func addOverlayTrack() {
-        recordUndoSnapshot()
+    func addOverlayTrack(kind: TimelineOverlayTrackKind = .text, recordUndo: Bool = true) {
+        if recordUndo { recordUndoSnapshot() }
 
-        var track = TimelineOverlayTrack(title: "Note".localized, kind: .text)
+        var track = TimelineOverlayTrack(title: kind.displayName, kind: kind)
+        if kind == .text { track.color = ColorData(color: .white) }
+        track.fontScale = annotationFontSize / max(1, (video?.size.height ?? 800) * cropRect.height)
+        track.strokeScale = annotationStrokeWidth / max(1, (video?.size.height ?? 800) * cropRect.height)
         track.text = "Note".localized
         track.start = min(currentTime, max(0, editedDuration - 0.1))
         track.end = min(editedDuration, track.start + 5)
         overlayTracks.append(track)
+        selectedOverlayID = track.id
+        selectedClipIDs.removeAll()
+        exportedURL = nil
     }
 
-    func updateOverlay(_ track: TimelineOverlayTrack) {
+    func updateOverlay(_ track: TimelineOverlayTrack, recordUndo: Bool = true) {
         guard let index = overlayTracks.firstIndex(where: { $0.id == track.id }) else { return }
-        recordUndoSnapshot()
+        if recordUndo { recordUndoSnapshot() }
         var normalized = track
         normalized.start = max(0, min(track.start, max(0, editedDuration - 0.1)))
         normalized.end = max(normalized.start + 0.1, min(track.end, editedDuration))
         normalized.x = max(0, min(0.95, track.x))
         normalized.y = max(0, min(0.95, track.y))
-        normalized.title = track.text.isEmpty ? track.kind.rawValue.localized : track.text
+        if track.kind != .line && track.kind != .callout {
+            normalized.width = max(0.02, min(1 - normalized.x, track.width))
+            normalized.height = max(0.02, min(1 - normalized.y, track.height))
+        }
+        normalized.title = track.kind == .text && !track.text.isEmpty ? track.text : track.kind.displayName
         overlayTracks[index] = normalized
+        exportedURL = nil
     }
 
     func removeOverlay(_ id: UUID) {
         recordUndoSnapshot()
         overlayTracks.removeAll { $0.id == id }
+        exportedURL = nil
+        if selectedOverlayID == id { selectedOverlayID = nil }
+        if editingOverlayID == id { editingOverlayID = nil }
+    }
+
+    func selectOverlay(_ id: UUID) {
+        if editingOverlayID != id { editingOverlayID = nil }
+        selectedOverlayID = id
+        selectedClipIDs.removeAll()
+        activeAnnotationTool = nil
+        if let track = overlayTracks.first(where: { $0.id == id }),
+           currentTime < track.start || currentTime >= track.end {
+            updateCurrentTime(to: track.start)
+        }
+    }
+
+    func editOverlay(_ id: UUID) {
+        beginOverlayGesture(id)
+        pausePlayback()
+        if overlayTracks.first(where: { $0.id == id })?.kind == .text { editingOverlayID = id }
+    }
+
+    func selectVideoAtPlayhead() {
+        editingOverlayID = nil
+        selectedOverlayID = nil
+        activeAnnotationTool = nil
+        var cursor: Double = 0
+        for clip in clips {
+            cursor += clip.duration
+            if currentTime < cursor || clip.id == clips.last?.id {
+                selectedClipIDs = [clip.id]
+                return
+            }
+        }
+    }
+
+    func togglePlayback() {
+        guard let player else { return }
+        editingOverlayID = nil
+        if isPlaying { pausePlayback() }
+        else {
+            if currentTime >= editedDuration - 0.01 { updateCurrentTime(to: 0) }
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    func pausePlayback() { player?.pause(); isPlaying = false }
+
+    func stopPlayback() { pausePlayback(); updateCurrentTime(to: 0) }
+
+    func stepFrame(_ direction: Double) {
+        pausePlayback()
+        updateCurrentTime(to: currentTime + direction / max(1, video?.frameRate ?? 30))
+    }
+
+    func beginOverlayGesture(_ id: UUID) {
+        selectOverlay(id)
+        recordUndoSnapshot()
+    }
+
+    func setOverlayTiming(_ id: UUID, start: Double, end: Double, recordUndo: Bool = true) {
+        guard var track = overlayTracks.first(where: { $0.id == id }) else { return }
+        track.start = start; track.end = end
+        updateOverlay(track, recordUndo: recordUndo)
+    }
+
+    func removeTimelineSelection() {
+        if let selectedOverlayID { removeOverlay(selectedOverlayID) } else { removeSelectedClips() }
     }
 
     func applyCrop(_ rect: CGRect) {
@@ -368,14 +527,13 @@ final class VideoEditorViewModel: ObservableObject {
         previewTask?.cancel()
         guard let video else { return }
         let ranges = editedSourceRanges()
-        let overlays = overlayTracks
         let crop = cropRect
         exportedURL = nil
         isPreparingPreview = true
         previewTask = Task { [weak self] in
             do {
                 let item = try await VideoExportService.previewItem(video: video, ranges: ranges,
-                    crop: crop, overlays: overlays)
+                    crop: crop, overlays: [])
                 guard !Task.isCancelled, let self else { return }
                 self.previewItem = item
                 self.isPreparingPreview = false
@@ -529,6 +687,9 @@ final class VideoEditorViewModel: ObservableObject {
         }
 
         self.player = player
+        seekGeneration += 1
+        isSeeking = false
+        pendingSeekTime = nil
         setupTimeObserver()
     }
 
@@ -548,7 +709,6 @@ final class VideoEditorViewModel: ObservableObject {
 
             Logger.s("VideoEditorViewModel: Edited video exported to \(outputURL.path)")
             exportedURL = outputURL
-            NSWorkspace.shared.activateFileViewerSelecting([outputURL])
         } catch {
             Logger.e("VideoEditorViewModel: Export error: \(error)")
             errorMessage = error.localizedDescription
@@ -571,7 +731,6 @@ final class VideoEditorViewModel: ObservableObject {
 
             Logger.s("VideoEditorViewModel: GIF exported to \(outputURL.path)")
             exportedURL = outputURL
-            NSWorkspace.shared.activateFileViewerSelecting([outputURL])
         } catch {
             Logger.e("VideoEditorViewModel: GIF export error: \(error)")
             errorMessage = error.localizedDescription
@@ -631,6 +790,19 @@ final class VideoEditorViewModel: ObservableObject {
         )
     }
 
+    @discardableResult
+    func copyExportToClipboard(pasteboard: NSPasteboard = .general) -> Bool {
+        guard let url = exportedURL, FileManager.default.fileExists(atPath: url.path) else { return false }
+        pasteboard.clearContents()
+        copiedExport = pasteboard.writeObjects([url as NSURL])
+        return copiedExport
+    }
+
+    func showExportInFinder() {
+        guard let url = exportedURL else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
     func deleteVideo() {
         guard let video else { return }
 
@@ -670,10 +842,23 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     private func seekToCurrentTime() {
-        guard let player else { return }
+        pendingSeekTime = currentTime
+        performPendingSeek()
+    }
 
-        let time = CMTime(seconds: currentTime, preferredTimescale: 1000)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    private func performPendingSeek() {
+        guard !isSeeking, let player, let target = pendingSeekTime else { return }
+        pendingSeekTime = nil
+        isSeeking = true
+        let generation = seekGeneration
+        player.seek(to: CMTime(seconds: target, preferredTimescale: 1000),
+            toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, self.seekGeneration == generation else { return }
+                self.isSeeking = false
+                self.performPendingSeek()
+            }
+        }
     }
 
     private func setupTimeObserver() {
@@ -691,7 +876,8 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     private func syncCurrentTimeFromPlayer(_ sourceTime: TimeInterval) {
-        currentTime = clampedEditedTime(sourceTime)
+        if !isSeeking && pendingSeekTime == nil { currentTime = clampedEditedTime(sourceTime) }
+        isPlaying = (player?.rate ?? 0) > 0
     }
 
     private func sourceTime(forEditedTime editedTime: TimeInterval) -> TimeInterval? {
@@ -846,7 +1032,8 @@ final class VideoEditorViewModel: ObservableObject {
             selectedClipIDs: selectedClipIDs,
             overlayTracks: overlayTracks,
             currentTime: currentTime,
-            cropRect: cropRect
+            cropRect: cropRect,
+            selectedOverlayID: selectedOverlayID
         )
     }
 
@@ -856,6 +1043,7 @@ final class VideoEditorViewModel: ObservableObject {
         overlayTracks = historyState.overlayTracks
         currentTime = historyState.currentTime
         cropRect = historyState.cropRect
+        selectedOverlayID = historyState.selectedOverlayID
         clampCurrentTimeToEditedDuration(seek: true)
     }
 

@@ -14,7 +14,7 @@ struct VideoEditorView: View {
     @ObservedObject var viewModel: VideoEditorViewModel
     @StateObject private var settings = AppSettings.shared
     @StateObject private var profileManager = ProfileManager.shared
-    @StateObject private var exportManager = ExportManager.shared
+    @StateObject private var exportManager = ExportManager(forPreview: false, preserveVideoDimensions: true)
     @StateObject private var languageManager = LanguageManager.shared
 
     var body: some View {
@@ -32,6 +32,7 @@ struct VideoEditorView: View {
             .navigationSplitViewColumnWidth(300)
         } detail: {
             VStack(spacing: 0) {
+                VideoAnnotationToolbar(viewModel: viewModel)
                 GeometryReader { _ in
                     if let video = viewModel.video {
                         VideoPreviewView(viewModel: viewModel, video: video)
@@ -47,10 +48,7 @@ struct VideoEditorView: View {
 
                 if viewModel.video != nil {
                     VideoTimelineView(viewModel: viewModel)
-                        .frame(height: 352)
-                        .padding(.horizontal, 18)
-                        .padding(.top, 10)
-                        .padding(.bottom, 14)
+                        .frame(height: 286)
                         .background(Color(NSColor.controlBackgroundColor))
                 }
             }
@@ -77,6 +75,7 @@ struct VideoEditorView: View {
             }
         }
         .id(languageManager.selectedLanguage.rawValue)
+        .onChange(of: viewModel.video?.url) { _, _ in exportManager.resetVideoScalingForNewEditor() }
         .alert("Could not complete the operation".localized, isPresented: Binding(
             get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
             Button("OK", role: .cancel) { viewModel.errorMessage = nil }

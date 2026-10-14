@@ -6,17 +6,14 @@
 import SwiftUI
 
 #if os(macOS)
+import AppKit
 
 struct VideoEditorCommandToolbar: ToolbarContent {
     @ObservedObject var viewModel: VideoEditorViewModel
     @ObservedObject var exportManager: ExportManager
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            KlapokToolbarBrandMark()
-        }
-
-        ToolbarItemGroup(placement: .primaryAction) {
+        ToolbarItemGroup(placement: .navigation) {
             Button { viewModel.undo() } label: { Image(systemName: "arrow.uturn.backward") }
                 .disabled(!viewModel.canUndo).keyboardShortcut("z", modifiers: .command).help("Undo".localized)
             Button { viewModel.redo() } label: { Image(systemName: "arrow.uturn.forward") }
@@ -31,18 +28,11 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                     if viewModel.exportedURL != nil { viewModel.shareVideo() }
                 }
             } label: {
-                Image(systemName: "square.and.arrow.up")
+                Label("Share".localized, systemImage: "square.and.arrow.up")
+                    .labelStyle(.titleAndIcon)
             }
             .disabled(viewModel.video == nil || viewModel.isExporting)
             .help("Share video".localized)
-
-            Button {
-                viewModel.openInFinder()
-            } label: {
-                Image(systemName: "folder")
-            }
-            .disabled(viewModel.video == nil)
-            .help("Show in Finder".localized)
 
             Button {
                 Task {
@@ -55,23 +45,30 @@ struct VideoEditorCommandToolbar: ToolbarContent {
                     }
                 }
             } label: {
-                if viewModel.isExporting {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Image(systemName: exportManager.settings.exportType == .video ? "scissors" : "rectangle.stack.fill")
-                }
+                Label("Export".localized, systemImage: "square.and.arrow.down")
+                    .labelStyle(.titleAndIcon)
+                    .opacity(viewModel.isExporting ? 0 : 1)
+                    .overlay { if viewModel.isExporting { ProgressView().controlSize(.small) } }
             }
             .disabled(viewModel.isExporting || viewModel.video == nil)
+            .accessibilityIdentifier("video.export")
             .help("Export as %@".localized(with: exportManager.settings.exportType.displayName.localized))
-
-            Button(role: .destructive) {
-                viewModel.deleteVideo()
-            } label: {
-                Image(systemName: "trash")
+            .contextMenu {
+                if let url = viewModel.exportedURL {
+                    Button("Show in Finder".localized) { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                }
             }
-            .disabled(viewModel.video == nil)
-            .help("Delete video".localized)
+            Button { viewModel.copyExportToClipboard() } label: {
+                Label("Copy file".localized, systemImage: "doc.on.doc").labelStyle(.titleAndIcon)
+            }
+            .disabled(viewModel.exportedURL == nil || viewModel.isExporting)
+            .accessibilityIdentifier("video.copyExport")
+            .accessibilityValue(viewModel.copiedExport ? "copied" : "ready")
+            Button { viewModel.showExportInFinder() } label: {
+                Label("Show in Finder".localized, systemImage: "folder").labelStyle(.titleAndIcon)
+            }
+            .disabled(viewModel.exportedURL == nil || viewModel.isExporting)
+            .accessibilityIdentifier("video.showExport")
         }
     }
 }

@@ -1002,11 +1002,9 @@ import SwiftUI
 
                 if showActions {
                     Button(action: onCapture) {
-                        KlapokToolbarBrandMark(
-                            variant: .template,
-                            size: 11,
-                            tint: .primary
-                        )
+                        Image(systemName: "camera.fill")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.primary)
                         .frame(width: 18, height: 18)
                     }
                     .buttonStyle(.plain)

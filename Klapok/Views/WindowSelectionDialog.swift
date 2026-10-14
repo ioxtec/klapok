@@ -30,7 +30,7 @@ import Foundation
                 defer: false
             )
 
-            panel.title = "Wybierz okno do zrzutu"
+            panel.title = String(localized: "Select a window to capture")
             panel.level = .floating
             panel.center()
 
@@ -80,12 +80,12 @@ import Foundation
 
             // Create columns
             let appColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("app"))
-            appColumn.title = "Aplikacja"
+            appColumn.title = String(localized: "Application")
             appColumn.width = 150
             tableView.addTableColumn(appColumn)
 
             let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
-            titleColumn.title = "Tytuł okna"
+            titleColumn.title = String(localized: "Window title")
             titleColumn.width = 300
             tableView.addTableColumn(titleColumn)
 
@@ -101,7 +101,7 @@ import Foundation
             // Add instruction label
             let instructionLabel = NSTextField(
                 labelWithString:
-                    "Wybierz okno z listy i kliknij 'Wybierz' lub kliknij dwukrotnie na okno")
+                    String(localized: "Choose a window and click Select, or double-click it."))
             instructionLabel.font = NSFont.systemFont(ofSize: 12)
             instructionLabel.textColor = .secondaryLabelColor
             instructionLabel.alignment = .center
@@ -113,9 +113,9 @@ import Foundation
             buttonStack.spacing = 10
 
             let cancelButton = NSButton(
-                title: "Anuluj", target: self, action: #selector(cancelClicked))
+                title: String(localized: "Cancel"), target: self, action: #selector(cancelClicked))
             let selectButton = NSButton(
-                title: "Wybierz", target: self, action: #selector(selectClicked))
+                title: String(localized: "Select"), target: self, action: #selector(selectClicked))
             selectButton.keyEquivalent = "\r"
 
             buttonStack.addArrangedSubview(NSView())  // Spacer
@@ -187,9 +187,9 @@ import Foundation
             textField.backgroundColor = .clear
 
             if tableColumn?.identifier.rawValue == "app" {
-                textField.stringValue = window.owningApplication?.applicationName ?? "Nieznana"
+                textField.stringValue = window.owningApplication?.applicationName ?? String(localized: "Unknown")
             } else if tableColumn?.identifier.rawValue == "title" {
-                textField.stringValue = window.title ?? "Bez tytułu"
+                textField.stringValue = window.title ?? String(localized: "Untitled")
             }
 
             cellView.addSubview(textField)

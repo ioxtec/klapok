@@ -3,6 +3,6 @@
 <plist version="1.0">
 <dict>
     <key>NSScreenCaptureDescription</key>
-    <string>Klapok potrzebuje dostępu do nagrywania ekranu aby robić zrzuty ekranu i zapisywać je w edytorze.</string>
+    <string>Klapok needs screen recording access to capture your screen and open captures in the editor.</string>
 </dict>
 </plist>
