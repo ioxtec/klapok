@@ -11,22 +11,20 @@ import AVFoundation
 
 enum TimelineThumbnailGenerator {
     static func targetCount(for width: CGFloat) -> Int {
-        max(6, min(36, Int(width / 72)))
+        guard width.isFinite, width > 0 else { return 6 }
+        return max(6, min(36, Int(min(width, 2592) / 72)))
     }
 
     static func generate(for video: VideoRecording, width: CGFloat) async -> [TimelineThumbnail] {
         let targetCount = targetCount(for: width)
         let asset = AVURLAsset(url: video.url)
 
-        do {
-            _ = try await asset.load(.tracks)
-        } catch {
-            Logger.w("TimelineThumbnailGenerator: Failed to load video tracks: \(error)")
-        }
-
-        let assetDuration = (try? await asset.load(.duration).seconds) ?? video.duration
-        let duration = assetDuration.isFinite && assetDuration > 0 ? assetDuration : video.duration
-        guard duration > 0 else { return [] }
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let range = try? await track.load(.timeRange),
+              range.start.seconds.isFinite, range.duration.seconds.isFinite,
+              range.duration.seconds > 0 else { return [] }
+        let start = range.start.seconds
+        let duration = range.duration.seconds
 
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
@@ -40,7 +38,8 @@ enum TimelineThumbnailGenerator {
         var thumbnails: [TimelineThumbnail] = []
 
         for index in 0..<targetCount {
-            let seconds = min(max(0, duration - 0.01), max(0, (Double(index) + 0.5) * step))
+            guard !Task.isCancelled else { return [] }
+            let seconds = start + min(max(0, duration - 0.01), (Double(index) + 0.5) * step)
             let time = CMTime(seconds: seconds, preferredTimescale: 600)
 
             do {
@@ -58,6 +57,7 @@ enum TimelineThumbnailGenerator {
         if thumbnails.isEmpty {
             thumbnails = await fallbackThumbnails(
                 from: generator,
+                start: start,
                 duration: duration,
                 targetCount: targetCount
             )
@@ -68,16 +68,17 @@ enum TimelineThumbnailGenerator {
 
     private static func fallbackThumbnails(
         from generator: AVAssetImageGenerator,
+        start: TimeInterval,
         duration: TimeInterval,
         targetCount: Int
     ) async -> [TimelineThumbnail] {
-        let fallbackTimes = [0, duration * 0.25, duration * 0.5, duration * 0.75]
+        let fallbackTimes = [0, duration * 0.25, duration * 0.5, duration * 0.75].map { start + $0 }
         var fallbackImage: NSImage?
 
         for seconds in fallbackTimes {
             do {
                 let generated = try await generator.image(
-                    at: CMTime(seconds: max(0, min(duration, seconds)), preferredTimescale: 600)
+                    at: CMTime(seconds: seconds, preferredTimescale: 600)
                 )
                 fallbackImage = NSImage(
                     cgImage: generated.image,
@@ -91,7 +92,7 @@ enum TimelineThumbnailGenerator {
 
         if fallbackImage == nil {
             let times = fallbackTimes.map {
-                CMTime(seconds: max(0, min(duration, $0)), preferredTimescale: 600)
+                CMTime(seconds: $0, preferredTimescale: 600)
             }
 
             for await result in generator.images(for: times) {
@@ -109,7 +110,7 @@ enum TimelineThumbnailGenerator {
 
         return (0..<targetCount).map { index in
             TimelineThumbnail(
-                time: duration * (Double(index) + 0.5) / Double(targetCount),
+                time: start + duration * (Double(index) + 0.5) / Double(targetCount),
                 image: fallbackImage
             )
         }

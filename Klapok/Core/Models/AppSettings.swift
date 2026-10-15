@@ -562,7 +562,7 @@ import Foundation
                 }
 
                 visibleWindows.forEach { window in
-                    window.makeKeyAndOrderFront(nil)
+                    if window.canBecomeKey { window.makeKeyAndOrderFront(nil) }
                     window.orderFrontRegardless()
                 }
             }

@@ -40,8 +40,10 @@ struct KlapokToolbarBrandMark: View {
             } else {
                 Image(assetName)
                     .resizable()
+                    .renderingMode(.template)
                     .interpolation(.high)
                     .scaledToFit()
+                    .foregroundStyle(.primary)
             }
         }
         .frame(width: size, height: size)

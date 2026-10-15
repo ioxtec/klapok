@@ -15,6 +15,7 @@ final class VideoEditorUITests: XCTestCase {
         try await makeFixture(url)
         app = XCUIApplication()
         app.launchArguments = ["-UITests", "-UITestVideoURL", url.path, "-app_language", "en"]
+        app.launchEnvironment["KLAPOK_UI_TEST_VIDEO_DATA"] = try Data(contentsOf: url).base64EncodedString()
         app.launch()
     }
 
@@ -22,6 +23,64 @@ final class VideoEditorUITests: XCTestCase {
         app.terminate()
         try? FileManager.default.removeItem(at: fixtureFolder)
         super.tearDown()
+    }
+
+    func testClipCanBeRenamedFromContextMenu() {
+        let clip = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "video.clip.")).firstMatch
+        XCTAssertTrue(clip.waitForExistence(timeout: 10))
+        clip.rightClick()
+        app.menuItems["Rename clip…"].click()
+        let sheet = app.windows.firstMatch.sheets.firstMatch
+        let field = sheet.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("Opening")
+        sheet.buttons["Save"].click()
+        XCTAssertTrue(app.staticTexts["Opening"].waitForExistence(timeout: 3))
+    }
+
+    func testClipCanBeRenamedUsingVisiblePencil() {
+        let pencil = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "video.renameClip.")).firstMatch
+        XCTAssertTrue(pencil.waitForExistence(timeout: 10))
+        pencil.click()
+        let sheet = app.windows.firstMatch.sheets.firstMatch
+        let field = sheet.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 3))
+        field.click()
+        field.typeKey("a", modifierFlags: .command)
+        field.typeText("Introduction")
+        sheet.buttons["Save"].click()
+        XCTAssertTrue(app.staticTexts["Introduction"].waitForExistence(timeout: 3))
+    }
+
+    func testVideoClipLoadsFilmstrip() {
+        let clip = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "video.clip.")).firstMatch
+        XCTAssertTrue(clip.waitForExistence(timeout: 10))
+        let ready = XCTNSPredicateExpectation(predicate: NSPredicate(format: "value == %@", "frames"), object: clip)
+        XCTAssertEqual(XCTWaiter.wait(for: [ready], timeout: 10), .completed)
+    }
+
+    func testAnnotationToolbarOffersFillAndTextStyles() {
+        addLayer("Rectangle")
+        let fill = app.checkBoxes["video.fillEnabled"]
+        XCTAssertTrue(fill.waitForExistence(timeout: 5))
+        XCTAssertEqual(fill.value as? String, "1")
+        let opacity = app.descendants(matching: .any)["video.fillOpacity"].firstMatch
+        XCTAssertTrue(opacity.exists)
+        fill.click()
+        XCTAssertEqual(fill.value as? String, "0")
+        XCTAssertFalse(opacity.exists)
+        fill.click()
+        XCTAssertTrue(opacity.waitForExistence(timeout: 3))
+        let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        shot.lifetime = .keepAlways; add(shot)
+        addLayer("Text")
+        XCTAssertTrue(app.descendants(matching: .any)["video.fontWeight"].firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.buttons["video.editText"].exists)
+        XCTAssertFalse(fill.exists)
     }
 
     func testSilentVideoAndIndependentAnnotationLayers() {
@@ -33,6 +92,25 @@ final class VideoEditorUITests: XCTestCase {
         addLayer("Rectangle")
         XCTAssertTrue(app.descendants(matching: .any)["video.layer.1"].firstMatch.waitForExistence(timeout: 3))
         let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot()); shot.lifetime = .keepAlways; add(shot)
+    }
+
+    func testAnnotationRowsCanBeDraggedToChangeStackingOrder() {
+        addLayer("Text")
+        addLayer("Rectangle")
+        let top = app.descendants(matching: .any)["video.layer.0"].firstMatch
+        let bottom = app.descendants(matching: .any)["video.layer.1"].firstMatch
+        XCTAssertTrue(top.waitForExistence(timeout: 5))
+        XCTAssertTrue(top.staticTexts["Rectangle"].exists)
+        let handle = bottom.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "timeline.reorder.")).firstMatch
+        XCTAssertTrue(handle.exists)
+        let start = handle.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let destination = start.withOffset(CGVector(dx: 0, dy: -40))
+        start.click(forDuration: 0.8, thenDragTo: destination)
+        XCTAssertTrue(top.staticTexts["Text"].waitForExistence(timeout: 5))
+        XCTAssertTrue(bottom.staticTexts["Rectangle"].exists)
+        let shot = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+        shot.lifetime = .keepAlways; add(shot)
     }
 
     func testToolbarCreatesInlineText() {

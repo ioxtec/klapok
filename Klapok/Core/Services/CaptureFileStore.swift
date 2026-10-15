@@ -52,7 +52,9 @@ enum CaptureFileStore {
     }
 
     static func writeScreenshot(_ image: NSImage, to fileURL: URL) -> Bool {
-        guard let pngData = pngData(from: image) else {
+        let jpeg = ["jpg", "jpeg"].contains(fileURL.pathExtension.lowercased())
+        guard let pngData = nativeBitmap(from: image)?.representation(using: jpeg ? .jpeg : .png,
+            properties: jpeg ? [.compressionFactor: 0.95] : [:]) else {
             Logger.e("CaptureFileStore: Failed to convert screenshot to PNG")
             return false
         }
@@ -98,12 +100,18 @@ enum CaptureFileStore {
         do {
             return try withSecurityScope(for: directory, enabled: true) {
                 try ensureDirectory(directory)
-                let destinationURL = directory.appendingPathComponent(fileName)
-
-                if FileManager.default.fileExists(atPath: destinationURL.path) {
-                    try FileManager.default.removeItem(at: destinationURL)
+                let requestedURL = directory.appendingPathComponent(fileName)
+                if sourceURL.standardizedFileURL == requestedURL.standardizedFileURL {
+                    return CaptureFileStoreResult(url: requestedURL, directory: directory)
                 }
-
+                var destinationURL = requestedURL
+                var suffix = 2
+                while FileManager.default.fileExists(atPath: destinationURL.path) {
+                    destinationURL = directory.appendingPathComponent(
+                        "\(requestedURL.deletingPathExtension().lastPathComponent)-\(suffix)"
+                    ).appendingPathExtension(requestedURL.pathExtension)
+                    suffix += 1
+                }
                 try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
                 return CaptureFileStoreResult(url: destinationURL, directory: directory)
             }
@@ -114,13 +122,21 @@ enum CaptureFileStore {
     }
 
     private static func pngData(from image: NSImage) -> Data? {
+        nativeBitmap(from: image)?.representation(using: .png, properties: [:])
+    }
+
+    static func nativeBitmap(from image: NSImage) -> NSBitmapImageRep? {
+        if let bitmap = image.representations.compactMap({ $0 as? NSBitmapImageRep })
+            .max(by: { $0.pixelsWide * $0.pixelsHigh < $1.pixelsWide * $1.pixelsHigh }) {
+            return bitmap
+        }
         guard let tiffData = image.tiffRepresentation,
               let bitmapRep = NSBitmapImageRep(data: tiffData)
         else {
             return nil
         }
 
-        return bitmapRep.representation(using: .png, properties: [:])
+        return bitmapRep
     }
 
     private static func withSecurityScope<T>(

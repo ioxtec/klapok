@@ -86,6 +86,8 @@ struct Annotation: Identifiable, Codable, Equatable {
     
     // Arrow properties
     var arrowheadSize: CGFloat
+    // Optional for compatibility with annotations saved before style selection.
+    var arrowStyle: ArrowStyle?
     
     // Free draw properties
     var pathPoints: [CGPoint] // For free drawing
@@ -105,6 +107,7 @@ struct Annotation: Identifiable, Codable, Equatable {
         strokeWidth: CGFloat = 2,
         fillOpacity: Double = 0.3,
         arrowheadSize: CGFloat = 12,
+        arrowStyle: ArrowStyle? = nil,
         pathPoints: [CGPoint] = []
     ) {
         self.id = id
@@ -118,6 +121,7 @@ struct Annotation: Identifiable, Codable, Equatable {
         self.strokeWidth = strokeWidth
         self.fillOpacity = fillOpacity
         self.arrowheadSize = arrowheadSize
+        self.arrowStyle = arrowStyle
         self.pathPoints = pathPoints
         self.createdAt = Date()
         self.modifiedAt = Date()

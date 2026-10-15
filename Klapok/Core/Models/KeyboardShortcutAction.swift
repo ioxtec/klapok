@@ -2,7 +2,7 @@
 //  KeyboardShortcutAction.swift
 //  Klapok
 //
-//  Shared definitions for global capture shortcuts.
+//  Shared definitions for global capture and import shortcuts.
 //
 
 import Foundation
@@ -119,19 +119,21 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
     case recordingFullScreen = 201
     case recordingArea = 202
     case recordingWindow = 203
+    case importImage = 301
+    case importVideo = 302
 
     var id: UInt32 { rawValue }
 
     var mode: CaptureMode {
         switch self {
-        case .screenshotFullScreen, .screenshotArea, .screenshotWindow:
+        case .screenshotFullScreen, .screenshotArea, .screenshotWindow, .importImage:
             return .image
-        case .recordingFullScreen, .recordingArea, .recordingWindow:
+        case .recordingFullScreen, .recordingArea, .recordingWindow, .importVideo:
             return .video
         }
     }
 
-    var captureType: CaptureType {
+    var captureType: CaptureType? {
         switch self {
         case .screenshotFullScreen, .recordingFullScreen:
             return .fullScreen
@@ -139,6 +141,8 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
             return .area
         case .screenshotWindow, .recordingWindow:
             return .window
+        case .importImage, .importVideo:
+            return nil
         }
     }
 
@@ -156,23 +160,31 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
             return String(localized: "Record screen area")
         case .recordingWindow:
             return String(localized: "Record application window")
+        case .importImage:
+            return "Import Image…".localized
+        case .importVideo:
+            return "Import Video…".localized
         }
     }
 
     var description: String {
         switch self {
         case .screenshotFullScreen:
-            return "Captures the full screen and opens the review overlay."
+            return "Captures the full screen and opens the review overlay.".localized
         case .screenshotArea:
-            return "Lets you select an area, then captures it."
+            return "Lets you select an area, then captures it.".localized
         case .screenshotWindow:
-            return "Lets you select a window, then captures it."
+            return "Lets you select a window, then captures it.".localized
         case .recordingFullScreen:
-            return "Starts or stops full screen recording."
+            return "Starts or stops full screen recording.".localized
         case .recordingArea:
-            return "Lets you select an area, then starts recording it."
+            return "Lets you select an area, then starts recording it.".localized
         case .recordingWindow:
-            return "Lets you select a window, then starts recording it."
+            return "Lets you select a window, then starts recording it.".localized
+        case .importImage:
+            return "Opens an existing image in the image editor.".localized
+        case .importVideo:
+            return "Opens an existing video in the video editor.".localized
         }
     }
 
@@ -190,6 +202,10 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
             return KeyboardShortcutDefinition(keyCode: UInt32(kVK_ANSI_2), modifiers: [.command, .option])
         case .recordingWindow:
             return KeyboardShortcutDefinition(keyCode: UInt32(kVK_ANSI_3), modifiers: [.command, .option])
+        case .importImage:
+            return KeyboardShortcutDefinition(keyCode: UInt32(kVK_ANSI_I), modifiers: [.command, .control, .shift])
+        case .importVideo:
+            return KeyboardShortcutDefinition(keyCode: UInt32(kVK_ANSI_V), modifiers: [.command, .control, .shift])
         }
     }
 
@@ -250,6 +266,10 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
 
     static var recordingActions: [KeyboardShortcutAction] {
         [.recordingFullScreen, .recordingArea, .recordingWindow]
+    }
+
+    static var importActions: [KeyboardShortcutAction] {
+        [.importImage, .importVideo]
     }
 
     private func userDefaultsKey(_ suffix: String) -> String {

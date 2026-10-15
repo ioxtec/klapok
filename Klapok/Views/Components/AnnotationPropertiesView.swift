@@ -43,7 +43,7 @@ struct SelectedAnnotationProperties: View {
             // Annotation type indicator
             HStack {
                 Image(systemName: annotation.type.icon)
-                Text(annotation.type.displayName)
+                Text(annotation.type.displayName.localized)
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                 Spacer()

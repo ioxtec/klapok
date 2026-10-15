@@ -35,12 +35,12 @@ struct SettingsSection<Content: View>: View {
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
+                    Text(title.localized)
                         .font(.headline)
                         .foregroundStyle(.primary)
 
                     if let subtitle, !subtitle.isEmpty {
-                        Text(subtitle)
+                        Text(subtitle.localized)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -97,7 +97,7 @@ private struct SettingsOptionLabel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 5) {
-                Text(title)
+                Text(title.localized)
                     .font(.body)
                     .foregroundStyle(.primary)
 
@@ -105,12 +105,12 @@ private struct SettingsOptionLabel: View {
                     Image(systemName: "info.circle")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .help(infoText)
+                        .help(infoText.localized)
                 }
             }
 
             if let description, !description.isEmpty {
-                Text(description)
+                Text(description.localized)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -193,7 +193,7 @@ struct SettingsPickerOption: View {
 
                 Picker(title, selection: selection) {
                     ForEach(options, id: \.0) { option in
-                        Text(option.1).tag(option.0)
+                        Text(option.1.localized).tag(option.0)
                     }
                 }
                 .labelsHidden()
@@ -463,20 +463,20 @@ struct SettingsProfilesSummary<ProfileType: Profile>: View {
     }
 
     private var profileCountText: String {
-        profiles.count == 1 ? "1 profile loaded" : "\(profiles.count) profiles loaded"
+        String(format: "Loaded profiles: %ld".localized, profiles.count)
     }
 
     private var activeProfileText: String {
         if let activeProfile {
-            return "Active: \(activeProfile.name)"
+            return String(format: "Active: %@".localized, activeProfile.name)
         }
 
-        return "No active profile"
+        return "No active profile".localized
     }
 
     private var profilePreviewText: String {
         let names = profiles.prefix(4).map(\.name).joined(separator: ", ")
-        let remainder = profiles.count > 4 ? " and \(profiles.count - 4) more" : ""
+        let remainder = profiles.count > 4 ? String(format: " and %ld more".localized, profiles.count - 4) : ""
         return "\(names)\(remainder)"
     }
 }

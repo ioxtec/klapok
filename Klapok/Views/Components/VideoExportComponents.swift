@@ -26,7 +26,7 @@ struct ExportTypeSelector: View {
                 }
             )) {
                 ForEach(ExportType.allCases) { type in
-                    Text(type.displayName)
+                    Text(type.displayName.localized)
                         .tag(type)
                 }
             }
@@ -231,25 +231,6 @@ struct GIFExportSettingsView: View {
             VStack(alignment: .leading, spacing: 9) {
                 SidebarSubheading("Frames".localized)
 
-                SidebarControlRow(title: "Frame format".localized, systemImage: "film.stack") {
-                    Picker("Frame format".localized, selection: Binding(
-                        get: { exportManager.settings.gifSettings.frameFormat },
-                        set: { newValue in
-                            exportManager.settings.gifSettings.frameFormat = newValue
-                            exportManager.saveSettings()
-                        }
-                    )) {
-                        ForEach(GIFFrameFormat.allCases) { format in
-                            Text(format.displayName.localized).tag(format)
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .labelsHidden()
-                    .frame(width: 118)
-                }
-
-                SidebarDivider()
-
                 SidebarSliderControl(
                     title: "Frame rate".localized,
                     valueText: "\(exportManager.settings.gifSettings.frameRate) FPS",
@@ -334,21 +315,7 @@ struct GIFExportSettingsView: View {
             SidebarDivider()
             
             VStack(alignment: .leading, spacing: 9) {
-                SidebarSubheading("Quality & loop".localized)
-
-                SidebarSliderControl(
-                    title: "Quality".localized,
-                    valueText: "\(Int(exportManager.settings.gifSettings.quality * 100))%",
-                    systemImage: "sparkles",
-                    value: Binding(
-                        get: { exportManager.settings.gifSettings.quality },
-                        set: { exportManager.updateGIFQuality($0) }
-                    ),
-                    range: 0.1...1.0,
-                    step: 0.1
-                )
-
-                SidebarDivider()
+                SidebarSubheading("Loop mode".localized)
 
                 SidebarControlRow(title: "Loop mode".localized, systemImage: "repeat") {
                     Picker("Loop mode".localized, selection: Binding(
@@ -386,19 +353,6 @@ struct GIFExportSettingsView: View {
                     )
                 }
                 
-                SidebarDivider()
-
-                SidebarControlRow(title: "Optimize for web".localized, systemImage: "globe") {
-                    Toggle("", isOn: Binding(
-                        get: { exportManager.settings.gifSettings.optimizeForWeb },
-                        set: { newValue in
-                            exportManager.settings.gifSettings.optimizeForWeb = newValue
-                            exportManager.saveSettings()
-                        }
-                    ))
-                    .toggleStyle(.switch)
-                    .labelsHidden()
-                }
             }
         }
     }

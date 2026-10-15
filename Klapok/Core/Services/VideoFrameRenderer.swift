@@ -97,16 +97,16 @@ enum VideoFrameRenderer {
         let end = CGPoint(x: (track.x + track.width) * size.width, y: (track.y + track.height) * size.height)
         let type = track.kind.annotationType
         let annotation = Annotation(type: type, startPoint: start, endPoint: end, text: track.text,
-            fontSize: max(6, size.height * track.fontScale), fontWeight: .semibold, color: track.color,
-            strokeWidth: max(1, size.height * track.strokeScale), fillOpacity: 0.3,
-            arrowheadSize: max(12, size.height * 0.02))
+            fontSize: max(6, size.height * track.fontScale), fontWeight: track.fontWeight, color: track.color,
+            strokeWidth: max(1, size.height * track.strokeScale), fillOpacity: track.fillOpacity,
+            arrowheadSize: max(12, size.height * 0.02), arrowStyle: track.arrowStyle)
         if track.kind == .text {
             let paragraph = NSMutableParagraphStyle()
             paragraph.lineBreakMode = .byWordWrapping
             let rect = CGRect(x: start.x, y: size.height - start.y - track.height * size.height,
                 width: max(1, track.width * size.width), height: max(1, track.height * size.height))
             NSAttributedString(string: track.text, attributes: [
-                .font: NSFont.systemFont(ofSize: annotation.fontSize, weight: .semibold),
+                .font: NSFont.systemFont(ofSize: annotation.fontSize, weight: track.fontWeight.nsWeight),
                 .foregroundColor: track.color.toNSColor(), .paragraphStyle: paragraph
             ]).draw(in: rect)
         } else {

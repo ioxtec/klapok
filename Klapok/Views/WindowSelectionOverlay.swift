@@ -261,8 +261,8 @@ import SwiftUI
                     guard !isLoading else { return }
 
                     // Throttle hover updates to prevent performance issues
-                    let now = ProcessInfo.processInfo.systemUptime
-                    if now - lastHoverUpdate >= hoverThrottleInterval {
+                    let now = Date().timeIntervalSinceReferenceDate
+                    if now < lastHoverUpdate || now - lastHoverUpdate >= hoverThrottleInterval {
                         lastHoverUpdate = now
 
                         // Find window under cursor

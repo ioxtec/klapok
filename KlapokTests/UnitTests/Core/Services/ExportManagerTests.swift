@@ -35,6 +35,13 @@ final class ExportManagerTests: XCTestCase {
         XCTAssertNotNil(exportManager.settings)
     }
 
+    func testSharedBitrateIsNotRoundedToQualityPreset() {
+        let previous = AppSettings.shared.videoBitrate
+        defer { AppSettings.shared.videoBitrate = previous }
+        AppSettings.shared.videoBitrate = 2_000_000
+        XCTAssertEqual(exportManager.effectiveVideoSettings().targetBitrate, 2_000_000)
+    }
+
     func testNewEditorResetsInheritedScalingWithoutChangingAudio() {
         exportManager.settings.videoSettings.scaling = .custom
         exportManager.settings.videoSettings.customScaleFactor = 1.25

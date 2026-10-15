@@ -75,6 +75,7 @@ struct VideoEditorView: View {
             }
         }
         .id(languageManager.selectedLanguage.rawValue)
+        .environment(\.locale, languageManager.selectedLanguage.locale ?? .current)
         .onChange(of: viewModel.video?.url) { _, _ in exportManager.resetVideoScalingForNewEditor() }
         .alert("Could not complete the operation".localized, isPresented: Binding(
             get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
@@ -92,7 +93,7 @@ struct VideoEditorView: View {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             if let size = attributes[.size] as? Int64 {
-                return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+                return languageManager.selectedLanguage.formatFileSize(size)
             }
         } catch {
             Logger.w("VideoEditorView: Could not read file size: \(error)")
@@ -104,10 +105,7 @@ struct VideoEditorView: View {
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             if let date = attributes[.creationDate] as? Date {
-                let formatter = DateFormatter()
-                formatter.dateStyle = .medium
-                formatter.timeStyle = .short
-                return formatter.string(from: date)
+                return languageManager.selectedLanguage.formatCreationDate(date)
             }
         } catch {
             Logger.w("VideoEditorView: Could not read creation date: \(error)")

@@ -30,7 +30,7 @@ struct VideoCanvasAnnotation: View {
                     guard var current = viewModel.overlayTracks.first(where: { $0.id == track.id }) else { return }
                     current.text = text; viewModel.updateOverlay(current, recordUndo: false)
                 }), axis: .vertical)
-                .font(.system(size: max(6, canvasSize.height * track.fontScale), weight: .semibold))
+                .font(.system(size: max(6, canvasSize.height * track.fontScale), weight: track.fontWeight.swiftUIWeight))
                 .foregroundStyle(track.color.toColor()).textFieldStyle(.plain)
                 .focused($textFocused)
                 .frame(width: max(40, bounds.width), height: max(24, bounds.height), alignment: .topLeading)

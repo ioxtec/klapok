@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import Combine
 
 #if os(macOS)
     import AppKit
@@ -15,48 +16,50 @@ import Foundation
         // MARK: - Dependencies
 
         private let appSettings = AppSettings.shared
+        private var settingsSubscription: AnyCancellable?
+        private var isSynchronizing = false
 
         // MARK: - Published Properties
 
         @Published var saveDirectory: URL {
             didSet {
-                appSettings.saveDirectory = saveDirectory
+                if !isSynchronizing { appSettings.saveDirectory = saveDirectory }
             }
         }
 
         @Published var fileNameTemplate: String {
             didSet {
-                appSettings.fileNameTemplate = fileNameTemplate
+                if !isSynchronizing { appSettings.fileNameTemplate = fileNameTemplate }
             }
         }
 
         @Published var screenshotReviewPosition: ScreenshotReviewPosition {
             didSet {
-                appSettings.screenshotReviewPosition = screenshotReviewPosition
+                if !isSynchronizing { appSettings.screenshotReviewPosition = screenshotReviewPosition }
             }
         }
 
         @Published var capturePixelMode: CapturePixelMode {
             didSet {
-                appSettings.capturePixelMode = capturePixelMode
+                if !isSynchronizing { appSettings.capturePixelMode = capturePixelMode }
             }
         }
 
         @Published var defaultCaptureType: CaptureType {
             didSet {
-                appSettings.defaultCaptureType = defaultCaptureType
+                if !isSynchronizing { appSettings.defaultCaptureType = defaultCaptureType }
             }
         }
 
         @Published var screenshotShowsMouseCursor: Bool {
             didSet {
-                appSettings.screenshotShowsMouseCursor = screenshotShowsMouseCursor
+                if !isSynchronizing { appSettings.screenshotShowsMouseCursor = screenshotShowsMouseCursor }
             }
         }
 
         @Published var showInDock: Bool {
             didSet {
-                appSettings.showInDock = showInDock
+                if !isSynchronizing { appSettings.showInDock = showInDock }
             }
         }
 
@@ -77,6 +80,20 @@ import Foundation
             self.defaultCaptureType = appSettings.defaultCaptureType
             self.screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor
             self.showInDock = appSettings.showInDock
+            settingsSubscription = appSettings.objectWillChange.receive(on: DispatchQueue.main)
+                .sink { [weak self] in self?.synchronizeFromSettings() }
+        }
+
+        private func synchronizeFromSettings() {
+            isSynchronizing = true
+            defer { isSynchronizing = false }
+            if saveDirectory != appSettings.saveDirectory { saveDirectory = appSettings.saveDirectory }
+            if fileNameTemplate != appSettings.fileNameTemplate { fileNameTemplate = appSettings.fileNameTemplate }
+            if screenshotReviewPosition != appSettings.screenshotReviewPosition { screenshotReviewPosition = appSettings.screenshotReviewPosition }
+            if capturePixelMode != appSettings.capturePixelMode { capturePixelMode = appSettings.capturePixelMode }
+            if defaultCaptureType != appSettings.defaultCaptureType { defaultCaptureType = appSettings.defaultCaptureType }
+            if screenshotShowsMouseCursor != appSettings.screenshotShowsMouseCursor { screenshotShowsMouseCursor = appSettings.screenshotShowsMouseCursor }
+            if showInDock != appSettings.showInDock { showInDock = appSettings.showInDock }
         }
 
         // MARK: - Public Methods

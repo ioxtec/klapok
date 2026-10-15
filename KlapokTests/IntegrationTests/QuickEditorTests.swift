@@ -2,10 +2,173 @@ import XCTest
 import AppKit
 import AVFoundation
 import CoreImage
+import SwiftUI
 @testable import Klapok
 
 @MainActor
 final class QuickEditorTests: XCTestCase {
+    func testLayerReorderingMatchesPreviewMP4AndGIFCompositing() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("layers.mov")
+        try await makeVideo(at: source)
+        let video = VideoRecording(url: source, duration: 2, size: CGSize(width: 160, height: 100), frameRate: 10)
+        let vm = VideoEditorViewModel(video: video)
+        for color in [NSColor.blue, NSColor.green] {
+            vm.addOverlayTrack(kind: .rectangle)
+            var track = try XCTUnwrap(vm.overlayTracks.last)
+            track.x = 0.1; track.y = 0.1; track.width = 0.8; track.height = 0.8
+            track.start = 0; track.end = 2; track.fillOpacity = 1
+            track.color = ColorData(color: Color(nsColor: color))
+            vm.updateOverlay(track)
+        }
+        let blue = vm.overlayTracks[0].id, green = vm.overlayTracks[1].id
+        for blueOnTop in [false, true] {
+            if blueOnTop { vm.moveOverlay(blue, relativeTo: green, above: true) }
+            let preview = try await VideoExportService.previewItem(video: video,
+                ranges: [TimelineTimeRange(start: 0, end: 2)], crop: QuickEditGeometry.fullFrame, overlays: vm.overlayTracks)
+            let generator = AVAssetImageGenerator(asset: preview.asset)
+            generator.videoComposition = preview.videoComposition
+            let previewFrame = try await generator.image(at: CMTime(seconds: 0.2, preferredTimescale: 100)).image
+            let mp4 = try await VideoExportService.exportEditedVideo(video: video,
+                ranges: [TimelineTimeRange(start: 0, end: 2)], settings: VideoExportSettings(audioOption: .exclude),
+                crop: QuickEditGeometry.fullFrame, overlays: vm.overlayTracks)
+            defer { try? FileManager.default.removeItem(at: mp4) }
+            let output = AVAssetImageGenerator(asset: AVURLAsset(url: mp4))
+            let mp4Frame = try await output.image(at: CMTime(seconds: 0.2, preferredTimescale: 100)).image
+            let gif = try await VideoExportService.exportGIF(video: video,
+                ranges: [TimelineTimeRange(start: 0, end: 2)], settings: GIFExportSettings(),
+                crop: QuickEditGeometry.fullFrame, overlays: vm.overlayTracks)
+            defer { try? FileManager.default.removeItem(at: gif) }
+            let gifSource = try XCTUnwrap(CGImageSourceCreateWithURL(gif as CFURL, nil))
+            let gifFrame = try XCTUnwrap(CGImageSourceCreateImageAtIndex(gifSource, 0, nil))
+            for frame in [previewFrame, mp4Frame, gifFrame] {
+                let color = pixel(frame)
+                if blueOnTop { XCTAssertGreaterThan(color.blueComponent, color.greenComponent + 0.4) }
+                else { XCTAssertGreaterThan(color.greenComponent, color.blueComponent + 0.4) }
+            }
+        }
+    }
+
+    func testArrowStylesSurviveMP4ExportWithoutScaling() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("arrows.mov")
+        try await makeVideo(at: source)
+        let video = VideoRecording(url: source, duration: 2, size: CGSize(width: 160, height: 100), frameRate: 10)
+        var frames: [Data] = []
+        for style in ArrowStyle.allCases {
+            var track = TimelineOverlayTrack(title: "Arrow", kind: .callout)
+            track.start = 0; track.end = 2; track.x = 0.1; track.y = 0.8
+            track.width = 0.8; track.height = -0.6; track.strokeScale = 0.03
+            track.color = ColorData(color: .green); track.arrowStyle = style
+            let url = try await VideoExportService.exportEditedVideo(video: video,
+                ranges: [TimelineTimeRange(start: 0, end: 2)], settings: VideoExportSettings(audioOption: .exclude),
+                crop: QuickEditGeometry.fullFrame, overlays: [track])
+            defer { try? FileManager.default.removeItem(at: url) }
+            let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+            let frame = try await generator.image(at: CMTime(seconds: 0.2, preferredTimescale: 100)).image
+            XCTAssertEqual(frame.width, 160)
+            XCTAssertEqual(frame.height, 100)
+            frames.append(try XCTUnwrap(frame.dataProvider?.data) as Data)
+        }
+        XCTAssertEqual(Set(frames).count, 3)
+    }
+
+    func testCreationDateFollowsAppLanguageRatherThanSystemRegion() {
+        let date = Date(timeIntervalSince1970: 1_760_486_400)
+        let english = AppLanguage.english.formatCreationDate(date)
+        let polish = AppLanguage.polish.formatCreationDate(date)
+        XCTAssertTrue(english.contains("Oct"), english)
+        XCTAssertTrue(polish.contains("paź"), polish)
+        XCTAssertNotEqual(english, polish)
+        XCTAssertEqual(AppLanguage.system.formattingLocale, Locale.autoupdatingCurrent)
+        XCTAssertTrue(AppLanguage.english.formatFileSize(11_800_000).contains("11.8"))
+        XCTAssertTrue(AppLanguage.polish.formatFileSize(11_800_000).contains("11,8"))
+    }
+
+    func testVideoAnnotationDefaultsAndStyleChangesAreUndoable() throws {
+        let video = VideoRecording(url: URL(fileURLWithPath: "/tmp/style.mov"), duration: 10,
+            size: CGSize(width: 200, height: 100), frameRate: 10)
+        let vm = VideoEditorViewModel(video: video)
+        vm.annotationFillOpacity = 0
+        vm.annotationFontWeight = .bold
+        vm.addOverlayTrack(kind: .rectangle)
+        var track = try XCTUnwrap(vm.overlayTracks.first)
+        XCTAssertEqual(track.fillOpacity, 0)
+        XCTAssertEqual(track.fontWeight, .bold)
+        track.fillOpacity = 0.7
+        track.fontWeight = .regular
+        vm.updateOverlay(track)
+        vm.undo()
+        XCTAssertEqual(vm.overlayTracks.first?.fillOpacity, 0)
+        XCTAssertEqual(vm.overlayTracks.first?.fontWeight, .bold)
+        vm.redo()
+        XCTAssertEqual(vm.overlayTracks.first?.fillOpacity, 0.7)
+        XCTAssertEqual(vm.overlayTracks.first?.fontWeight, .regular)
+    }
+
+    func testShapeFillOpacityIsRenderedForRectangleAndCircle() throws {
+        for kind in [TimelineOverlayTrackKind.rectangle, .circle, .highlight] {
+            var track = TimelineOverlayTrack(title: "", kind: kind)
+            track.x = 0.1; track.y = 0.1; track.width = 0.8; track.height = 0.8
+            for opacity in [0.0, 0.3, 1.0] {
+                track.fillOpacity = opacity
+                let image = try XCTUnwrap(VideoFrameRenderer.previewImage(track, size: CGSize(width: 100, height: 100)))
+                let bitmap = try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(image.tiffRepresentation)))
+                let color = try XCTUnwrap(bitmap.colorAt(x: 50, y: 50))
+                XCTAssertEqual(color.alphaComponent, opacity, accuracy: 0.02, "\(kind), \(opacity)")
+            }
+        }
+    }
+
+    func testTextFontWeightAffectsRasterizedOutput() throws {
+        var track = TimelineOverlayTrack(title: "Text", kind: .text)
+        track.text = "Clear feedback"; track.fontScale = 0.2
+        track.x = 0.1; track.y = 0.1; track.width = 0.8; track.height = 0.8
+        track.fontWeight = .regular
+        let regular = try XCTUnwrap(VideoFrameRenderer.previewImage(track, size: CGSize(width: 300, height: 100)))
+        track.fontWeight = .bold
+        let bold = try XCTUnwrap(VideoFrameRenderer.previewImage(track, size: CGSize(width: 300, height: 100)))
+        XCTAssertNotEqual(regular.tiffRepresentation, bold.tiffRepresentation)
+    }
+
+    func testShapeFillOpacitySurvivesMP4Export() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("fill.mov")
+        try await makeVideo(at: source)
+        let video = VideoRecording(url: source, duration: 2, size: CGSize(width: 160, height: 100), frameRate: 10)
+        for kind in [TimelineOverlayTrackKind.rectangle, .circle] {
+            var greenSamples: [CGFloat] = []
+            for opacity in [0.0, 0.3, 1.0] {
+                var track = TimelineOverlayTrack(title: "Shape", kind: kind)
+                track.start = 0; track.end = 2
+                track.x = 0.1; track.y = 0.1; track.width = 0.8; track.height = 0.8
+                track.color = ColorData(color: Color(nsColor: NSColor(srgbRed: 0, green: 1, blue: 0, alpha: 1)))
+                track.fillOpacity = opacity
+                let url = try await VideoExportService.exportEditedVideo(video: video,
+                    ranges: [TimelineTimeRange(start: 0, end: 2)], settings: VideoExportSettings(audioOption: .exclude),
+                    crop: QuickEditGeometry.fullFrame, overlays: [track])
+                defer { try? FileManager.default.removeItem(at: url) }
+                let generator = AVAssetImageGenerator(asset: AVURLAsset(url: url))
+                let frame = try await generator.image(at: CMTime(seconds: 0.2, preferredTimescale: 100)).image
+                XCTAssertEqual(frame.width, 160)
+                XCTAssertEqual(frame.height, 100)
+                greenSamples.append(pixel(frame).greenComponent)
+            }
+            // Encoded YUV and Core Image color conversion are not linear in sRGB.
+            // Check the ordered visual effect, not an exact RGB/alpha equivalence.
+            XCTAssertLessThan(greenSamples[0], 0.25)
+            XCTAssertGreaterThan(greenSamples[1], greenSamples[0] + 0.1)
+            XCTAssertGreaterThan(greenSamples[2], greenSamples[1] + 0.1)
+            XCTAssertGreaterThan(greenSamples[2], 0.8)
+        }
+    }
+
     func testInvalidFrameExtentsAreRejectedBeforeFiltering() {
         XCTAssertFalse(VideoFrameRenderer.isUsableFrameExtent(.zero))
         XCTAssertFalse(VideoFrameRenderer.isUsableFrameExtent(.null))
@@ -195,10 +358,105 @@ final class QuickEditorTests: XCTestCase {
         XCTAssertEqual(size, CGSize(width: 1000, height: 500))
     }
 
-    private func makeVideo(at url: URL, width: Int = 160, height: Int = 100, initialDelay: Double = 0) async throws {
+    func testEditedExportsMatchSharedCodecFormatAndScaling() async throws {
+        let folder = TestHelpers.createTempDirectory()
+        defer { TestHelpers.removeDirectory(folder); AppSettings.shared.resetToDefaults() }
+        let source = folder.appendingPathComponent("codec-source.mov")
+        try await makeVideo(at: source)
+        let video = VideoRecording(url: source, duration: 2, size: CGSize(width: 160, height: 100), frameRate: 10)
+        for format in ["MP4", "MOV"] {
+            for codec in ["H.264", "H.265"] {
+                AppSettings.shared.videoFormat = format
+                AppSettings.shared.videoCodec = codec
+                var settings = VideoExportSettings(audioOption: .exclude)
+                settings.scaling = .scale50
+                let output = try await VideoExportService.exportEditedVideo(video: video,
+                    ranges: [TimelineTimeRange(start: 0, end: 2)], settings: settings)
+                XCTAssertEqual(output.pathExtension, format.lowercased())
+                let asset = AVURLAsset(url: output)
+                let tracks = try await asset.loadTracks(withMediaType: .video)
+                let track = try XCTUnwrap(tracks.first)
+                let dimensions = try await track.load(.naturalSize)
+                XCTAssertEqual(dimensions, CGSize(width: 80, height: 50))
+                let descriptions = try await track.load(.formatDescriptions)
+                XCTAssertEqual(CMFormatDescriptionGetMediaSubType(try XCTUnwrap(descriptions.first)),
+                    codec == "H.265" ? kCMVideoCodecType_HEVC : kCMVideoCodecType_H264)
+                let fps = try await track.load(.nominalFrameRate)
+                XCTAssertEqual(fps, 10, accuracy: 0.1)
+                let audio = try await asset.loadTracks(withMediaType: .audio)
+                XCTAssertTrue(audio.isEmpty)
+            }
+        }
+    }
+
+    func testImportedVideoStagesOriginalAndUsesOrientedDimensions() async throws {
+        let folder = TestHelpers.createTempDirectory()
+        defer { TestHelpers.removeDirectory(folder) }
+        let source = folder.appendingPathComponent("portrait.mov")
+        try await makeVideo(at: source, transform: CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 100, ty: 0))
+        let before = try Data(contentsOf: source)
+        let imported = try await MediaImportService.importVideo(from: source,
+            into: folder.appendingPathComponent("imports"))
+        XCTAssertNotEqual(imported.url, source)
+        XCTAssertEqual(imported.size, CGSize(width: 100, height: 160))
+        XCTAssertEqual(imported.frameRate, 10)
+        XCTAssertEqual(try Data(contentsOf: imported.url), before)
+        XCTAssertEqual(try Data(contentsOf: source), before)
+    }
+
+    func testInvalidVideoImportDoesNotLeavePrivateCopy() async throws {
+        let folder = TestHelpers.createTempDirectory()
+        defer { TestHelpers.removeDirectory(folder) }
+        let source = folder.appendingPathComponent("invalid.mov")
+        try Data("not a video".utf8).write(to: source)
+        let imports = folder.appendingPathComponent("imports")
+        do {
+            _ = try await MediaImportService.importVideo(from: source, into: imports)
+            XCTFail("Invalid media must be rejected")
+        } catch {
+            XCTAssertTrue(try FileManager.default.contentsOfDirectory(atPath: imports.path).isEmpty)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: source.path))
+        }
+    }
+
+    func testGIFFileHonorsSizeFPSAndLoopSettings() async throws {
+        let folder = TestHelpers.createTempDirectory()
+        defer { TestHelpers.removeDirectory(folder) }
+        let url = folder.appendingPathComponent("gif-source.mov")
+        try await makeVideo(at: url)
+        let video = VideoRecording(url: url, duration: 2, size: CGSize(width: 160, height: 100), frameRate: 10)
+        var settings = GIFExportSettings()
+        settings.frameRate = 5
+        settings.maxWidth = 60; settings.maxHeight = 80
+        settings.maintainAspectRatio = false
+        settings.loopMode = .count; settings.loopCount = 3
+        let output = try await VideoExportService.exportGIF(video: video,
+            ranges: [TimelineTimeRange(start: 0, end: 2)], settings: settings)
+        let source = try XCTUnwrap(CGImageSourceCreateWithURL(output as CFURL, nil))
+        XCTAssertEqual(CGImageSourceGetCount(source), 10)
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        XCTAssertEqual(image.width, 60); XCTAssertEqual(image.height, 80)
+        let frame = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any])
+        let gifFrame = try XCTUnwrap(frame[kCGImagePropertyGIFDictionary] as? [CFString: Any])
+        XCTAssertEqual(try XCTUnwrap(gifFrame[kCGImagePropertyGIFUnclampedDelayTime] as? Double), 0.2, accuracy: 0.01)
+        let properties = try XCTUnwrap(CGImageSourceCopyProperties(source, nil) as? [CFString: Any])
+        let gif = try XCTUnwrap(properties[kCGImagePropertyGIFDictionary] as? [CFString: Any])
+        XCTAssertEqual(gif[kCGImagePropertyGIFLoopCount] as? Int, 3)
+        settings.loopMode = .once
+        let onceOutput = try await VideoExportService.exportGIF(video: video,
+            ranges: [TimelineTimeRange(start: 0, end: 2)], settings: settings)
+        let onceSource = try XCTUnwrap(CGImageSourceCreateWithURL(onceOutput as CFURL, nil))
+        let onceProperties = try XCTUnwrap(CGImageSourceCopyProperties(onceSource, nil) as? [CFString: Any])
+        let once = onceProperties[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+        XCTAssertEqual(once?[kCGImagePropertyGIFLoopCount] as? Int ?? 1, 1)
+    }
+
+    private func makeVideo(at url: URL, width: Int = 160, height: Int = 100, initialDelay: Double = 0,
+                           transform: CGAffineTransform = .identity) async throws {
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
             AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height])
+        input.transform = transform
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input,
             sourcePixelBufferAttributes: [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
                 kCVPixelBufferWidthKey as String: width, kCVPixelBufferHeightKey as String: height])

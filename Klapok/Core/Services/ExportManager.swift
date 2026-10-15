@@ -94,6 +94,7 @@ class ExportManager: ObservableObject {
     func effectiveVideoSettings(appSettings: AppSettings = .shared) -> VideoExportSettings {
         var resolvedSettings = settings.videoSettings
         resolvedSettings.quality = appSettings.normalizedVideoQuality
+        resolvedSettings.targetBitrate = appSettings.videoBitrate
         return resolvedSettings
     }
     

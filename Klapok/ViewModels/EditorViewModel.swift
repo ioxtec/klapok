@@ -185,7 +185,8 @@ import UniformTypeIdentifiers
                 padding: backgroundPadding,
                 aspectRatio: selectedAspectRatio,
                 shadowIntensity: shadowIntensity,
-                cornerRadius: enableRoundedCorners ? cornerRadius : 0
+                cornerRadius: enableRoundedCorners ? cornerRadius : 0,
+                canvasCornerRadius: backgroundCornerRadius
             )
         }
     }

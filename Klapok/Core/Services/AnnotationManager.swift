@@ -39,6 +39,7 @@ final class AnnotationManager: ObservableObject {
     // Style settings
     @Published var defaultColor: Color = .red
     @Published var defaultStrokeWidth: CGFloat = 3
+    @Published var defaultArrowStyle: ArrowStyle = .open
     @Published var defaultFontSize: CGFloat = 18
     @Published var defaultFontWeight: FontWeight = .semibold
     @Published var defaultFillOpacity: Double = 0.3
@@ -131,13 +132,15 @@ final class AnnotationManager: ObservableObject {
 
     func cropImage(_ normalizedRect: CGRect) {
         guard let image = editedImage,
-              let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+              let cgImage = CaptureFileStore.nativeBitmap(from: image)?.cgImage else { return }
         let crop = QuickEditGeometry.normalizedCrop(normalizedRect)
         let rect = CGRect(x: crop.minX * Double(cgImage.width), y: crop.minY * Double(cgImage.height),
                           width: crop.width * Double(cgImage.width), height: crop.height * Double(cgImage.height)).integral
         guard let cropped = cgImage.cropping(to: rect) else { return }
         recordUndoSnapshotIfNeeded(true)
-        editedImage = NSImage(cgImage: cropped, size: CGSize(width: cropped.width, height: cropped.height))
+        let result = NSImage(size: CGSize(width: cropped.width, height: cropped.height))
+        result.addRepresentation(NSBitmapImageRep(cgImage: cropped))
+        editedImage = result
         annotations = annotations.map { annotation in
             var shifted = annotation
             shifted.startPoint.x -= rect.minX; shifted.startPoint.y -= rect.minY
@@ -198,7 +201,8 @@ final class AnnotationManager: ObservableObject {
                 fontWeight: defaultFontWeight,
                 color: ColorData(color: defaultColor),
                 strokeWidth: defaultStrokeWidth,
-                fillOpacity: defaultFillOpacity
+                fillOpacity: defaultFillOpacity,
+                arrowStyle: defaultArrowStyle
             )
         }
     }
@@ -351,6 +355,16 @@ final class AnnotationManager: ObservableObject {
         annotation.strokeWidth = width
         annotation.modifiedAt = Date()
         annotations[index] = annotation
+    }
+
+    func updateSelectedAnnotationArrowStyle(_ style: ArrowStyle) {
+        guard let id = selectedAnnotationId,
+              let index = annotations.firstIndex(where: { $0.id == id }),
+              annotations[index].type == .arrow,
+              (annotations[index].arrowStyle ?? .open) != style else { return }
+        recordUndoSnapshotIfNeeded(true)
+        annotations[index].arrowStyle = style
+        annotations[index].modifiedAt = Date()
     }
     
     func updateSelectedAnnotationFontSize(_ size: CGFloat) {

@@ -35,6 +35,20 @@ enum AppLanguage: String, CaseIterable {
             return Locale(identifier: "pl")
         }
     }
+
+    var formattingLocale: Locale { locale ?? .autoupdatingCurrent }
+
+    func formatFileSize(_ bytes: Int64) -> String {
+        bytes.formatted(.byteCount(style: .file).locale(formattingLocale))
+    }
+
+    func formatCreationDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = formattingLocale
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
 }
 
 /// Language manager for handling app language selection

@@ -161,13 +161,14 @@ import SwiftUI
 
         @MainActor
         func performShortcut(_ shortcut: KeyboardShortcutAction) {
+            guard let captureType = shortcut.captureType else { return }
             captureMode = shortcut.mode
 
             switch shortcut.mode {
             case .image:
-                performScreenshotShortcut(type: shortcut.captureType)
+                performScreenshotShortcut(type: captureType)
             case .video:
-                performRecordingShortcut(type: shortcut.captureType)
+                performRecordingShortcut(type: captureType)
             }
         }
 
@@ -961,38 +962,32 @@ import SwiftUI
         
         @MainActor
         private func presentVideoReview(for recording: VideoRecording) {
+            guard let savedRecording = saveVideoRecording(recording) else { return }
             let sourceRect = selectedArea.isEmpty ? nil : selectedArea
 
             VideoReviewPresenter.shared.present(
-                recording: recording,
+                recording: savedRecording,
                 sourceRect: sourceRect,
                 onCopy: { [weak self] recording in
                     Task { @MainActor in
-                        await self?.saveCopyAndPasteVideo(recording)
+                        self?.copyVideoToClipboard(recording)
                     }
                 },
                 onEdit: { [weak self] recording in
                     Task { @MainActor in
-                        guard let self, let savedRecording = self.saveVideoRecording(recording) else { return }
-                        await self.openVideoInEditor(savedRecording)
+                        await self?.openVideoInEditor(recording)
                     }
                 },
-                onSave: { [weak self] recording in
-                    _ = self?.saveVideoRecording(recording)
-                },
-                onCancel: { [weak self] recording in
-                    self?.discardRecording(recording)
-                }
+                onSave: { _ in },
+                onCancel: { _ in }
             )
         }
 
         @MainActor
-        private func saveCopyAndPasteVideo(_ recording: VideoRecording) async {
-            guard let savedRecording = saveVideoRecording(recording) else { return }
-
+        private func copyVideoToClipboard(_ recording: VideoRecording) {
             let pasteboard = NSPasteboard.general
             pasteboard.clearContents()
-            pasteboard.writeObjects([savedRecording.url as NSURL])
+            pasteboard.writeObjects([recording.url as NSURL])
         }
 
         @MainActor
@@ -1020,11 +1015,6 @@ import SwiftUI
             }
         }
 
-        @MainActor
-        private func discardRecording(_ recording: VideoRecording) {
-            try? FileManager.default.removeItem(at: recording.url)
-        }
-        
         @MainActor
         private func showDirectoryChangedAlert(for type: String) {
             let alert = NSAlert()

@@ -100,6 +100,13 @@ struct SelectedAnnotationPropertiesView: View {
                 .controlSize(.small)
             }
 
+            if annotation.type == .arrow {
+                ArrowStylePicker(selection: Binding(
+                    get: { annotationManager.selectedAnnotation?.arrowStyle ?? .open },
+                    set: { annotationManager.updateSelectedAnnotationArrowStyle($0) }
+                ))
+            }
+
             if showsFillOpacity {
                 Divider()
                     .frame(height: 20)
@@ -328,6 +335,7 @@ struct ArrowToolProperties: View {
     
     var body: some View {
         HStack(spacing: 12) {
+            ArrowStylePicker(selection: $annotationManager.defaultArrowStyle)
             // Color
             HStack(spacing: 6) {
                 Image(systemName: "paintpalette")

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @StateObject private var viewState = SettingsViewState()
+    @StateObject private var languageManager = LanguageManager.shared
 
     enum SettingsTab: String, CaseIterable, Identifiable {
         case general = "General"
@@ -62,6 +63,7 @@ struct SettingsView: View {
                 .background(.regularMaterial)
         }
         .frame(minWidth: 820, idealWidth: 900, maxWidth: 1120, minHeight: 560, idealHeight: 640, maxHeight: 820)
+        .environment(\.locale, languageManager.selectedLanguage.locale ?? .current)
     }
 
     private var selectedTab: SettingsTab {
@@ -93,7 +95,7 @@ private struct SettingsTabStrip: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Text(selectedTab.title)
+            Text(selectedTab.title.localized)
                 .font(.title3.weight(.semibold))
                 .foregroundStyle(.primary)
                 .accessibilityIdentifier("settings.title")
@@ -128,7 +130,7 @@ private struct SettingsTabButton: View {
                     .font(.system(size: 25, weight: .regular))
                     .symbolVariant(isSelected ? .fill : .none)
 
-                Text(tab.title)
+                Text(tab.title.localized)
                     .font(.callout.weight(isSelected ? .semibold : .regular))
             }
             .foregroundStyle(isSelected ? Color.accentColor : Color.secondary)

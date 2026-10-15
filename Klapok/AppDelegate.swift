@@ -8,6 +8,7 @@
 import Combine
 import SwiftUI
 import AVFoundation
+import UniformTypeIdentifiers
 
 #if os(macOS)
     import AppKit
@@ -21,6 +22,7 @@ import AVFoundation
         private var cancellables = Set<AnyCancellable>()
 
         private var editorWindow: NSWindow?
+        private var importedVideoWindow: NSWindow?
         #if DEBUG
         private var uiTestVideoFolder: URL?
         #endif
@@ -65,7 +67,6 @@ import AVFoundation
         }
 
         func applicationDidFinishLaunching(_ notification: Notification) {
-            applyApplicationIcon()
             registerHotkeys()
             createOverlayWindow()  // Create overlay window at startup
             setupStatusBarItem()
@@ -112,9 +113,17 @@ import AVFoundation
                     let url = folder.appendingPathComponent(fixtureURL.lastPathComponent)
                     do {
                         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                        try FileManager.default.copyItem(at: fixtureURL, to: url)
+                        if let encoded = ProcessInfo.processInfo.environment["KLAPOK_UI_TEST_VIDEO_DATA"],
+                           let data = Data(base64Encoded: encoded) {
+                            try data.write(to: url)
+                        } else {
+                            try FileManager.default.copyItem(at: fixtureURL, to: url)
+                        }
                         self.uiTestVideoFolder = folder
-                    } catch { return }
+                    } catch {
+                        Logger.e("Could not prepare UI test video: \(error)")
+                        return
+                    }
                     let asset = AVURLAsset(url: url)
                     guard let duration = try? await asset.load(.duration),
                           let track = try? await asset.loadTracks(withMediaType: .video).first,
@@ -204,6 +213,7 @@ import AVFoundation
             editorViewModel.isPresented = false
             editorWindow?.orderOut(nil)
             floatingPanelViewModel?.hideVideoEditorWindow()
+            importedVideoWindow?.orderOut(nil)
         }
 
         private func setupEscapeKeyHandling() {
@@ -340,6 +350,16 @@ import AVFoundation
 
         @MainActor
         private func performKeyboardShortcut(_ shortcut: KeyboardShortcutAction) {
+            switch shortcut {
+            case .importImage:
+                importImageFromMenu()
+                return
+            case .importVideo:
+                importVideoFromMenu()
+                return
+            default:
+                break
+            }
             hideEditorWindowsForNewCapture()
             showFloatingPanel(mode: shortcut.mode)
             floatingPanelViewModel?.performShortcut(shortcut)
@@ -449,17 +469,6 @@ import AVFoundation
             rebuildStatusBarMenu()
         }
 
-        private func applyApplicationIcon() {
-            guard
-                let iconURL = Bundle.main.url(forResource: "klapok-app-icon", withExtension: "png"),
-                let iconImage = NSImage(contentsOf: iconURL)
-            else {
-                return
-            }
-
-            NSApp.applicationIconImage = iconImage
-        }
-
         private func statusItemBrandImage() -> NSImage? {
             if let assetImage = NSImage(named: "KlapokToolbarDark")?.copy() as? NSImage {
                 assetImage.size = NSSize(width: 18, height: 18)
@@ -520,6 +529,9 @@ import AVFoundation
 
             addShortcutActionItems(KeyboardShortcutAction.recordingActions, to: menu)
 
+            menu.addItem(NSMenuItem.separator())
+
+            addShortcutActionItems(KeyboardShortcutAction.importActions, to: menu)
             menu.addItem(NSMenuItem.separator())
 
             let settingsItem = NSMenuItem(
@@ -584,6 +596,67 @@ import AVFoundation
         @MainActor
         @objc private func openSettings() {
             openSettingsWindow()
+        }
+
+        @MainActor
+        private func chooseImportFile(types: [UTType], title: String) -> URL? {
+            let panel = NSOpenPanel()
+            panel.allowedContentTypes = types
+            panel.canChooseDirectories = false
+            panel.allowsMultipleSelection = false
+            panel.title = title
+            NSApp.activate(ignoringOtherApps: true)
+            WindowPlacement.centerModalPanel(panel)
+            return panel.runModal() == .OK ? panel.url : nil
+        }
+
+        @MainActor
+        @objc private func importImageFromMenu() {
+            guard let url = chooseImportFile(types: [.image], title: String(localized: "Import Image…")) else { return }
+            do {
+                let image = try MediaImportService.loadImage(from: url)
+                hideEditorWindowsForNewCapture()
+                hideFloatingPanelForEditor()
+                editorViewModel.show(image: image)
+            } catch { showImportError(error) }
+        }
+
+        @MainActor
+        @objc private func importVideoFromMenu() {
+            guard let url = chooseImportFile(types: [.movie], title: String(localized: "Import Video…")) else { return }
+            Task { @MainActor in
+                do {
+                    let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+                        .appendingPathComponent("Klapok/Imports", isDirectory: true)
+                    let recording = try await MediaImportService.importVideo(from: url, into: directory)
+                    hideEditorWindowsForNewCapture()
+                    hideFloatingPanelForEditor()
+                    let host = NSHostingController(rootView: VideoEditorView(viewModel: VideoEditorViewModel(video: recording)))
+                    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1180, height: 720),
+                        styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                        backing: .buffered, defer: false)
+                    window.contentViewController = host
+                    window.title = String(localized: "Klapok Video Editor")
+                    window.titleVisibility = .hidden
+                    window.titlebarAppearsTransparent = true
+                    window.minSize = NSSize(width: 1180, height: 720)
+                    window.isReleasedWhenClosed = false
+                    importedVideoWindow?.close()
+                    importedVideoWindow = window
+                    WindowPlacement.center(window)
+                    window.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                } catch { showImportError(error) }
+            }
+        }
+
+        @MainActor
+        private func showImportError(_ error: Error) {
+            let alert = NSAlert()
+            alert.messageText = String(localized: "Import Failed")
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+            alert.runModal()
         }
 
         @MainActor

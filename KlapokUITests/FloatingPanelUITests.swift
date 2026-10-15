@@ -16,6 +16,8 @@ final class FloatingPanelUITests: XCTestCase {
         app = XCUIApplication()
         app.launchArguments = [
             "-UITests",
+            "-AppleLanguages", "(en)",
+            "-app_language", "en",
             "-UITestResetSettings",
             "-UITestShowFloatingPanel",
             "-UITestDisableCaptureSideEffects"

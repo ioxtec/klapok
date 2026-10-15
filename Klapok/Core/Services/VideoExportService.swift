@@ -24,19 +24,19 @@ enum VideoExportService {
         var errorDescription: String? {
             switch self {
             case .exportSessionUnavailable:
-                return "Could not create a video export session."
+                return "Could not create a video export session.".localized
             case .assetReaderUnavailable:
-                return "Could not create a video reader."
+                return "Could not create a video reader.".localized
             case .assetWriterUnavailable:
-                return "Could not create a video writer."
+                return "Could not create a video writer.".localized
             case .exportFailed(let message):
-                return message
+                return message.localized
             case .gifDestinationUnavailable:
-                return "Could not create a GIF destination."
+                return "Could not create a GIF destination.".localized
             case .gifFrameGenerationFailed:
-                return "Could not generate GIF frames."
+                return "Could not generate GIF frames.".localized
             case .gifFinalizeFailed:
-                return "Could not finalize GIF export."
+                return "Could not finalize GIF export.".localized
             }
         }
     }
@@ -68,7 +68,8 @@ enum VideoExportService {
             quality: settings.quality,
             format: appSettings.videoFormat,
             codec: appSettings.videoCodec,
-            frameRate: sourceFrameRate
+            frameRate: sourceFrameRate,
+            bitrate: settings.targetBitrate
         )
 
         let outputURL = uniqueOutputURL(
@@ -133,14 +134,14 @@ enum VideoExportService {
 
         let frameProperties = gifFrameProperties(frameRate: settings.frameRate)
         var generatedFrameCount = 0
+        var completed = false
+        defer { if !completed { try? FileManager.default.removeItem(at: outputURL) } }
         for time in frameTimes {
-            do {
-                let cgImage = try await generator.image(at: time).image
-                CGImageDestinationAddImage(destination, cgImage, frameProperties as CFDictionary)
-                generatedFrameCount += 1
-            } catch {
-                Logger.w("VideoExportService: Failed to generate GIF frame at \(time.seconds)s: \(error)")
-            }
+            let cgImage = try await generator.image(at: time).image
+            let quantized = try GIFPaletteRenderer.render(cgImage, colors: settings.colorDepth,
+                dithering: settings.dithering)
+            CGImageDestinationAddImage(destination, quantized, frameProperties as CFDictionary)
+            generatedFrameCount += 1
         }
 
         guard generatedFrameCount > 0 else {
@@ -150,6 +151,7 @@ enum VideoExportService {
         guard CGImageDestinationFinalize(destination) else {
             throw ExportError.gifFinalizeFailed
         }
+        completed = true
 
         Logger.d(
             "VideoExportService: GIF exported with \(generatedFrameCount) frames, \(settings.frameRate) fps, \(Int(targetSize.width))x\(Int(targetSize.height))px"
@@ -554,7 +556,8 @@ enum VideoExportService {
         quality: VideoQuality,
         format: String,
         codec: String,
-        frameRate: Int
+        frameRate: Int,
+        bitrate: Int? = nil
     ) -> EditedVideoOutputConfiguration {
         let resolvedCodec: AVVideoCodecType = codec == "H.265" ? .hevc : .h264
         let resolvedFileType: AVFileType = format == "MOV" ? .mov : .mp4
@@ -562,7 +565,7 @@ enum VideoExportService {
         let maxKeyFrameInterval = max(1, frameRate * 2)
 
         var compressionProperties: [String: Any] = [
-            AVVideoAverageBitRateKey: quality.bitrate,
+            AVVideoAverageBitRateKey: bitrate ?? quality.bitrate,
             AVVideoExpectedSourceFrameRateKey: frameRate,
             AVVideoMaxKeyFrameIntervalKey: maxKeyFrameInterval,
             AVVideoAllowFrameReorderingKey: false,
@@ -616,6 +619,10 @@ enum VideoExportService {
         var targetWidth = CGFloat(settings.maxWidth)
         var targetHeight = CGFloat(settings.maxHeight)
 
+        if !settings.maintainAspectRatio {
+            return CGSize(width: max(2, targetWidth.rounded()), height: max(2, targetHeight.rounded()))
+        }
+
         guard aspectRatio.isFinite, aspectRatio > 0 else {
             return CGSize(width: max(2, targetWidth), height: max(2, targetHeight))
         }
@@ -626,18 +633,15 @@ enum VideoExportService {
             targetHeight = targetWidth / aspectRatio
         }
 
-        return CGSize(width: max(2, targetWidth), height: max(2, targetHeight))
+        return CGSize(width: max(2, targetWidth.rounded()), height: max(2, targetHeight.rounded()))
     }
 
     private static func gifFileProperties(settings: GIFExportSettings) -> [String: Any] {
-        [
-            kCGImagePropertyGIFDictionary as String: [
-                kCGImagePropertyGIFLoopCount as String: settings.loopMode == .infinite
-                    ? 0
-                    : (settings.loopMode == .once ? 1 : settings.loopCount),
-                kCGImagePropertyGIFHasGlobalColorMap as String: true
-            ]
-        ]
+        var properties: [String: Any] = [kCGImagePropertyGIFHasGlobalColorMap as String: true]
+        if settings.loopMode != .once {
+            properties[kCGImagePropertyGIFLoopCount as String] = settings.loopMode == .infinite ? 0 : settings.loopCount
+        }
+        return [kCGImagePropertyGIFDictionary as String: properties]
     }
 
     private static func gifFrameProperties(frameRate: Int) -> [String: Any] {

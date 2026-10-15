@@ -55,6 +55,20 @@ struct KeyboardShortcutsSettingsView: View {
                     }
                 }
 
+                SettingsSection(
+                    title: "Import",
+                    subtitle: "Open existing images and videos directly in their editors.",
+                    systemImage: "square.and.arrow.down"
+                ) {
+                    ForEach(Array(KeyboardShortcutAction.importActions.enumerated()), id: \.element.id) { index, shortcut in
+                        KeyboardShortcutOption(
+                            shortcut: shortcut,
+                            isLast: index == KeyboardShortcutAction.importActions.count - 1,
+                            onConflict: { conflictMessage = $0 }
+                        )
+                    }
+                }
+
                 HStack {
                     Spacer()
 
@@ -129,6 +143,7 @@ private struct KeyboardShortcutOption: View {
                 )
                 .frame(width: 128, height: 30)
                 .accessibilityLabel("\(shortcut.title), \(shortcut.displayShortcut)")
+                .accessibilityIdentifier("settings.shortcut.\(shortcut.rawValue)")
             }
         }
     }

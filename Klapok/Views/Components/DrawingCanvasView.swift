@@ -145,45 +145,11 @@ struct DrawingCanvasView: View {
     }
     
     private func drawArrowAnnotation(_ annotation: Annotation, in context: GraphicsContext, color: Color, opacity: Double) {
-        let start = annotation.startPoint
-        let end = annotation.endPoint
-        
-        // Draw line
-        var path = Path()
-        path.move(to: start)
-        path.addLine(to: end)
-        
-        context.stroke(
-            path,
-            with: .color(color.opacity(opacity)),
-            lineWidth: annotation.strokeWidth
-        )
-        
-        // Draw arrowhead
-        let angle = atan2(end.y - start.y, end.x - start.x)
-        let arrowLength = annotation.arrowheadSize
-        let arrowAngle: CGFloat = .pi / 6
-        
-        let point1 = CGPoint(
-            x: end.x - arrowLength * cos(angle - arrowAngle),
-            y: end.y - arrowLength * sin(angle - arrowAngle)
-        )
-        let point2 = CGPoint(
-            x: end.x - arrowLength * cos(angle + arrowAngle),
-            y: end.y - arrowLength * sin(angle + arrowAngle)
-        )
-        
-        var arrowPath = Path()
-        arrowPath.move(to: end)
-        arrowPath.addLine(to: point1)
-        arrowPath.move(to: end)
-        arrowPath.addLine(to: point2)
-        
-        context.stroke(
-            arrowPath,
-            with: .color(color.opacity(opacity)),
-            lineWidth: annotation.strokeWidth
-        )
+        let geometry = ArrowGeometry(start: annotation.startPoint, end: annotation.endPoint,
+            style: annotation.arrowStyle ?? .open, headSize: annotation.arrowheadSize, strokeWidth: annotation.strokeWidth)
+        context.stroke(Path(geometry.stroke), with: .color(color.opacity(opacity)),
+            style: StrokeStyle(lineWidth: annotation.strokeWidth, lineCap: .round, lineJoin: .round))
+        context.fill(Path(geometry.fill), with: .color(color.opacity(opacity)))
     }
     
     private func drawRectangleAnnotation(_ annotation: Annotation, in context: GraphicsContext, color: Color, opacity: Double) {

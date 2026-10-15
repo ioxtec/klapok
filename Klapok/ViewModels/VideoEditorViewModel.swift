@@ -32,11 +32,13 @@ struct TimelineTimeRange: Equatable {
 struct VideoTimelineClip: Identifiable, Equatable {
     let id: UUID
     var name: String
+    var hasCustomName: Bool
     var sourceRanges: [TimelineTimeRange]
 
-    init(id: UUID = UUID(), name: String, sourceRanges: [TimelineTimeRange]) {
+    init(id: UUID = UUID(), name: String, sourceRanges: [TimelineTimeRange], hasCustomName: Bool = false) {
         self.id = id
         self.name = name
+        self.hasCustomName = hasCustomName
         self.sourceRanges = sourceRanges
     }
 
@@ -115,6 +117,9 @@ struct TimelineOverlayTrack: Identifiable, Equatable {
     var color: ColorData = ColorData(color: .red)
     var fontScale: Double = 0.035
     var strokeScale: Double = 0.004
+    var fillOpacity: Double = 0.3
+    var fontWeight: FontWeight = .semibold
+    var arrowStyle: ArrowStyle = .open
 
     mutating func moveEndpoint(start: Bool, to point: CGPoint) {
         let point = CGPoint(x: max(0, min(0.95, point.x)), y: max(0, min(0.95, point.y)))
@@ -173,6 +178,9 @@ final class VideoEditorViewModel: ObservableObject {
     @Published var annotationColor: Color = .red
     @Published var annotationFontSize: Double = 28
     @Published var annotationStrokeWidth: Double = 3
+    @Published var annotationFillOpacity: Double = 0.3
+    @Published var annotationFontWeight: FontWeight = .semibold
+    @Published var annotationArrowStyle: ArrowStyle = .open
     @Published var isPlaying = false
 
     private var previewTask: Task<Void, Never>?
@@ -185,6 +193,9 @@ final class VideoEditorViewModel: ObservableObject {
     private var seekGeneration = 0
     private var thumbnailRequestID = UUID()
     private var timelineThumbnailURL: URL?
+    private var timelineThumbnailTargetCount: Int?
+    private var timelineThumbnailTask: Task<[TimelineThumbnail], Never>?
+    private let thumbnailLoader: @MainActor (VideoRecording, CGFloat) async -> [TimelineThumbnail]
     private var undoStack: [VideoTimelineHistoryState] = []
     private var redoStack: [VideoTimelineHistoryState] = []
     private var isRestoringHistory = false
@@ -192,7 +203,11 @@ final class VideoEditorViewModel: ObservableObject {
     private let minimumClipDuration: TimeInterval = 0.08
     private let maximumHistoryDepth = 80
 
-    init(video: VideoRecording? = nil) {
+    init(video: VideoRecording? = nil,
+         thumbnailLoader: @escaping @MainActor (VideoRecording, CGFloat) async -> [TimelineThumbnail] = {
+             await TimelineThumbnailGenerator.generate(for: $0, width: $1)
+         }) {
+        self.thumbnailLoader = thumbnailLoader
         Publishers.CombineLatest($clips, $cropRect)
             .dropFirst().debounce(for: .milliseconds(150), scheduler: RunLoop.main)
             .sink { [weak self] _ in self?.rebuildPreview() }
@@ -278,12 +293,16 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     func loadVideo(_ video: VideoRecording) {
+        timelineThumbnailTask?.cancel()
+        timelineThumbnailTask = nil
+        thumbnailRequestID = UUID()
         let clip = makeInitialClip(for: video)
         self.video = video
         self.currentTime = 0
         self.timelineThumbnails = []
         self.isLoadingTimelineThumbnails = false
         self.timelineThumbnailURL = nil
+        self.timelineThumbnailTargetCount = nil
         self.clips = [clip]
         self.selectedClipIDs = [clip.id]
         self.overlayTracks = []
@@ -348,10 +367,11 @@ final class VideoEditorViewModel: ObservableObject {
 
         recordUndoSnapshot()
 
-        let leftClip = VideoTimelineClip(name: clip.name, sourceRanges: split.left)
-        let rightClip = VideoTimelineClip(name: clip.name, sourceRanges: split.right)
+        let leftClip = VideoTimelineClip(name: clip.name, sourceRanges: split.left, hasCustomName: clip.hasCustomName)
+        let rightClip = VideoTimelineClip(name: "", sourceRanges: split.right)
 
         clips.replaceSubrange(candidate.index...candidate.index, with: [leftClip, rightClip])
+        refreshAutomaticClipNames()
         selectedClipIDs = [rightClip.id]
         currentTime = timelineRange(for: rightClip).start
     }
@@ -365,10 +385,12 @@ final class VideoEditorViewModel: ObservableObject {
 
         let mergedClip = VideoTimelineClip(
             name: clips[firstIndex].name,
-            sourceRanges: mergedRanges
+            sourceRanges: mergedRanges,
+            hasCustomName: clips[firstIndex].hasCustomName
         )
 
         clips.replaceSubrange(firstIndex...indices.last!, with: [mergedClip])
+        refreshAutomaticClipNames()
         selectedClipIDs = [mergedClip.id]
         currentTime = timelineRange(for: mergedClip).start
     }
@@ -380,6 +402,7 @@ final class VideoEditorViewModel: ObservableObject {
 
         let remaining = clips.filter { !selectedClipIDs.contains($0.id) }
         clips = remaining
+        refreshAutomaticClipNames()
         overlayTracks = overlayTracks.compactMap { track in
             guard track.start < editedDuration else { return nil }
             var shortened = track; shortened.end = min(track.end, editedDuration)
@@ -415,12 +438,16 @@ final class VideoEditorViewModel: ObservableObject {
         if recordUndo { recordUndoSnapshot() }
 
         var track = TimelineOverlayTrack(title: kind.displayName, kind: kind)
-        if kind == .text { track.color = ColorData(color: .white) }
+        track.color = ColorData(color: annotationColor)
+        track.fillOpacity = annotationFillOpacity
+        track.fontWeight = annotationFontWeight
+        track.arrowStyle = annotationArrowStyle
         track.fontScale = annotationFontSize / max(1, (video?.size.height ?? 800) * cropRect.height)
         track.strokeScale = annotationStrokeWidth / max(1, (video?.size.height ?? 800) * cropRect.height)
         track.text = "Note".localized
         track.start = min(currentTime, max(0, editedDuration - 0.1))
-        track.end = min(editedDuration, track.start + 5)
+        let duration = min(15, max(5, editedDuration * 0.15))
+        track.end = min(editedDuration, track.start + duration)
         overlayTracks.append(track)
         selectedOverlayID = track.id
         selectedClipIDs.removeAll()
@@ -431,6 +458,7 @@ final class VideoEditorViewModel: ObservableObject {
         guard let index = overlayTracks.firstIndex(where: { $0.id == track.id }) else { return }
         if recordUndo { recordUndoSnapshot() }
         var normalized = track
+        normalized.fillOpacity = track.fillOpacity.isFinite ? max(0, min(1, track.fillOpacity)) : 0
         normalized.start = max(0, min(track.start, max(0, editedDuration - 0.1)))
         normalized.end = max(normalized.start + 0.1, min(track.end, editedDuration))
         normalized.x = max(0, min(0.95, track.x))
@@ -450,6 +478,15 @@ final class VideoEditorViewModel: ObservableObject {
         exportedURL = nil
         if selectedOverlayID == id { selectedOverlayID = nil }
         if editingOverlayID == id { editingOverlayID = nil }
+    }
+
+    func moveOverlay(_ id: UUID, relativeTo target: UUID, above: Bool) {
+        let order = TimelineLayerOrder.moving(id, relativeTo: target, above: above, in: overlayTracks.map(\.id))
+        guard order != overlayTracks.map(\.id) else { return }
+        recordUndoSnapshot()
+        let tracks = Dictionary(uniqueKeysWithValues: overlayTracks.map { ($0.id, $0) })
+        overlayTracks = order.compactMap { tracks[$0] }
+        exportedURL = nil
     }
 
     func selectOverlay(_ id: UUID) {
@@ -579,6 +616,7 @@ final class VideoEditorViewModel: ObservableObject {
 
         recordUndoSnapshot()
         clips = remainingClips
+        refreshAutomaticClipNames()
     }
 
     func undo() {
@@ -614,12 +652,13 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     func loadTimelineThumbnails(for width: CGFloat) async {
-        guard let video, width > 0 else { return }
+        guard let video, width.isFinite, width > 0 else { return }
 
         let targetCount = TimelineThumbnailGenerator.targetCount(for: width)
-        if timelineThumbnailURL == video.url, timelineThumbnails.count == targetCount {
+        if !timelineThumbnails.isEmpty, timelineThumbnailURL == video.url, timelineThumbnailTargetCount == targetCount {
             return
         }
+        guard !isLoadingTimelineThumbnails else { return }
 
         let requestID = UUID()
         thumbnailRequestID = requestID
@@ -630,11 +669,17 @@ final class VideoEditorViewModel: ObservableObject {
             }
         }
 
-        let thumbnails = await TimelineThumbnailGenerator.generate(for: video, width: width)
+        let loader = thumbnailLoader
+        let task = Task { await loader(video, width) }
+        timelineThumbnailTask = task
+        let thumbnails = await task.value
         guard thumbnailRequestID == requestID else { return }
-
-        timelineThumbnails = thumbnails
-        timelineThumbnailURL = video.url
+        timelineThumbnailTask = nil
+        if !thumbnails.isEmpty {
+            timelineThumbnails = thumbnails
+            timelineThumbnailURL = video.url
+            timelineThumbnailTargetCount = targetCount
+        }
     }
 
     func timelineRange(for clip: VideoTimelineClip) -> TimelineTimeRange {
@@ -768,10 +813,11 @@ final class VideoEditorViewModel: ObservableObject {
                 }
                 cursor += source.duration
             }
-            if !ranges.isEmpty { result.append(VideoTimelineClip(name: clip.name, sourceRanges: ranges)) }
+            if !ranges.isEmpty { result.append(VideoTimelineClip(name: clip.name, sourceRanges: ranges, hasCustomName: clip.hasCustomName)) }
         }
         guard !result.isEmpty else { return }
         clips = result
+        refreshAutomaticClipNames()
         overlayTracks = overlayTracks.compactMap { track in
             let start = max(track.start, keep.start), end = min(track.end, keep.end)
             guard end > start else { return nil }
@@ -829,6 +875,7 @@ final class VideoEditorViewModel: ObservableObject {
     }
 
     deinit {
+        timelineThumbnailTask?.cancel()
         if let timeObserver {
             player?.removeTimeObserver(timeObserver)
         }
@@ -836,9 +883,30 @@ final class VideoEditorViewModel: ObservableObject {
 
     private func makeInitialClip(for video: VideoRecording) -> VideoTimelineClip {
         VideoTimelineClip(
-            name: "Main Clip".localized,
+            name: automaticClipName(at: 0),
             sourceRanges: [TimelineTimeRange(start: 0, end: video.duration)]
         )
+    }
+
+    func renameClip(_ id: UUID, to name: String) {
+        guard let index = clips.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let custom = !trimmed.isEmpty
+        let updatedName = custom ? trimmed : automaticClipName(at: index)
+        guard clips[index].name != updatedName || clips[index].hasCustomName != custom else { return }
+        recordUndoSnapshot()
+        clips[index].name = updatedName
+        clips[index].hasCustomName = custom
+    }
+
+    private func automaticClipName(at index: Int) -> String {
+        String(format: "Clip %ld".localized, index + 1)
+    }
+
+    private func refreshAutomaticClipNames() {
+        for index in clips.indices where !clips[index].hasCustomName {
+            clips[index].name = automaticClipName(at: index)
+        }
     }
 
     private func seekToCurrentTime() {

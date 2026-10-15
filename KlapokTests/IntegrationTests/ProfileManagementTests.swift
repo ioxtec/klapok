@@ -17,21 +17,21 @@ final class ProfileManagementTests: XCTestCase {
     var profileManager: ProfileManager!
     var editorViewModel: EditorViewModel!
     var settings: AppSettings!
+    var testDirectory: URL!
+    var originalVideoProfile: VideoEditingProfile!
     
     override func setUp() {
         super.setUp()
-        profileManager = ProfileManager()
+        testDirectory = TestHelpers.createTempDirectory()
+        profileManager = ProfileManager(profilesDirectory: testDirectory)
         editorViewModel = EditorViewModel()
         settings = AppSettings.shared
+        originalVideoProfile = VideoEditingProfile.fromAppSettings(settings, name: "Original")
     }
     
     override func tearDown() {
-        // Clean up profiles
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let profilesDirectory = documentsPath.appendingPathComponent("Klapok Profiles")
-        if FileManager.default.fileExists(atPath: profilesDirectory.path) {
-            try? FileManager.default.removeItem(at: profilesDirectory)
-        }
+        originalVideoProfile.applyToAppSettings(settings)
+        TestHelpers.removeDirectory(testDirectory)
         
         super.tearDown()
     }
@@ -97,7 +97,7 @@ final class ProfileManagementTests: XCTestCase {
     
     func testDefaultProfilesOnFirstRun() {
         // Create new ProfileManager (simulates first run)
-        let newManager = ProfileManager()
+        let newManager = ProfileManager(profilesDirectory: testDirectory)
         
         // Should have default profiles
         XCTAssertFalse(newManager.imageProfiles.profiles.isEmpty)

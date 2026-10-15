@@ -57,6 +57,18 @@ final class VideoCaptureConfigurationBuilderTests: XCTestCase {
         XCTAssertEqual(result.minimumFrameInterval, CMTime(value: 1, timescale: 24))
     }
 
+    func testCursorAndAudioFlagsReachActualStreamConfiguration() {
+        for enabled in [false, true] {
+            settings.showMouseCursor = enabled
+            settings.recordSystemAudio = enabled
+            let stream = VideoCaptureConfigurationBuilder.streamSettings(sourceSize: CGSize(width: 1000, height: 500),
+                settings: settings).makeStreamConfiguration()
+            XCTAssertEqual(stream.showsCursor, enabled)
+            XCTAssertEqual(stream.capturesAudio, enabled)
+            XCTAssertEqual(ImageCaptureConfiguration.default.withShowsCursor(enabled).showsCursor, enabled)
+        }
+    }
+
     func testWriterSettingsMapFormatCodecAndCompressionValues() throws {
         settings.videoFormat = "MOV"
         settings.videoCodec = "H.265"

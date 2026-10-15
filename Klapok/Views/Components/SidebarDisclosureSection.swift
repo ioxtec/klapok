@@ -28,6 +28,7 @@ private final class SidebarDisclosureSectionHoverState: ObservableObject {
 
 struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
     @Environment(\.compactEditorSidebar) private var compact
+    @Environment(\.locale) private var locale
     private let content: Content
     private let fillsAvailableWidth: Bool
     private let leadingInset: CGFloat
@@ -81,6 +82,7 @@ struct SidebarScrollContainer<Content: View>: NSViewRepresentable {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .environment(\.compactEditorSidebar, compact)
+        .environment(\.locale, locale)
     }
 
     final class Coordinator {
@@ -309,7 +311,7 @@ struct SidebarDisclosureSection<Content: View>: View {
                             .frame(width: 16)
                     }
 
-                    Text(title)
+                    Text(title.localized)
                         .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.secondary)
 
@@ -329,7 +331,7 @@ struct SidebarDisclosureSection<Content: View>: View {
                 .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
             }
             .buttonStyle(.plain)
-            .help(subtitle ?? title)
+            .help((subtitle ?? title).localized)
             .onHover { hovering in
                 hoverState.isHovering = hovering
             }
@@ -417,7 +419,7 @@ struct SidebarControlRow<Accessory: View>: View {
                     .frame(width: 18)
             }
 
-            Text(title)
+            Text(title.localized)
                 .font(compact ? .system(size: 13, weight: .regular) : SidebarStyle.bodyFont)
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -474,7 +476,7 @@ struct SidebarStackedValueRow: View {
                         .frame(width: 18)
                 }
 
-                Text(title)
+                Text(title.localized)
                     .font(SidebarStyle.bodyFont)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -566,7 +568,7 @@ struct SidebarSubheading: View {
     }
 
     var body: some View {
-        Text(text)
+        Text(text.localized)
             .font(.system(size: 11, weight: .semibold))
             .foregroundStyle(.secondary)
             .textCase(.uppercase)
@@ -583,7 +585,7 @@ struct SidebarHintText: View {
     }
 
     var body: some View {
-        Text(text)
+        Text(text.localized)
             .font(SidebarStyle.bodyFont)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)

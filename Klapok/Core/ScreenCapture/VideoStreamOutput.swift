@@ -22,11 +22,17 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
     private let capturesAudio: Bool
     private let stateLock = NSLock()
     private var firstFrameArrivalDate: Date?
+    private var lastVideoEndTime: CMTime?
+    private var lastAudioEndTime: CMTime?
+    private var firstPresentationTime: CMTime?
+    private var lastPixelBuffer: CVPixelBuffer?
+    private let frameDuration: CMTime
 
     init(recordingURL: URL, outputSize: CGSize? = nil, capturesAudio: Bool = false) {
         self.recordingURL = recordingURL
         self.outputSize = outputSize
         self.capturesAudio = capturesAudio
+        self.frameDuration = CMTime(value: 1, timescale: Int32(AppSettings.shared.videoFrameRate))
         super.init()
         setupAssetWriter()
     }
@@ -116,27 +122,43 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
         return firstFrameArrivalDate
     }
 
-    func finishWriting() async {
-        guard let videoInput else {
-            Logger.e("VideoStreamOutput: No video input to finish")
-            return
+    func finishWriting(elapsedDuration: TimeInterval? = nil) async throws {
+        guard let assetWriter else { throw CaptureError.invalidRequest("Video writer was not created") }
+        guard assetWriter.status == .writing, sessionStarted, let lastVideoEndTime else {
+            throw assetWriter.error ?? CaptureError.invalidRequest("No video frames were written")
         }
+        guard let videoInput else {
+            throw CaptureError.invalidRequest("Video input was not created")
+        }
+        var end = lastVideoEndTime
+        if let lastAudioEndTime, CMTimeCompare(lastAudioEndTime, end) > 0 { end = lastAudioEndTime }
+        if let elapsedDuration, elapsedDuration.isFinite, elapsedDuration > 0, let firstPresentationTime {
+            let stop = CMTimeAdd(firstPresentationTime, CMTime(seconds: elapsedDuration, preferredTimescale: 60000))
+            if CMTimeCompare(stop, end) > 0 { end = stop }
+        }
+        if CMTimeCompare(end, lastVideoEndTime) > 0, let lastPixelBuffer, let pixelBufferAdaptor {
+            let deadline = Date().addingTimeInterval(5)
+            while !videoInput.isReadyForMoreMediaData, assetWriter.status == .writing, Date() < deadline {
+                try await Task.sleep(for: .milliseconds(2))
+            }
+            let paddingTime = CMTimeMaximum(lastVideoEndTime, CMTimeSubtract(end, frameDuration))
+            guard videoInput.isReadyForMoreMediaData,
+                  pixelBufferAdaptor.append(lastPixelBuffer, withPresentationTime: paddingTime) else {
+                throw assetWriter.error ?? CaptureError.invalidRequest("Could not finish the last video frame")
+            }
+        }
+        assetWriter.endSession(atSourceTime: end)
 
         videoInput.markAsFinished()
         audioInput?.markAsFinished()
 
-        guard let assetWriter else {
-            Logger.e("VideoStreamOutput: No video writer to finish")
-            return
-        }
-
         await assetWriter.finishWriting()
         if assetWriter.status != .completed {
-            Logger.e("VideoStreamOutput: Video writing failed: \(assetWriter.error?.localizedDescription ?? "Unknown error")")
+            throw assetWriter.error ?? CaptureError.invalidRequest("Video writing did not complete")
         }
     }
 
-    private func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+    func appendVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
         guard isCompleteVideoFrame(sampleBuffer) else { return }
         guard let videoInput, videoInput.isReadyForMoreMediaData else { return }
@@ -149,26 +171,33 @@ final class VideoStreamOutput: NSObject, SCStreamOutput {
             if !sessionStarted {
                 assetWriter.startSession(atSourceTime: presentationTime)
                 sessionStarted = true
-                stateLock.lock()
-                if firstFrameArrivalDate == nil {
-                    firstFrameArrivalDate = Date()
-                }
-                stateLock.unlock()
+                firstPresentationTime = presentationTime
             }
         }
 
         if !pixelBufferAdaptor.append(pixelBuffer, withPresentationTime: presentationTime) {
             Logger.e("VideoStreamOutput: Failed to append video sample buffer: \(assetWriter?.error?.localizedDescription ?? "Unknown writer error")")
+        } else {
+            let sampleDuration = CMSampleBufferGetDuration(sampleBuffer)
+            let duration = sampleDuration.isNumeric && sampleDuration.seconds > 0 ? sampleDuration : frameDuration
+            lastVideoEndTime = CMTimeAdd(presentationTime, duration)
+            lastPixelBuffer = pixelBuffer
+            stateLock.lock()
+            if firstFrameArrivalDate == nil { firstFrameArrivalDate = Date() }
+            stateLock.unlock()
         }
     }
 
-    private func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
+    func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
         guard capturesAudio, sessionStarted else { return }
         guard CMSampleBufferDataIsReady(sampleBuffer) else { return }
         guard let audioInput, audioInput.isReadyForMoreMediaData else { return }
 
         if !audioInput.append(sampleBuffer) {
             Logger.e("VideoStreamOutput: Failed to append audio sample buffer: \(assetWriter?.error?.localizedDescription ?? "Unknown writer error")")
+        } else {
+            let end = CMTimeAdd(CMSampleBufferGetPresentationTimeStamp(sampleBuffer), CMSampleBufferGetDuration(sampleBuffer))
+            if end.isNumeric { lastAudioEndTime = end }
         }
     }
 

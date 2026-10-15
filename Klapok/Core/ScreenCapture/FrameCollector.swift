@@ -91,10 +91,8 @@ final class FrameCollector: NSObject, SCStreamOutput {
         
         Logger.d("FrameCollector: Creating NSImage from CGImage...")
         // Keep the full physical resolution as the NSImage size for high quality
-        let nsImage = NSImage(
-            cgImage: cgImage,
-            size: NSSize(width: cgImage.width, height: cgImage.height)
-        )
+        let nsImage = NSImage(size: NSSize(width: cgImage.width, height: cgImage.height))
+        nsImage.addRepresentation(NSBitmapImageRep(cgImage: cgImage))
         
         // Update statistics
         updateStatistics()

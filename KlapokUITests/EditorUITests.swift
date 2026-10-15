@@ -14,7 +14,7 @@ final class EditorUITests: XCTestCase {
     override func setUpWithError() throws {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-UITests", "-UITestOpenImageEditor", "-AppleLanguages", "(en)"]
+        app.launchArguments = ["-UITests", "-UITestOpenImageEditor", "-AppleLanguages", "(en)", "-app_language", "en"]
         app.launch()
     }
     
@@ -39,6 +39,24 @@ final class EditorUITests: XCTestCase {
     }
     
     // MARK: - Settings Tests
+
+    func testPolishBackgroundPickerFitsSidebar() throws {
+        app.terminate()
+        app.launchArguments = ["-UITests", "-UITestOpenImageEditor", "-AppleLanguages", "(pl)", "-app_language", "pl"]
+        app.launch()
+        let picker = app.descendants(matching: .any)["editor.backgroundType"].firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@", "Tło")).firstMatch.exists)
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "label == %@", "Profile")).firstMatch.exists)
+        let none = picker.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Brak")).firstMatch
+        XCTAssertTrue(none.exists)
+        XCTAssertGreaterThan(none.frame.width, 0)
+        XCTAssertLessThanOrEqual(none.frame.maxX, picker.frame.maxX + 1)
+        none.click()
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
     
     func testEditorScreenshot() throws {
         XCTAssertTrue(app.buttons["editor.crop"].waitForExistence(timeout: 5))

@@ -28,10 +28,10 @@ final class ProfileManager: ObservableObject {
     
     // MARK: - Initialization
     
-    init() {
+    init(profilesDirectory: URL? = nil) {
         // Set up file URLs
         let documentsPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let profilesDirectory = documentsPath.appendingPathComponent("Klapok Profiles")
+        let profilesDirectory = profilesDirectory ?? documentsPath.appendingPathComponent("Klapok Profiles")
         
         self.imageProfilesURL = profilesDirectory.appendingPathComponent("image_profiles.json")
         self.videoProfilesURL = profilesDirectory.appendingPathComponent("video_profiles.json")
@@ -244,6 +244,26 @@ final class ProfileManager: ObservableObject {
     }
     
     // MARK: - Import/Export
+
+    func exportImageProfiles(to url: URL) throws {
+        try JSONEncoder().encode(imageProfiles).write(to: url, options: .atomic)
+    }
+
+    func exportVideoProfiles(to url: URL) throws {
+        try JSONEncoder().encode(videoProfiles).write(to: url, options: .atomic)
+    }
+
+    func importImageProfiles(from url: URL) throws {
+        let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: Data(contentsOf: url))
+        imageProfiles = collection
+        saveImageProfiles()
+    }
+
+    func importVideoProfiles(from url: URL) throws {
+        let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: Data(contentsOf: url))
+        videoProfiles = collection
+        saveVideoProfiles()
+    }
     
     func exportImageProfiles() -> URL? {
         let savePanel = NSSavePanel()
@@ -254,8 +274,7 @@ final class ProfileManager: ObservableObject {
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
             do {
-                let data = try JSONEncoder().encode(imageProfiles)
-                try data.write(to: url)
+                try exportImageProfiles(to: url)
                 return url
             } catch {
                 Logger.e("ProfileManager: Failed to export image profiles: \(error)")
@@ -273,8 +292,7 @@ final class ProfileManager: ObservableObject {
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
             do {
-                let data = try JSONEncoder().encode(videoProfiles)
-                try data.write(to: url)
+                try exportVideoProfiles(to: url)
                 return url
             } catch {
                 Logger.e("ProfileManager: Failed to export video profiles: \(error)")
@@ -294,10 +312,7 @@ final class ProfileManager: ObservableObject {
         
         if openPanel.runModal() == .OK, let url = openPanel.url {
             do {
-                let data = try Data(contentsOf: url)
-                let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: data)
-                self.imageProfiles = collection
-                saveImageProfiles()
+                try importImageProfiles(from: url)
                 return true
             } catch {
                 Logger.e("ProfileManager: Failed to import image profiles: \(error)")
@@ -318,10 +333,7 @@ final class ProfileManager: ObservableObject {
         
         if openPanel.runModal() == .OK, let url = openPanel.url {
             do {
-                let data = try Data(contentsOf: url)
-                let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: data)
-                self.videoProfiles = collection
-                saveVideoProfiles()
+                try importVideoProfiles(from: url)
                 return true
             } catch {
                 Logger.e("ProfileManager: Failed to import video profiles: \(error)")

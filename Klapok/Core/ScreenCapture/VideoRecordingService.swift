@@ -11,6 +11,7 @@ import Foundation
 import AppKit
 import ScreenCaptureKit
 import CoreMedia
+import AVFoundation
 
 /// Video recording service for full screen capture
 class VideoRecordingService: VideoCaptureService {
@@ -81,8 +82,14 @@ class VideoRecordingService: VideoCaptureService {
         }
         
         isRecording = false
-        let endTime = Date()
-        let duration = endTime.timeIntervalSince(recordingStartTime ?? endTime)
+        let elapsedDuration = Date().timeIntervalSince(recordingStartTime ?? Date())
+        defer {
+            streamOutput = nil
+            sampleHandlerQueue = nil
+            recordingStartTime = nil
+            recordingURL = nil
+            currentRecordingSize = nil
+        }
         
         // Stop the stream
         try? await stream?.stopCapture()
@@ -90,7 +97,12 @@ class VideoRecordingService: VideoCaptureService {
         
         // Clean up outputs - manually finish writing
         if let streamOutput = streamOutput {
-            await streamOutput.finishWriting()
+            if let queue = sampleHandlerQueue {
+                await withCheckedContinuation { continuation in
+                    queue.async { continuation.resume() }
+                }
+            }
+            try await streamOutput.finishWriting(elapsedDuration: elapsedDuration)
         }
         streamOutput = nil
         sampleHandlerQueue = nil
@@ -99,14 +111,25 @@ class VideoRecordingService: VideoCaptureService {
             throw CaptureError.invalidRequest("No recording URL found")
         }
         
+        let asset = AVURLAsset(url: recordingURL)
+        guard try await asset.load(.isPlayable),
+              let track = try await asset.loadTracks(withMediaType: .video).first else {
+            throw CaptureError.invalidRequest("Recorded video is not playable")
+        }
+        let range = try await track.load(.timeRange)
+        let actualDuration = CMTimeRangeGetEnd(range).seconds
+        guard actualDuration.isFinite, actualDuration > 0 else {
+            throw CaptureError.invalidRequest("Recorded video has no usable frames")
+        }
+        let rate = try await track.load(.nominalFrameRate)
         let recording = VideoRecording(
             url: recordingURL,
-            duration: duration,
+            duration: actualDuration,
             size: currentRecordingSize ?? ScreenPixelGeometry.captureSize(
                 for: NSScreen.main,
                 mode: AppSettings.shared.capturePixelMode
             ),
-            frameRate: 30.0
+            frameRate: Double(rate)
         )
         
         // Check if file was created successfully
@@ -139,7 +162,7 @@ class VideoRecordingService: VideoCaptureService {
         stream = nil
 
         if let streamOutput = streamOutput {
-            await streamOutput.finishWriting()
+            try? await streamOutput.finishWriting()
         }
         streamOutput = nil
         sampleHandlerQueue = nil
@@ -320,6 +343,12 @@ class VideoRecordingService: VideoCaptureService {
         guard let sourceScreen = ScreenPixelGeometry.screen(containing: areaRect) else {
             throw CaptureError.unavailable
         }
+        guard areaRect.minX.isFinite, areaRect.minY.isFinite,
+              areaRect.width.isFinite, areaRect.height.isFinite,
+              areaRect.width > 0, areaRect.height > 0,
+              sourceScreen.frame.contains(areaRect) else {
+            throw CaptureError.invalidRequest("Select a nonempty recording area within one display")
+        }
         guard let display = CaptureDisplayResolver.scDisplay(for: ScreenPixelGeometry.displayID(for: sourceScreen), in: content) else {
             throw CaptureError.unavailable
         }
@@ -389,47 +418,11 @@ class VideoRecordingService: VideoCaptureService {
             // Activate the application
             targetApp.activate()
             
-            guard !bundleId.isEmpty, !windowTitle.isEmpty else {
-                return
-            }
-
-            // Run AppleScript off the main thread so a slow Apple event does not freeze the floating panel UI.
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + 0.1) {
-                Self.bringSpecificWindowToFront(bundleIdentifier: bundleId, windowTitle: windowTitle)
-            }
         } else {
             Logger.w("VideoRecordingService: Application not found in running apps: \(bundleId)")
         }
     }
     
-    /// Uses AppleScript to bring a specific window to the front
-    private static func bringSpecificWindowToFront(bundleIdentifier: String, windowTitle: String) {
-        let escapedBundleIdentifier = escapeAppleScriptString(bundleIdentifier)
-        let escapedWindowTitle = escapeAppleScriptString(windowTitle)
-        let script = """
-        tell application id "\(escapedBundleIdentifier)"
-            activate
-            try
-                set index of window "\(escapedWindowTitle)" to 1
-            end try
-        end tell
-        """
-        
-        let appleScript = NSAppleScript(source: script)
-        var error: NSDictionary?
-        
-        appleScript?.executeAndReturnError(&error)
-        
-        if let error = error {
-            Logger.w("VideoRecordingService: AppleScript window activation failed: \(error)")
-        }
-    }
-
-    private static func escapeAppleScriptString(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-    }
     
 }
 

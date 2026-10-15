@@ -16,24 +16,18 @@ final class ProfileManagerTests: XCTestCase {
     
     var profileManager: ProfileManager!
     var testDirectory: URL!
+    var originalVideoProfile: VideoEditingProfile!
     
     override func setUp() {
         super.setUp()
         testDirectory = TestHelpers.createTempDirectory()
         
-        // Create ProfileManager with test directory
-        // Note: ProfileManager uses Documents directory, so we'll test with actual paths
-        profileManager = ProfileManager()
+        profileManager = ProfileManager(profilesDirectory: testDirectory)
+        originalVideoProfile = VideoEditingProfile.fromAppSettings(AppSettings.shared, name: "Original")
     }
     
     override func tearDown() {
-        // Clean up profiles directory
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        let profilesDirectory = documentsPath.appendingPathComponent("Klapok Profiles")
-        if FileManager.default.fileExists(atPath: profilesDirectory.path) {
-            try? FileManager.default.removeItem(at: profilesDirectory)
-        }
-        
+        originalVideoProfile.applyToAppSettings(AppSettings.shared)
         if let testDirectory = testDirectory {
             TestHelpers.removeDirectory(testDirectory)
         }
@@ -42,6 +36,51 @@ final class ProfileManagerTests: XCTestCase {
     }
     
     // MARK: - Initialization Tests
+
+    func testImageProfileExportImportPreservesSelectionAndValues() throws {
+        let profile = ImageEditingProfile(name: "Exported", backgroundAspectRatio: .ratio1_1,
+                                          backgroundPadding: 47, imageFormat: .jpeg, imageQuality: 0.75)
+        profileManager.addImageProfile(profile)
+        profileManager.setActiveImageProfile(profile)
+        let url = testDirectory.appendingPathComponent("export-image.json")
+        try profileManager.exportImageProfiles(to: url)
+        profileManager.resetImageProfilesToDefaults()
+        try profileManager.importImageProfiles(from: url)
+        let imported = try XCTUnwrap(profileManager.getActiveImageProfile())
+        XCTAssertEqual(imported.id, profile.id)
+        XCTAssertEqual(imported.backgroundPadding, 47)
+        XCTAssertEqual(imported.imageFormat, .jpeg)
+        XCTAssertEqual(imported.imageQuality, 0.75)
+        XCTAssertEqual(ProfileManager(profilesDirectory: testDirectory).getActiveImageProfile()?.id, profile.id)
+    }
+
+    func testVideoProfileExportImportPreservesSelectionAndValues() throws {
+        let profile = VideoEditingProfile(name: "Exported", resolution: "720p", frameRate: 24,
+                                          codec: "H.265", format: "MOV", recordSystemAudio: true)
+        profileManager.addVideoProfile(profile)
+        profileManager.setActiveVideoProfile(profile)
+        let url = testDirectory.appendingPathComponent("export-video.json")
+        try profileManager.exportVideoProfiles(to: url)
+        profileManager.resetVideoProfilesToDefaults()
+        try profileManager.importVideoProfiles(from: url)
+        let imported = try XCTUnwrap(profileManager.getActiveVideoProfile())
+        XCTAssertEqual(imported.id, profile.id)
+        XCTAssertEqual(imported.codec, "H.265")
+        XCTAssertEqual(imported.format, "MOV")
+        XCTAssertTrue(imported.recordSystemAudio)
+        XCTAssertEqual(ProfileManager(profilesDirectory: testDirectory).getActiveVideoProfile()?.id, profile.id)
+    }
+
+    func testInvalidImportDoesNotReplaceExistingProfiles() throws {
+        let imageID = profileManager.getActiveImageProfile()?.id
+        let videoID = profileManager.getActiveVideoProfile()?.id
+        let url = testDirectory.appendingPathComponent("invalid.json")
+        try Data("not JSON".utf8).write(to: url)
+        XCTAssertThrowsError(try profileManager.importImageProfiles(from: url))
+        XCTAssertThrowsError(try profileManager.importVideoProfiles(from: url))
+        XCTAssertEqual(profileManager.getActiveImageProfile()?.id, imageID)
+        XCTAssertEqual(profileManager.getActiveVideoProfile()?.id, videoID)
+    }
     
     func testInitialization() {
         XCTAssertNotNil(profileManager.imageProfiles)
@@ -190,7 +229,7 @@ final class ProfileManagerTests: XCTestCase {
         profileManager.addImageProfile(profile)
         
         // Create new ProfileManager instance to test loading
-        let newManager = ProfileManager()
+        let newManager = ProfileManager(profilesDirectory: testDirectory)
         
         let foundProfile = newManager.imageProfiles.profiles.first { $0.id == profile.id }
         XCTAssertNotNil(foundProfile)
@@ -202,7 +241,7 @@ final class ProfileManagerTests: XCTestCase {
         profileManager.addVideoProfile(profile)
         
         // Create new ProfileManager instance to test loading
-        let newManager = ProfileManager()
+        let newManager = ProfileManager(profilesDirectory: testDirectory)
         
         let foundProfile = newManager.videoProfiles.profiles.first { $0.id == profile.id }
         XCTAssertNotNil(foundProfile)

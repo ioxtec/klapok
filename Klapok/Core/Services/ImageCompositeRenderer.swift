@@ -48,14 +48,7 @@ enum ImageCompositeRenderer {
             return roundedPixelSize(sourceSize)
         }
 
-        let exportSize = calculateExportSize(for: sourceSize, aspectRatio: aspectRatio)
-        let backgroundSize = calculateBackgroundSize(
-            for: sourceSize,
-            in: exportSize,
-            padding: padding,
-            aspectRatio: aspectRatio
-        )
-        return roundedPixelSize(backgroundSize)
+        return calculateExportSize(for: sourceSize, padding: padding, aspectRatio: aspectRatio)
     }
 
     static func render(
@@ -65,7 +58,8 @@ enum ImageCompositeRenderer {
         padding: CGFloat,
         aspectRatio: BackgroundAspectRatio,
         shadowIntensity: CGFloat,
-        cornerRadius: CGFloat = 0
+        cornerRadius: CGFloat = 0,
+        canvasCornerRadius: CGFloat = 0
     ) -> NSImage {
         let imageSize = originalImage.pixelSize
 
@@ -75,7 +69,7 @@ enum ImageCompositeRenderer {
             NSGraphicsContext.saveGraphicsState()
             NSGraphicsContext.current = context
             NSBezierPath(roundedRect: NSRect(origin: .zero, size: imageSize), xRadius: cornerRadius, yRadius: cornerRadius).addClip()
-            originalImage.draw(in: NSRect(origin: .zero, size: imageSize))
+            drawNativeImage(originalImage, in: NSRect(origin: .zero, size: imageSize))
             drawAnnotations(annotations, in: NSRect(origin: .zero, size: imageSize), imageSize: imageSize)
             NSGraphicsContext.restoreGraphicsState()
             let rendered = NSImage(size: imageSize)
@@ -83,23 +77,16 @@ enum ImageCompositeRenderer {
             return rendered
         }
 
-        let exportSize = calculateExportSize(for: imageSize, aspectRatio: aspectRatio)
-        let backgroundSize = calculateBackgroundSize(
-            for: imageSize,
-            in: exportSize,
-            padding: padding,
-            aspectRatio: aspectRatio
-        )
-
-        let maxImageWidth = backgroundSize.width - (padding * 2)
-        let maxImageHeight = backgroundSize.height - (padding * 2)
-        let scaleX = imageSize.width > maxImageWidth ? maxImageWidth / imageSize.width : 1.0
-        let scaleY = imageSize.height > maxImageHeight ? maxImageHeight / imageSize.height : 1.0
-        let scale = min(scaleX, scaleY)
-        let finalImageSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        let backgroundSize = calculateExportSize(for: imageSize, padding: padding, aspectRatio: aspectRatio)
+        let scale: CGFloat = 1
+        let finalImageSize = imageSize
         guard let bitmap = bitmap(for: backgroundSize), let graphics = NSGraphicsContext(bitmapImageRep: bitmap) else { return originalImage }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = graphics
+        if canvasCornerRadius > 0 {
+            NSBezierPath(roundedRect: NSRect(origin: .zero, size: backgroundSize),
+                xRadius: canvasCornerRadius, yRadius: canvasCornerRadius).addClip()
+        }
 
         if let context = NSGraphicsContext.current?.cgContext {
             drawBackground(
@@ -110,8 +97,8 @@ enum ImageCompositeRenderer {
         }
 
         let imageRect = NSRect(
-            x: (backgroundSize.width - finalImageSize.width) / 2,
-            y: (backgroundSize.height - finalImageSize.height) / 2,
+            x: floor((backgroundSize.width - finalImageSize.width) / 2),
+            y: floor((backgroundSize.height - finalImageSize.height) / 2),
             width: finalImageSize.width,
             height: finalImageSize.height
         )
@@ -121,12 +108,7 @@ enum ImageCompositeRenderer {
         if cornerRadius > 0 {
             NSBezierPath(roundedRect: imageRect, xRadius: cornerRadius * scale, yRadius: cornerRadius * scale).addClip()
         }
-        originalImage.draw(
-            in: imageRect,
-            from: NSRect(origin: .zero, size: originalImage.size),
-            operation: .sourceOver,
-            fraction: 1.0
-        )
+        drawNativeImage(originalImage, in: imageRect)
 
         if !annotations.isEmpty {
             drawAnnotations(annotations, in: imageRect, imageSize: imageSize)
@@ -146,33 +128,41 @@ enum ImageCompositeRenderer {
             hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
     }
 
+    private static func drawNativeImage(_ image: NSImage, in rect: CGRect) {
+        guard let context = NSGraphicsContext.current?.cgContext,
+              let source = CaptureFileStore.nativeBitmap(from: image)?.cgImage else {
+            image.draw(in: rect)
+            return
+        }
+        context.saveGState()
+        context.interpolationQuality = .none
+        context.setShouldAntialias(false)
+        context.draw(source, in: rect)
+        context.restoreGState()
+    }
+
     private static func calculateExportSize(
         for imageSize: CGSize,
+        padding: CGFloat,
         aspectRatio: BackgroundAspectRatio
     ) -> CGSize {
-        let baseSize: CGFloat = 1200
-
+        let padded = CGSize(width: imageSize.width + 2 * max(0, padding),
+                            height: imageSize.height + 2 * max(0, padding))
+        let units: CGSize
         switch aspectRatio {
         case .auto:
-            let imageRatio = imageSize.width / imageSize.height
-            if imageRatio > 1.0 {
-                return CGSize(width: baseSize, height: baseSize / imageRatio)
-            }
-
-            return CGSize(width: baseSize * imageRatio, height: baseSize)
-
+            return roundedPixelSize(padded)
         case .ratio16_9:
-            return CGSize(width: baseSize, height: baseSize * 9 / 16)
-
+            units = CGSize(width: 16, height: 9)
         case .ratio4_3:
-            return CGSize(width: baseSize, height: baseSize * 3 / 4)
-
+            units = CGSize(width: 4, height: 3)
         case .ratio3_2:
-            return CGSize(width: baseSize, height: baseSize * 2 / 3)
-
+            units = CGSize(width: 3, height: 2)
         case .ratio1_1:
-            return CGSize(width: baseSize, height: baseSize)
+            units = CGSize(width: 1, height: 1)
         }
+        let multiplier = ceil(max(padded.width / units.width, padded.height / units.height))
+        return CGSize(width: units.width * multiplier, height: units.height * multiplier)
     }
 
     private static func roundedPixelSize(_ size: CGSize) -> CGSize {
@@ -219,7 +209,7 @@ enum ImageCompositeRenderer {
         }
 
         let gradientColors = selectedGradient.sortedStops.map {
-            $0.color.toNSColor().withAlphaComponent(selectedGradient.opacity).cgColor
+            $0.color.toNSColor().withAlphaComponent(selectedGradient.opacity * $0.color.alpha).cgColor
         }
         let locations = selectedGradient.sortedStops.map { CGFloat($0.location) }
         let gradient = CGGradient(
@@ -346,27 +336,14 @@ enum ImageCompositeRenderer {
         context.setStrokeColor(color.cgColor)
         context.setLineWidth(annotation.strokeWidth)
         context.setLineCap(.round)
-        context.move(to: start)
-        context.addLine(to: end)
+        context.setLineJoin(.round)
+        let geometry = ArrowGeometry(start: start, end: end, style: annotation.arrowStyle ?? .open,
+            headSize: annotation.arrowheadSize, strokeWidth: annotation.strokeWidth)
+        context.addPath(geometry.stroke)
         context.strokePath()
-
-        let angle = atan2(end.y - start.y, end.x - start.x)
-        let arrowLength = annotation.arrowheadSize
-        let arrowAngle: CGFloat = .pi / 6
-        let point1 = CGPoint(
-            x: end.x - arrowLength * cos(angle - arrowAngle),
-            y: end.y - arrowLength * sin(angle - arrowAngle)
-        )
-        let point2 = CGPoint(
-            x: end.x - arrowLength * cos(angle + arrowAngle),
-            y: end.y - arrowLength * sin(angle + arrowAngle)
-        )
-
-        context.move(to: end)
-        context.addLine(to: point1)
-        context.move(to: end)
-        context.addLine(to: point2)
-        context.strokePath()
+        context.setFillColor(color.cgColor)
+        context.addPath(geometry.fill)
+        context.fillPath()
         context.restoreGState()
     }
 
@@ -539,8 +516,12 @@ enum ImageCompositeRenderer {
             image.draw(in: targetRect)
 
         case .tile:
-            let patternRect = CGRect(origin: .zero, size: imageSize)
-            image.draw(in: targetRect, from: patternRect, operation: .sourceOver, fraction: 1.0)
+            guard imageSize.width > 0, imageSize.height > 0 else { break }
+            for y in stride(from: CGFloat.zero, to: size.height, by: imageSize.height) {
+                for x in stride(from: CGFloat.zero, to: size.width, by: imageSize.width) {
+                    image.draw(in: CGRect(origin: CGPoint(x: x, y: y), size: imageSize))
+                }
+            }
 
         case .center:
             let rect = CGRect(

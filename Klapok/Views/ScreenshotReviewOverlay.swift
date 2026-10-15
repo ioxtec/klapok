@@ -524,7 +524,7 @@ import SwiftUI
 
                         ScreenshotReviewActionButton(
                             systemImage: "xmark",
-                            help: "Discard",
+                            help: "Close preview",
                             action: onCancel
                         )
                     }

@@ -40,6 +40,19 @@ final class SettingsViewModelTests: XCTestCase {
         XCTAssertNotNil(settingsViewModel.saveDirectory)
         XCTAssertNotNil(settingsViewModel.fileNameTemplate)
     }
+
+    func testSettingsReflectChangesMadeInCapturePanel() async throws {
+        AppSettings.shared.screenshotShowsMouseCursor = true
+        AppSettings.shared.capturePixelMode = .realPixels
+        AppSettings.shared.defaultCaptureType = .area
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(settingsViewModel.screenshotShowsMouseCursor)
+        XCTAssertEqual(settingsViewModel.capturePixelMode, .realPixels)
+        XCTAssertEqual(settingsViewModel.defaultCaptureType, .area)
+        AppSettings.shared.screenshotShowsMouseCursor = false
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertFalse(settingsViewModel.screenshotShowsMouseCursor)
+    }
     
     // MARK: - Property Synchronization Tests
     

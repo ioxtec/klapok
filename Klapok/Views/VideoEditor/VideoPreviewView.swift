@@ -63,13 +63,26 @@ struct VideoPreviewView: View {
                         })
                     if let draft, kind != .text {
                         if (kind == .line || kind == .callout), let start = draftStart, let end = draftEnd {
-                            VideoDirectionalStroke(start: start, end: end, arrow: kind == .callout)
-                                .stroke(viewModel.annotationColor, style: StrokeStyle(lineWidth: max(1, viewModel.annotationStrokeWidth * frame.height / max(1, size.height)), lineCap: .round, lineJoin: .round))
-                                .allowsHitTesting(false)
+                            Canvas { context, _ in
+                                let strokeWidth = max(1, viewModel.annotationStrokeWidth * frame.height / max(1, size.height))
+                                if kind == .callout {
+                                    let geometry = ArrowGeometry(start: start, end: end, style: viewModel.annotationArrowStyle,
+                                        headSize: max(12, size.height * 0.02) * frame.height / max(1, size.height), strokeWidth: strokeWidth)
+                                    context.stroke(Path(geometry.stroke), with: .color(viewModel.annotationColor),
+                                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round, lineJoin: .round))
+                                    context.fill(Path(geometry.fill), with: .color(viewModel.annotationColor))
+                                } else {
+                                    let path = VideoDirectionalStroke(start: start, end: end, arrow: false).path(in: .zero)
+                                    context.stroke(path, with: .color(viewModel.annotationColor),
+                                        style: StrokeStyle(lineWidth: strokeWidth, lineCap: .round))
+                                }
+                            }.allowsHitTesting(false)
                         } else {
-                            Rectangle().stroke(Color.accentColor, style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                                .frame(width: draft.width, height: draft.height)
-                                .offset(x: draft.minX, y: draft.minY).allowsHitTesting(false)
+                            if let image = draftImage(kind: kind, bounds: draft, canvas: frame.size, source: size) {
+                                Image(nsImage: image).resizable()
+                                    .frame(width: frame.width, height: frame.height)
+                                    .allowsHitTesting(false)
+                            }
                         }
                     }
                 }
@@ -88,5 +101,17 @@ struct VideoPreviewView: View {
     private func normalized(_ point: CGPoint, in size: CGSize) -> CGPoint {
         CGPoint(x: max(0, min(0.95, point.x / max(1, size.width))),
             y: max(0, min(0.95, point.y / max(1, size.height))))
+    }
+
+    private func draftImage(kind: TimelineOverlayTrackKind, bounds: CGRect, canvas: CGSize, source: CGSize) -> NSImage? {
+        var track = TimelineOverlayTrack(title: "", kind: kind)
+        track.x = bounds.minX / max(1, canvas.width)
+        track.y = bounds.minY / max(1, canvas.height)
+        track.width = bounds.width / max(1, canvas.width)
+        track.height = bounds.height / max(1, canvas.height)
+        track.color = ColorData(color: viewModel.annotationColor)
+        track.fillOpacity = viewModel.annotationFillOpacity
+        track.strokeScale = viewModel.annotationStrokeWidth / max(1, source.height)
+        return VideoFrameRenderer.previewImage(track, size: canvas)
     }
 }

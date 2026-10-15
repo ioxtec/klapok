@@ -69,8 +69,7 @@ struct BackgroundEditorView: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
-            SidebarControlRow(title: "Fill", systemImage: "paintbrush") {
-                Picker("", selection: Binding(
+                Picker("Fill", selection: Binding(
                     get: { backgroundManager.collections.backgroundType },
                     set: { newType in
                         Task { @MainActor in
@@ -80,13 +79,13 @@ struct BackgroundEditorView: View {
                     }
                 )) {
                     ForEach(BackgroundType.allCases, id: \.id) { type in
-                        Text(type.displayName).tag(type)
+                        Text(type.displayName.localized).tag(type)
                     }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 146)
-            }
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("editor.backgroundType")
             
             if backgroundManager.collections.backgroundType == .gradient {
                 SidebarDivider()
@@ -252,7 +251,7 @@ struct BackgroundEditorView: View {
                             }
                         )) {
                             ForEach(BackgroundScaleMode.allCases, id: \.id) { mode in
-                                Text(mode.displayName).tag(mode)
+                                Text(mode.displayName.localized).tag(mode)
                             }
                         }
                         .pickerStyle(.menu)
@@ -404,7 +403,7 @@ private struct BackgroundAssetHeader: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .help(buttonHelp)
+            .help(buttonHelp.localized)
         }
     }
 }

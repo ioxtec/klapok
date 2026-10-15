@@ -99,6 +99,7 @@ enum AudioExportOption: String, Codable, CaseIterable, Identifiable {
 
 struct VideoExportSettings: Codable {
     var quality: VideoQuality
+    var targetBitrate: Int?
     var scaling: VideoScaling
     var customScaleFactor: Double
     var audioOption: AudioExportOption
@@ -116,6 +117,7 @@ struct VideoExportSettings: Codable {
         maintainAspectRatio: Bool = true
     ) {
         self.quality = quality
+        self.targetBitrate = nil
         self.scaling = scaling
         self.customScaleFactor = customScaleFactor
         self.audioOption = audioOption

@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 struct VideoTimelineView: View {
     @ObservedObject var viewModel: VideoEditorViewModel
+    @State private var layerInsertion: TimelineLayerInsertion?
     private let labelWidth: CGFloat = 144
     private let rulerHeight: CGFloat = 30
     private let layerHeight: CGFloat = 36
@@ -31,6 +32,8 @@ struct VideoTimelineView: View {
                                         VideoAnnotationLane(track: track, viewModel: viewModel,
                                             pixelsPerSecond: pixelsPerSecond, width: contentWidth)
                                             .frame(height: layerHeight)
+                                            .modifier(TimelineLayerInsertionMarker(id: track.id.uuidString,
+                                                insertion: layerInsertion))
                                     }
                                     videoLane(width: contentWidth, pixelsPerSecond: pixelsPerSecond)
                                         .frame(height: videoHeight)
@@ -101,6 +104,12 @@ struct VideoTimelineView: View {
                 .frame(height: rulerHeight)
             ForEach(Array(viewModel.overlayTracks.reversed().enumerated()), id: \.element.id) { index, track in
                 HStack(spacing: 7) {
+                    TimelineLayerReorderHandle(id: track.id.uuidString,
+                        visualOrder: viewModel.overlayTracks.reversed().map { $0.id.uuidString },
+                        rowStride: layerHeight + 4, help: "Drag to reorder layers".localized,
+                        insertion: $layerInsertion,
+                        onBegin: { viewModel.pausePlayback(); viewModel.selectOverlay(track.id) },
+                        onMove: moveLayer)
                     Image(systemName: track.kind.icon).foregroundStyle(.purple).frame(width: 16)
                     Text(track.title).font(.caption).lineLimit(1)
                     Spacer(minLength: 2)
@@ -112,6 +121,8 @@ struct VideoTimelineView: View {
                 .contentShape(Rectangle()).onTapGesture(count: 2) { viewModel.editOverlay(track.id) }
                 .onTapGesture { viewModel.selectOverlay(track.id) }
                 .contextMenu { Button("Edit".localized) { viewModel.editOverlay(track.id) } }
+                .modifier(TimelineLayerInsertionMarker(id: track.id.uuidString,
+                    insertion: layerInsertion))
                 .accessibilityIdentifier("video.layer.\(index)")
             }
             trackLabel("Video".localized, icon: "film", height: videoHeight)
@@ -124,6 +135,11 @@ struct VideoTimelineView: View {
     private func trackLabel(_ title: String, icon: String, height: CGFloat) -> some View {
         HStack(spacing: 7) { Image(systemName: icon).frame(width: 16); Text(title).font(.caption); Spacer() }
             .foregroundStyle(.secondary).padding(.horizontal, 8).frame(height: height)
+    }
+
+    private func moveLayer(_ source: String, _ target: String, _ above: Bool) {
+        guard let source = UUID(uuidString: source), let target = UUID(uuidString: target) else { return }
+        viewModel.moveOverlay(source, relativeTo: target, above: above)
     }
 
     private func videoLane(width: CGFloat, pixelsPerSecond: CGFloat) -> some View {
@@ -172,6 +188,8 @@ struct AnnotationLayerMenu: View {
 }
 
 private struct VideoTimelineFilmstrip: View {
+    @State private var isRenaming = false
+    @State private var editedName = ""
     let clip: VideoTimelineClip
     @ObservedObject var viewModel: VideoEditorViewModel
     let width: CGFloat
@@ -184,52 +202,54 @@ private struct VideoTimelineFilmstrip: View {
                     Image(nsImage: thumbnail).resizable().scaledToFill().frame(width: width / CGFloat(max(1, thumbnails.count)), height: 60).clipped()
                 }
             }
-            Text(clip.name).font(.system(size: 10, weight: .medium)).lineLimit(1)
-                .padding(.horizontal, 6).padding(.vertical, 3).background(.regularMaterial)
+            if thumbnails.isEmpty {
+                if viewModel.isLoadingTimelineThumbnails {
+                    ProgressView().controlSize(.small).frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    Button("Reload previews".localized) {
+                        Task { await viewModel.loadTimelineThumbnails(for: max(72, width)) }
+                    }
+                    .font(.caption2).buttonStyle(.plain)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            HStack(spacing: 3) {
+                Text(clip.name).font(.system(size: 10, weight: .medium)).lineLimit(1)
+                Button(action: beginRenaming) {
+                    Image(systemName: "pencil").font(.system(size: 10))
+                        .frame(width: 22, height: 22).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Rename clip…".localized)
+                .accessibilityLabel("Rename clip…".localized)
+                .accessibilityIdentifier("video.renameClip.\(clip.id.uuidString)")
+                .layoutPriority(1)
+            }
+            .padding(.leading, 6).padding(.trailing, 2)
+            .background(.regularMaterial)
+            .frame(maxWidth: max(1, width), alignment: .leading)
         }
         .frame(width: max(1, width), height: 60).clipShape(RoundedRectangle(cornerRadius: 4))
         .overlay { RoundedRectangle(cornerRadius: 4).stroke(viewModel.selectedClipIDs.contains(clip.id) ? Color.accentColor : Color.primary.opacity(0.15), lineWidth: viewModel.selectedClipIDs.contains(clip.id) ? 2 : 1) }
         .contentShape(Rectangle())
+        .accessibilityIdentifier("video.clip.\(clip.id.uuidString)")
+        .accessibilityValue(thumbnails.isEmpty ? "empty" : "frames")
+        .onTapGesture(count: 2) { beginRenaming() }
         .onTapGesture { viewModel.selectClip(clip.id, extendSelection: NSApp.currentEvent?.modifierFlags.contains(.command) == true) }
-    }
-}
-
-private struct TimelineTimeRuler: View {
-    let duration: Double
-    let width: CGFloat
-    let pixelsPerSecond: CGFloat
-    let onScrub: (Double) -> Void
-    private var step: Double { [0.1, 0.25, 0.5, 1, 2, 5, 10, 30, 60, 120, 300].first(where: { $0 * pixelsPerSecond >= 70 }) ?? 600 }
-    var body: some View {
-        Canvas { context, size in
-            let count = min(5000, Int(Double(width / pixelsPerSecond) / (step / 5)) + 1)
-            for tick in 0..<count {
-                let time = Double(tick) * step / 5, x = time * pixelsPerSecond
-                var path = Path(); path.move(to: CGPoint(x: x, y: size.height)); path.addLine(to: CGPoint(x: x, y: size.height - (tick % 5 == 0 ? 9 : 4)))
-                context.stroke(path, with: .color(.secondary.opacity(0.35)), lineWidth: 1)
-                if tick % 5 == 0 {
-                    context.draw(Text(timelineTime(time)).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary), at: CGPoint(x: x + 3, y: 4), anchor: .topLeading)
-                }
-            }
-        }.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 0).onChanged { value in
-            onScrub(max(0, min(duration, value.location.x / pixelsPerSecond)))
-        })
-    }
-}
-
-private struct TimelineAudioWaveform: View {
-    let levels: [CGFloat]
-    var body: some View {
-        Canvas { context, size in
-            guard !levels.isEmpty else { return }
-            var path = Path()
-            for (index, level) in levels.enumerated() {
-                let x = CGFloat(index) / CGFloat(levels.count) * size.width
-                let height = max(0.5, level * (size.height - 8))
-                path.move(to: CGPoint(x: x, y: (size.height - height) / 2)); path.addLine(to: CGPoint(x: x, y: (size.height + height) / 2))
-            }
-            context.stroke(path, with: .color(.teal), lineWidth: 1)
+        .contextMenu {
+            Button("Rename clip…".localized) { beginRenaming() }
         }
+        .alert("Edit clip name".localized, isPresented: $isRenaming) {
+            TextField("Clip name".localized, text: $editedName)
+            Button("Cancel".localized, role: .cancel) {}
+            Button("Save".localized) { viewModel.renameClip(clip.id, to: editedName) }
+        }
+    }
+
+    private func beginRenaming() {
+        viewModel.selectClip(clip.id, extendSelection: false)
+        editedName = clip.name
+        isRenaming = true
     }
 }
 
@@ -239,9 +259,4 @@ private struct VideoClipDropTarget: DropDelegate {
     func dropEntered(info: DropInfo) { if let id = viewModel.draggedTimelineClipID { viewModel.moveClip(id, before: destination) } }
     func performDrop(info: DropInfo) -> Bool { viewModel.draggedTimelineClipID = nil; return true }
     func dropUpdated(info: DropInfo) -> DropProposal? { DropProposal(operation: .move) }
-}
-
-private func timelineTime(_ time: Double) -> String {
-    let value = max(0, time)
-    return String(format: "%02d:%04.1f", Int(value) / 60, value.truncatingRemainder(dividingBy: 60))
 }

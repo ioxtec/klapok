@@ -13,6 +13,7 @@ import SwiftUI
         @StateObject private var settings = AppSettings.shared
         @StateObject private var profileManager = ProfileManager.shared
         @ObservedObject private var backgroundManager = BackgroundManager.shared
+        @StateObject private var languageManager = LanguageManager.shared
         @State private var isCropping = false
 
         var body: some View {
@@ -59,17 +60,10 @@ import SwiftUI
                             let imageSize = image.pixelSize
                             
                             // Calculate background size based on aspect ratio and padding
-                            let backgroundSize = viewModel.calculateBackgroundSize(for: imageSize, in: availableSize)
-                            
-                            // Calculate image scale - only scale down if image doesn't fit
-                            let imagePadding = viewModel.backgroundPadding
-                            let maxImageWidth = max(1, backgroundSize.width - (imagePadding * 2))
-                            let maxImageHeight = max(1, backgroundSize.height - (imagePadding * 2))
-                            
-                            // Only scale down if image is larger than available space
-                            let scaleX = imageSize.width > maxImageWidth ? maxImageWidth / imageSize.width : 1.0
-                            let scaleY = imageSize.height > maxImageHeight ? maxImageHeight / imageSize.height : 1.0
-                            let scale = min(scaleX, scaleY) // Remove the 1.0 limit - we want to scale down when needed
+                            let outputSize = viewModel.calculateOutputSize(for: image)
+                            let scale = min(1, max(1, availableSize.width - 24) / outputSize.width,
+                                            max(1, availableSize.height - 24) / outputSize.height)
+                            let backgroundSize = CGSize(width: outputSize.width * scale, height: outputSize.height * scale)
                             
                             let finalImageWidth = max(1, imageSize.width * scale)
                             let finalImageHeight = max(1, imageSize.height * scale)
@@ -105,7 +99,7 @@ import SwiftUI
                                                     backgroundFill(for: backgroundManager)
                                                 }
                                                 .frame(width: validBackgroundSize.width, height: validBackgroundSize.height)
-                                                .clipShape(RoundedRectangle(cornerRadius: viewModel.backgroundCornerRadius))
+                                                .clipShape(RoundedRectangle(cornerRadius: viewModel.backgroundCornerRadius * scale))
                                                 
                                                 // Image centered within background with shadow
                                                 Image(nsImage: image)
@@ -116,14 +110,14 @@ import SwiftUI
                                                     .clipShape(
                                                         RoundedRectangle(
                                                             cornerRadius: viewModel.enableRoundedCorners
-                                                                ? viewModel.cornerRadius : 0
+                                                                ? viewModel.cornerRadius * scale : 0
                                                         )
                                                     )
                                                     .shadow(
                                                         color: .black.opacity(viewModel.shadowIntensity / 100.0), 
-                                                        radius: viewModel.shadowIntensity, 
+                                                        radius: viewModel.shadowIntensity * scale,
                                                         x: 0, 
-                                                        y: viewModel.shadowIntensity / 2
+                                                        y: viewModel.shadowIntensity * scale / 2
                                                     )
                                                 
                                                 // Drawing canvas overlay for annotations
@@ -155,14 +149,8 @@ import SwiftUI
                                                     .clipShape(
                                                         RoundedRectangle(
                                                             cornerRadius: viewModel.enableRoundedCorners
-                                                                ? viewModel.cornerRadius : 0
+                                                                ? viewModel.cornerRadius * directScale : 0
                                                         )
-                                                    )
-                                                    .shadow(
-                                                        color: .black.opacity(viewModel.shadowIntensity / 100.0), 
-                                                        radius: viewModel.shadowIntensity, 
-                                                        x: 0, 
-                                                        y: viewModel.shadowIntensity / 2
                                                     )
                                                 
                                                 // Drawing canvas overlay for annotations
@@ -219,6 +207,7 @@ import SwiftUI
                 get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {
                 Button("OK", role: .cancel) { viewModel.errorMessage = nil }
             } message: { Text(viewModel.errorMessage ?? "") }
+            .environment(\.locale, languageManager.selectedLanguage.locale ?? .current)
         }
 
         // Background color options

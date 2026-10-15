@@ -17,7 +17,8 @@ final class SettingsUITests: XCTestCase {
         app.launchArguments = [
             "-UITests",
             "-UITestResetSettings",
-            "-UITestOpenSettings"
+            "-UITestOpenSettings",
+            "-app_language", "en"
         ]
         app.launch()
     }
@@ -73,6 +74,8 @@ final class SettingsUITests: XCTestCase {
 
         XCTAssertTrue(element("settings.content.shortcuts").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.shortcuts"].value as? String, "selected")
+        XCTAssertTrue(element("settings.shortcut.301").exists)
+        XCTAssertTrue(element("settings.shortcut.302").exists)
     }
 
     private func element(_ identifier: String) -> XCUIElement {

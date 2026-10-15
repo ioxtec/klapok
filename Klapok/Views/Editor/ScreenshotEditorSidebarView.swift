@@ -138,6 +138,7 @@ struct ScreenshotEditorSidebarView: View {
                 range: 0...50,
                 step: 1
             )
+            .disabled(backgroundManager.collections.backgroundType == .none)
         }
         .animation(.easeInOut(duration: 0.2), value: viewModel.enableRoundedCorners)
     }
@@ -213,7 +214,7 @@ private struct SidebarAspectRatioGrid: View {
                     Button {
                         selectedRatio = ratio
                     } label: {
-                        Text(ratio.displayName)
+                        Text(ratio.displayName.localized)
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(selectedRatio == ratio ? .white : .primary)
                             .frame(maxWidth: .infinity, minHeight: 26)

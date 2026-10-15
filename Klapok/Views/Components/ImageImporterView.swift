@@ -131,7 +131,7 @@ struct ImageImporterView: View {
                     
                     Picker("Scale Mode", selection: scaleModeBinding) {
                         ForEach(BackgroundScaleMode.allCases, id: \.id) { mode in
-                            Text(mode.displayName).tag(mode)
+                            Text(mode.displayName.localized).tag(mode)
                         }
                     }
                     .pickerStyle(.menu)
