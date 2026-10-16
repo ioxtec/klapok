@@ -502,6 +502,8 @@ struct SidebarSliderControl: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let step: Double
+    let unit: String
+    let displayMultiplier: Double
 
     init(
         title: String,
@@ -509,7 +511,9 @@ struct SidebarSliderControl: View {
         systemImage: String? = nil,
         value: Binding<Double>,
         range: ClosedRange<Double>,
-        step: Double
+        step: Double,
+        unit: String = "",
+        displayMultiplier: Double = 1
     ) {
         self.title = title
         self.valueText = valueText
@@ -517,15 +521,34 @@ struct SidebarSliderControl: View {
         self._value = value
         self.range = range
         self.step = step
+        self.unit = unit
+        self.displayMultiplier = displayMultiplier
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             SidebarControlRow(title: title, systemImage: systemImage) {
-                SidebarValuePill(valueText)
+                SidebarNumericField(title: title, value: $value, range: range, step: step,
+                                    unit: unit, displayMultiplier: displayMultiplier)
             }
 
-            Slider(value: $value, in: range, step: step)
+            // The stepped initializer draws a tick for every step on macOS.
+            // Snap values in the binding instead, without rendering tick marks.
+            Slider(value: Binding(get: { value }, set: {
+                value = SidebarNumericValue.snapped($0, range: range, step: step)
+            }), in: range)
+                .accessibilityLabel(Text(title.localized))
+                .accessibilityAdjustableAction { direction in
+                    switch direction {
+                    case .increment: value = min(range.upperBound, value + step)
+                    case .decrement: value = max(range.lowerBound, value - step)
+                    @unknown default: break
+                    }
+                }
+                .onMoveCommand { direction in
+                    if direction == .right { value = min(range.upperBound, value + step) }
+                    if direction == .left { value = max(range.lowerBound, value - step) }
+                }
                 .controlSize(.small)
                 .padding(.leading, systemImage == nil ? 0 : 27)
         }

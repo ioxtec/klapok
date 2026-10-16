@@ -13,6 +13,8 @@ struct GeneralSettingsView: View {
     @StateObject private var viewModel = SettingsViewModel()
     @StateObject private var permissionsManager = PermissionsManager.shared
     @StateObject private var languageManager = LanguageManager.shared
+    @StateObject private var iconManager = AppIconManager.shared
+    @State private var iconChangeFailed = false
 
     var body: some View {
         ScrollView {
@@ -34,15 +36,14 @@ struct GeneralSettingsView: View {
                                 }
                             }
                         ),
-                        options: [
-                            (AppLanguage.system.rawValue, LocalizationKeys.languageOptionSystem.localized),
-                            (AppLanguage.english.rawValue, LocalizationKeys.languageOptionEnglish.localized),
-                            (AppLanguage.polish.rawValue, LocalizationKeys.languageOptionPolish.localized)
-                        ]
+                        options: AppLanguage.allCases.map { language in
+                            (language.rawValue, language == .system
+                                ? LocalizationKeys.languageOptionSystem.localized
+                                : language.displayName)
+                        }
                     )
                 }
 
-                if shouldShowPermissions {
                     SettingsSection(
                         title: LocalizationKeys.permissionsTitle.localized,
                         subtitle: LocalizationKeys.permissionsDescription.localized,
@@ -62,15 +63,26 @@ struct GeneralSettingsView: View {
                             action: permissionsManager.openSystemPreferences
                         )
 
-                        PermissionOption(
-                            title: LocalizationKeys.permissionAccessibilityTitle.localized,
-                            description: LocalizationKeys.permissionAccessibilityDescription.localized,
-                            isGranted: permissionsManager.hasAccessibilityPermission,
-                            isLast: true,
-                            action: permissionsManager.openAccessibilitySettings
-                        )
+                        SettingsOptionView(isLast: true) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 10) {
+                                    Button("Refresh status".localized, systemImage: "arrow.clockwise") {
+                                        permissionsManager.checkAllPermissions()
+                                    }
+                                    .accessibilityIdentifier("settings.permissions.refresh")
+                                    if permissionsManager.isMonitoringPermissions {
+                                        ProgressView().controlSize(.small)
+                                        Text("Checking permissions automatically…".localized)
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                                if permissionsManager.hasOpenedPermissionSettings {
+                                    Text("If macOS asks you to restart Klapok, reopen it to apply the change.".localized)
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
-                }
 
                 SettingsSection(
                     title: LocalizationKeys.appBehaviorTitle.localized,
@@ -133,6 +145,46 @@ struct GeneralSettingsView: View {
                     )
                 }
 
+                SettingsSection(
+                    title: "Dock icon".localized,
+                    subtitle: "Changes the icon while Klapok is running. Finder and the App Store keep the default icon.".localized,
+                    systemImage: "app.dashed"
+                ) {
+                    SettingsOptionView(isLast: true) {
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(AppIconChoice.allCases) { choice in
+                                Button {
+                                    iconChangeFailed = !iconManager.select(choice)
+                                } label: {
+                                    VStack(spacing: 8) {
+                                        if let image = choice.image() {
+                                            Image(nsImage: image)
+                                                .resizable().interpolation(.high)
+                                                .aspectRatio(contentMode: .fit)
+                                                .frame(width: 88, height: 88)
+                                        }
+                                        Text(choice.title)
+                                            .font(.callout)
+                                            .multilineTextAlignment(.center)
+                                            .frame(maxWidth: .infinity, minHeight: 34)
+                                        Image(systemName: iconManager.selection == choice ? "checkmark.circle.fill" : "circle")
+                                            .foregroundStyle(iconManager.selection == choice ? Color.accentColor : .secondary)
+                                    }
+                                    .padding(.vertical, 10)
+                                    .frame(maxWidth: .infinity)
+                                    .background(iconManager.selection == choice ? Color.accentColor.opacity(0.1) : .clear,
+                                                in: RoundedRectangle(cornerRadius: 10))
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(choice.title)
+                                .accessibilityAddTraits(iconManager.selection == choice ? .isSelected : [])
+                                .accessibilityIdentifier("settings.icon.\(choice.rawValue)")
+                            }
+                        }
+                    }
+                }
+
                 HStack {
                     Spacer()
 
@@ -150,13 +202,21 @@ struct GeneralSettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .accessibilityIdentifier("settings.content.general")
+        .alert("Could not change the icon".localized, isPresented: $iconChangeFailed) {
+            Button("OK", role: .cancel) { }
+        }
+        .background {
+            SettingsWindowVisibilityObserver { visible in
+                if visible { permissionsManager.settingsPanelAppeared() }
+                else { permissionsManager.settingsPanelDisappeared() }
+            }.frame(width: 0, height: 0)
+        }
+        .onDisappear { permissionsManager.settingsPanelDisappeared() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissionsManager.applicationBecameActive()
+        }
     }
 
-    private var shouldShowPermissions: Bool {
-        !permissionsManager.hasScreenCapturePermission ||
-            !permissionsManager.hasFileAccessPermission ||
-            !permissionsManager.hasAccessibilityPermission
-    }
 }
 
 private struct PermissionOption: View {
@@ -183,7 +243,7 @@ private struct PermissionOption: View {
                 Spacer(minLength: 24)
 
                 if isGranted {
-                    Label("Granted", systemImage: "checkmark.circle.fill")
+                    Label("Granted".localized, systemImage: "checkmark.circle.fill")
                         .labelStyle(.iconOnly)
                         .foregroundStyle(.green)
                         .font(.title3)

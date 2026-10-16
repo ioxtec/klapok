@@ -70,7 +70,7 @@ import SwiftUI
         @MainActor
         func showFloatingPanel() {
             Logger.d("FloatingPanelViewModel: Showing floating panel")
-            panelWindow?.orderFront(nil)
+            panelWindow?.makeKeyAndOrderFront(nil)
             onPanelVisibilityChanged?(true)
             // Ensure floating panel is always on top
             if panelWindow != nil {

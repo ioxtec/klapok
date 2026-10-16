@@ -26,7 +26,8 @@ struct VideoSettingsView: View {
                     SettingsProfilesSummary(
                         profiles: profileManager.videoProfiles.profiles,
                         activeProfile: profileManager.videoProfiles.activeProfile,
-                        resetAction: profileManager.resetVideoProfilesToDefaults,
+                        isModified: profileManager.getActiveVideoProfile().map { !$0.matchesAppSettings(settings) } ?? true,
+                        resetAction: { profileManager.resetVideoProfilesToDefaults() },
                         exportAction: { _ = profileManager.exportVideoProfiles() },
                         importAction: { _ = profileManager.importVideoProfiles() }
                     )

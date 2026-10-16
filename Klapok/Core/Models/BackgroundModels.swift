@@ -295,6 +295,7 @@ struct BackgroundImage: Codable, Identifiable {
     var fileName: String
     var opacity: Double
     var scaleMode: BackgroundScaleMode
+    var blurRadius: Double
     var createdAt: Date
     var modifiedAt: Date
     
@@ -304,6 +305,7 @@ struct BackgroundImage: Codable, Identifiable {
         fileName: String,
         opacity: Double = 1.0,
         scaleMode: BackgroundScaleMode = .fit,
+        blurRadius: Double = 0,
         createdAt: Date = Date(),
         modifiedAt: Date = Date()
     ) {
@@ -312,8 +314,25 @@ struct BackgroundImage: Codable, Identifiable {
         self.fileName = fileName
         self.opacity = opacity
         self.scaleMode = scaleMode
+        self.blurRadius = blurRadius
         self.createdAt = createdAt
         self.modifiedAt = modifiedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, fileName, opacity, scaleMode, blurRadius, createdAt, modifiedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        name = try values.decode(String.self, forKey: .name)
+        fileName = try values.decode(String.self, forKey: .fileName)
+        opacity = try values.decode(Double.self, forKey: .opacity)
+        scaleMode = try values.decode(BackgroundScaleMode.self, forKey: .scaleMode)
+        blurRadius = try values.decodeIfPresent(Double.self, forKey: .blurRadius) ?? 0
+        createdAt = try values.decode(Date.self, forKey: .createdAt)
+        modifiedAt = try values.decode(Date.self, forKey: .modifiedAt)
     }
     
     var image: NSImage? {

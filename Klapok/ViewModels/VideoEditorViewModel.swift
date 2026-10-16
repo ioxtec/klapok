@@ -721,6 +721,24 @@ final class VideoEditorViewModel: ObservableObject {
         }
     }
 
+    /// Keep one player per editing session, even when SwiftUI recreates its views.
+    func synchronizedPreviewPlayer() -> AVPlayer {
+        if player == nil {
+            let player = AVPlayer()
+            player.automaticallyWaitsToMinimizeStalling = true
+            setPlayer(player)
+        }
+        let player = self.player!
+        if let item = previewItem, player.currentItem !== item {
+            let wasPlaying = player.rate > 0
+            player.replaceCurrentItem(with: item)
+            player.seek(to: CMTime(seconds: currentTime, preferredTimescale: 1000),
+                        toleranceBefore: .zero, toleranceAfter: .zero)
+            if wasPlaying { player.play() }
+        }
+        return player
+    }
+
     func setPlayer(_ player: AVPlayer) {
         if self.player === player {
             return

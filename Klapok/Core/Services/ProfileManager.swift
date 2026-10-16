@@ -19,6 +19,7 @@ final class ProfileManager: ObservableObject {
     
     @Published var imageProfiles: ProfileCollection<ImageEditingProfile>
     @Published var videoProfiles: ProfileCollection<VideoEditingProfile>
+    @Published private(set) var imageApplicationRevision = 0
     
     // MARK: - Private Properties
     
@@ -60,8 +61,11 @@ final class ProfileManager: ObservableObject {
     }
     
     func removeImageProfile(withId id: UUID) {
+        let wasActive = imageProfiles.activeProfileId == id
         imageProfiles.removeProfile(withId: id)
+        if imageProfiles.profiles.isEmpty { resetImageProfilesToDefaults(); return }
         saveImageProfiles()
+        if wasActive { imageApplicationRevision += 1 }
     }
     
     func setActiveImageProfile(_ profile: ImageEditingProfile) {
@@ -86,8 +90,11 @@ final class ProfileManager: ObservableObject {
     }
     
     func removeVideoProfile(withId id: UUID) {
+        let wasActive = videoProfiles.activeProfileId == id
         videoProfiles.removeProfile(withId: id)
+        if videoProfiles.profiles.isEmpty { resetVideoProfilesToDefaults(); return }
         saveVideoProfiles()
+        if wasActive { videoProfiles.activeProfile?.applyToAppSettings(.shared) }
     }
     
     func setActiveVideoProfile(_ profile: VideoEditingProfile) {
@@ -101,9 +108,11 @@ final class ProfileManager: ObservableObject {
     
     // MARK: - Profile Application
     
-    func applyImageProfile(_ profile: ImageEditingProfile, to viewModel: EditorViewModel) {
-        profile.applyToEditorViewModel(viewModel)
-        setActiveImageProfile(profile)
+    func applyImageProfile(_ profile: ImageEditingProfile, to viewModel: EditorViewModel,
+                           background: BackgroundManager = .shared) {
+        if profile.applyToEditorViewModel(viewModel, background: background) {
+            setActiveImageProfile(profile)
+        }
     }
     
     func applyVideoProfile(_ profile: VideoEditingProfile, to settings: AppSettings) {
@@ -113,8 +122,9 @@ final class ProfileManager: ObservableObject {
     
     // MARK: - Profile Creation from Current Settings
     
-    func createImageProfileFromCurrentSettings(name: String, from viewModel: EditorViewModel) -> ImageEditingProfile {
-        let profile = ImageEditingProfile.fromEditorViewModel(viewModel, name: name)
+    func createImageProfileFromCurrentSettings(name: String, from viewModel: EditorViewModel,
+                                               background: BackgroundManager = .shared) -> ImageEditingProfile {
+        let profile = ImageEditingProfile.fromEditorViewModel(viewModel, name: name, background: background)
         addImageProfile(profile)
         return profile
     }
@@ -131,12 +141,14 @@ final class ProfileManager: ObservableObject {
         let defaultProfiles = ImageEditingProfile.createDefaultProfiles()
         imageProfiles = ProfileCollection(profiles: defaultProfiles, activeProfileId: defaultProfiles.first?.id)
         saveImageProfiles()
+        imageApplicationRevision += 1
     }
     
-    func resetVideoProfilesToDefaults() {
+    func resetVideoProfilesToDefaults(applyToSettings: Bool = true) {
         let defaultProfiles = VideoEditingProfile.createDefaultProfiles()
         videoProfiles = ProfileCollection(profiles: defaultProfiles, activeProfileId: defaultProfiles.first?.id)
         saveVideoProfiles()
+        if applyToSettings { videoProfiles.activeProfile?.applyToAppSettings(.shared) }
     }
     
     // MARK: - File Operations
@@ -163,7 +175,7 @@ final class ProfileManager: ObservableObject {
             do {
                 let data = try Data(contentsOf: imageProfilesURL)
                 let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: data)
-                self.imageProfiles = collection
+                self.imageProfiles = try collection.validated()
             } catch {
                 Logger.e("ProfileManager: Failed to load image profiles: \(error)")
                 resetImageProfilesToDefaults()
@@ -178,7 +190,7 @@ final class ProfileManager: ObservableObject {
             do {
                 let data = try Data(contentsOf: videoProfilesURL)
                 let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: data)
-                let normalizedProfiles = normalizeBuiltInVideoProfiles(collection)
+                let normalizedProfiles = normalizeBuiltInVideoProfiles(try collection.validated())
                 self.videoProfiles = normalizedProfiles.collection
 
                 if normalizedProfiles.didUpdateProfiles {
@@ -192,10 +204,10 @@ final class ProfileManager: ObservableObject {
 
             } catch {
                 Logger.e("ProfileManager: Failed to load video profiles: \(error)")
-                resetVideoProfilesToDefaults()
+                resetVideoProfilesToDefaults(applyToSettings: false)
             }
         } else {
-            resetVideoProfilesToDefaults()
+            resetVideoProfilesToDefaults(applyToSettings: false)
         }
     }
 
@@ -228,7 +240,7 @@ final class ProfileManager: ObservableObject {
     private func saveImageProfiles() {
         do {
             let data = try JSONEncoder().encode(imageProfiles)
-            try data.write(to: imageProfilesURL)
+            try data.write(to: imageProfilesURL, options: .atomic)
         } catch {
             Logger.e("ProfileManager: Failed to save image profiles: \(error)")
         }
@@ -237,7 +249,7 @@ final class ProfileManager: ObservableObject {
     private func saveVideoProfiles() {
         do {
             let data = try JSONEncoder().encode(videoProfiles)
-            try data.write(to: videoProfilesURL)
+            try data.write(to: videoProfilesURL, options: .atomic)
         } catch {
             Logger.e("ProfileManager: Failed to save video profiles: \(error)")
         }
@@ -254,22 +266,25 @@ final class ProfileManager: ObservableObject {
     }
 
     func importImageProfiles(from url: URL) throws {
-        let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: Data(contentsOf: url))
+        let collection = try JSONDecoder().decode(ProfileCollection<ImageEditingProfile>.self, from: Data(contentsOf: url)).validated()
+        try JSONEncoder().encode(collection).write(to: imageProfilesURL, options: .atomic)
         imageProfiles = collection
-        saveImageProfiles()
+        imageApplicationRevision += 1
     }
 
     func importVideoProfiles(from url: URL) throws {
-        let collection = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: Data(contentsOf: url))
+        let decoded = try JSONDecoder().decode(ProfileCollection<VideoEditingProfile>.self, from: Data(contentsOf: url)).validated()
+        let collection = normalizeBuiltInVideoProfiles(decoded).collection
+        try JSONEncoder().encode(collection).write(to: videoProfilesURL, options: .atomic)
         videoProfiles = collection
-        saveVideoProfiles()
+        collection.activeProfile?.applyToAppSettings(.shared)
     }
     
     func exportImageProfiles() -> URL? {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.json]
         savePanel.nameFieldStringValue = "klapok_image_profiles.json"
-        savePanel.title = "Export Image Profiles"
+        savePanel.title = "Export Image Profiles".localized
         WindowPlacement.centerModalPanel(savePanel)
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
@@ -278,6 +293,7 @@ final class ProfileManager: ObservableObject {
                 return url
             } catch {
                 Logger.e("ProfileManager: Failed to export image profiles: \(error)")
+                NSAlert(error: error).runModal()
             }
         }
         return nil
@@ -287,7 +303,7 @@ final class ProfileManager: ObservableObject {
         let savePanel = NSSavePanel()
         savePanel.allowedContentTypes = [.json]
         savePanel.nameFieldStringValue = "klapok_video_profiles.json"
-        savePanel.title = "Export Video Profiles"
+        savePanel.title = "Export Video Profiles".localized
         WindowPlacement.centerModalPanel(savePanel)
         
         if savePanel.runModal() == .OK, let url = savePanel.url {
@@ -296,6 +312,7 @@ final class ProfileManager: ObservableObject {
                 return url
             } catch {
                 Logger.e("ProfileManager: Failed to export video profiles: \(error)")
+                NSAlert(error: error).runModal()
             }
         }
         return nil
@@ -304,7 +321,7 @@ final class ProfileManager: ObservableObject {
     func importImageProfiles() -> Bool {
         let openPanel = NSOpenPanel()
         openPanel.allowedContentTypes = [.json]
-        openPanel.title = "Import Image Profiles"
+        openPanel.title = "Import Image Profiles".localized
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
         openPanel.allowsMultipleSelection = false
@@ -316,6 +333,7 @@ final class ProfileManager: ObservableObject {
                 return true
             } catch {
                 Logger.e("ProfileManager: Failed to import image profiles: \(error)")
+                NSAlert(error: error).runModal()
                 return false
             }
         }
@@ -325,7 +343,7 @@ final class ProfileManager: ObservableObject {
     func importVideoProfiles() -> Bool {
         let openPanel = NSOpenPanel()
         openPanel.allowedContentTypes = [.json]
-        openPanel.title = "Import Video Profiles"
+        openPanel.title = "Import Video Profiles".localized
         openPanel.canChooseFiles = true
         openPanel.canChooseDirectories = false
         openPanel.allowsMultipleSelection = false
@@ -337,6 +355,7 @@ final class ProfileManager: ObservableObject {
                 return true
             } catch {
                 Logger.e("ProfileManager: Failed to import video profiles: \(error)")
+                NSAlert(error: error).runModal()
                 return false
             }
         }

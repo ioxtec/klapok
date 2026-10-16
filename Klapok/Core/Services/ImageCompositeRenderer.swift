@@ -188,6 +188,7 @@ enum ImageCompositeRenderer {
         case .image:
             drawImageBackground(
                 backgroundManager.collections.selectedImage,
+                backgroundManager: backgroundManager,
                 in: context,
                 size: size
             )
@@ -234,11 +235,12 @@ enum ImageCompositeRenderer {
 
     private static func drawImageBackground(
         _ selectedImage: BackgroundImage?,
+        backgroundManager: BackgroundManager,
         in context: CGContext,
         size: CGSize
     ) {
         guard let selectedImage,
-              let backgroundImage = selectedImage.image
+              let backgroundImage = backgroundManager.renderedImage(for: selectedImage)
         else {
             drawFallbackBackground(in: context, size: size)
             return

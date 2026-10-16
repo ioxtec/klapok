@@ -101,8 +101,6 @@ struct LocalizationKeys {
     static let permissionFileAccessTitle = "permission_file_access_title"
     static let permissionFileAccessDescription = "permission_file_access_description"
     
-    static let permissionAccessibilityTitle = "permission_accessibility_title"
-    static let permissionAccessibilityDescription = "permission_accessibility_description"
     
     static let openSettingsButton = "open_settings_button"
     

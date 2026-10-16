@@ -385,6 +385,7 @@ import Foundation
             enableRecordingCountdown = false
             recordingCountdownSeconds = 3
             showInDock = true
+            DispatchQueue.main.async { AppIconManager.shared.select(.roostersLight) }
         }
 
         func applyVideoQuality(_ quality: VideoQuality) {
@@ -560,6 +561,8 @@ import Foundation
                 } else {
                     NSApp.setActivationPolicy(.accessory)
                 }
+
+                AppIconManager.shared.applySavedIcon()
 
                 visibleWindows.forEach { window in
                     if window.canBecomeKey { window.makeKeyAndOrderFront(nil) }

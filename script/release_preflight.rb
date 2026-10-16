@@ -20,11 +20,16 @@ require_check(!project.include?('com.hoxim.klapok'), 'Legacy bundle identifier r
 require_check(project.scan(/SUPPORTED_PLATFORMS = macosx;/).length == 6, 'All app/test configurations must be macOS-only')
 require_check(!project.match?(/RUNTIME_EXCEPTION_.*= YES|ENABLE_RESOURCE_ACCESS_(CAMERA|AUDIO_INPUT) = YES|ENABLE_INCOMING_NETWORK_CONNECTIONS = YES/), 'Unnecessary permissions or runtime exceptions enabled')
 catalog = JSON.parse(File.read(File.join(ROOT, 'Klapok/Localizable.xcstrings')))
+supported_languages = %w[en pl de fr es it pt-BR ja ko zh-Hans zh-Hant]
 catalog.fetch('strings').each do |key, entry|
   next if key.empty? || entry['shouldTranslate'] == false
-  require_check((entry['localizations'] || {}).keys.all? { |lang| ['en', 'pl'].include?(lang) }, "Unsupported language: #{key}")
+  require_check((entry['localizations'] || {}).keys.all? { |lang| supported_languages.include?(lang) }, "Unsupported language: #{key}")
   unit = entry.dig('localizations', 'pl', 'stringUnit')
   require_check(unit && unit['state'] == 'translated' && !unit['value'].to_s.empty?, "Missing Polish translation: #{key}")
+  (supported_languages - ['en', 'pl']).each do |lang|
+    unit = entry.dig('localizations', lang, 'stringUnit')
+    require_check(unit && unit['state'] == 'translated' && !unit['value'].to_s.empty?, "Missing #{lang} translation: #{key}")
+  end
 end
 
 app = ARGV.find { |arg| !arg.start_with?('--') }
@@ -43,8 +48,8 @@ reasons = manifest.fetch('NSPrivacyAccessedAPITypes').to_h { |item| [item.fetch(
 require_check(reasons.fetch('NSPrivacyAccessedAPICategoryUserDefaults', []).include?('CA92.1'), 'Missing UserDefaults reason')
 require_check(reasons.fetch('NSPrivacyAccessedAPICategoryFileTimestamp', []).include?('C617.1'), 'Missing file metadata reason')
 languages = Dir.glob(File.join(app, 'Contents/Resources/*.lproj')).map { |path| File.basename(path, '.lproj') }
-require_check(['en', 'pl'].all? { |lang| languages.include?(lang) }, 'Missing EN/PL resources')
-require_check((languages - ['en', 'pl', 'Base']).empty?, 'Unexpected language in bundle')
+require_check(supported_languages.all? { |lang| languages.include?(lang) }, 'Missing supported language resources')
+require_check((languages - supported_languages - ['Base']).empty?, 'Unexpected language in bundle')
 
 command('/usr/bin/codesign', '--verify', '--deep', '--strict', app)
 signature, details, status = Open3.capture3('/usr/bin/codesign', '-dvv', '--entitlements', ':-', app)
@@ -68,7 +73,8 @@ executables.each do |binary|
   imports = command('/usr/bin/nm', '-u', binary)
   require_check(!dependencies.include?('/usr/lib/liblzma'), 'System liblzma dependency present')
   require_check(!imports.match?(/\b_lzma_\w+/), 'Rejected LZMA symbol present')
+  require_check(!imports.match?(/\b_AXIsProcessTrusted(?:WithOptions)?\b/), 'Unsupported Accessibility trust check present')
 end
 puts "PASS: #{info['CFBundleIdentifier']} #{info['CFBundleShortVersionString']} (#{info['CFBundleVersion']}), macOS #{info['LSMinimumSystemVersion']}+"
-puts 'PASS: signature, sandbox, runtime, privacy declarations, EN/PL resources and known rejected symbols'
+puts 'PASS: signature, sandbox, runtime, privacy declarations, 11 language resources and known rejected symbols'
 puts 'Manual gates remain: real capture/audio/cursor, oldest supported macOS, final App Store export and store metadata.'

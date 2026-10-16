@@ -1,9 +1,66 @@
 import AppKit
+import AVFoundation
+import AVKit
+import SwiftUI
 import XCTest
 @testable import Klapok
 
 @MainActor
 final class TimelinePresentationTests: XCTestCase {
+    func testLanguageDrivenSwiftUIViewRecreationPreservesPreviewAndEditingState() async {
+        let vm = VideoEditorViewModel()
+        let item = AVPlayerItem(asset: AVMutableComposition())
+        vm.previewItem = item
+        vm.addOverlayTrack(kind: .text)
+        let overlays = vm.overlayTracks.map(\.id)
+        let url = URL(fileURLWithPath: "/tmp/language-preview.mov")
+        let player = vm.synchronizedPreviewPlayer()
+        let host = NSHostingView(rootView: VideoPlayerView(videoURL: url, viewModel: vm)
+            .id("pl").environment(\.locale, Locale(identifier: "pl")))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 240),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.contentView = host
+        defer { window.contentView = nil }
+        for language in ["en", "pl", "en", "pl", "en"] {
+            host.rootView = VideoPlayerView(videoURL: url, viewModel: vm)
+                .id(language).environment(\.locale, Locale(identifier: language))
+            host.layoutSubtreeIfNeeded()
+            try? await Task.sleep(for: .milliseconds(30))
+            XCTAssertTrue(vm.synchronizedPreviewPlayer() === player)
+            XCTAssertTrue(player.currentItem === item)
+            XCTAssertEqual(vm.overlayTracks.map(\.id), overlays)
+        }
+    }
+
+    func testRecreatedPreviewViewsReusePlayerAndLateDismantleDoesNotDetachItem() {
+        let vm = VideoEditorViewModel()
+        let item = AVPlayerItem(asset: AVMutableComposition())
+        vm.previewItem = item
+        let firstView = AVPlayerView()
+        firstView.player = vm.synchronizedPreviewPlayer()
+        let player = firstView.player
+        vm.currentTime = 3
+        let replacement = AVPlayerView()
+        replacement.player = vm.synchronizedPreviewPlayer()
+        XCTAssertTrue(replacement.player === player)
+        XCTAssertTrue(player?.currentItem === item)
+        VideoPlayerView.dismantleNSView(firstView, coordinator: ())
+        XCTAssertNil(firstView.player)
+        XCTAssertTrue(replacement.player?.currentItem === item)
+        XCTAssertEqual(vm.currentTime, 3)
+        replacement.player = nil
+    }
+
+    func testPreviewItemReplacementStaysOnSamePlayer() {
+        let vm = VideoEditorViewModel()
+        vm.previewItem = AVPlayerItem(asset: AVMutableComposition())
+        let player = vm.synchronizedPreviewPlayer()
+        let replacement = AVPlayerItem(asset: AVMutableComposition())
+        vm.previewItem = replacement
+        XCTAssertTrue(vm.synchronizedPreviewPlayer() === player)
+        XCTAssertTrue(player.currentItem === replacement)
+    }
+
     private func recording(_ name: String = "timeline.mov") -> VideoRecording {
         VideoRecording(url: FileManager.default.temporaryDirectory.appendingPathComponent(name),
                        duration: 12, size: CGSize(width: 160, height: 100), frameRate: 15)

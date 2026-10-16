@@ -406,6 +406,7 @@ struct SettingsPathOption: View {
 struct SettingsProfilesSummary<ProfileType: Profile>: View {
     let profiles: [ProfileType]
     let activeProfile: ProfileType?
+    var isModified = false
     let resetAction: () -> Void
     let exportAction: () -> Void
     let importAction: () -> Void
@@ -467,6 +468,7 @@ struct SettingsProfilesSummary<ProfileType: Profile>: View {
     }
 
     private var activeProfileText: String {
+        if isModified { return String(format: "Active: %@".localized, "Custom *".localized) }
         if let activeProfile {
             return String(format: "Active: %@".localized, activeProfile.name)
         }

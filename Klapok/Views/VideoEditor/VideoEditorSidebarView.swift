@@ -86,6 +86,7 @@ struct VideoEditorSidebarView: View {
             profileManager: profileManager,
             profiles: profileManager.videoProfiles.profiles,
             activeProfile: profileManager.getActiveVideoProfile(),
+            isModified: profileManager.getActiveVideoProfile().map { !$0.matchesAppSettings(settings) } ?? true,
             profileTypeName: "Video".localized,
             showsHeader: false,
             usesContainer: false,

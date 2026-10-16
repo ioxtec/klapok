@@ -21,8 +21,8 @@ final class ReleaseBundleTests: XCTestCase {
     }
 
     func testOnlyCompleteReleaseLanguagesAreBundled() {
-        XCTAssertTrue(Bundle.main.localizations.contains("en"))
-        XCTAssertTrue(Bundle.main.localizations.contains("pl"))
-        XCTAssertTrue(Set(Bundle.main.localizations).isSubset(of: ["en", "pl", "Base"]))
+        let supported = Set(AppLanguage.allCases.filter { $0 != .system }.map(\.rawValue))
+        let bundled = Set(Bundle.main.localizations).subtracting(["Base"])
+        XCTAssertEqual(bundled, supported)
     }
 }

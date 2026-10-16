@@ -39,7 +39,8 @@ struct ScreenshotEditorSidebarView: View {
             systemImage: "paintpalette",
             subtitle: "Fill behind the screenshot."
         ) {
-            BackgroundEditorView(backgroundManager: backgroundManager)
+            BackgroundEditorView(backgroundManager: backgroundManager,
+                                 onBackgroundTypeSelected: viewModel.ensureVisibleBackgroundPadding)
         }
     }
 
@@ -62,8 +63,8 @@ struct ScreenshotEditorSidebarView: View {
                     valueText: "\(Int(viewModel.backgroundPadding)) px",
                     systemImage: "arrow.up.left.and.arrow.down.right",
                     value: $viewModel.backgroundPadding,
-                    range: 10...100,
-                    step: 5
+                    range: EditorSizing.paddingRange(for: viewModel.image?.pixelSize ?? .zero, current: viewModel.backgroundPadding),
+                    step: 5, unit: "px"
                 )
 
                 SidebarDivider()
@@ -73,8 +74,8 @@ struct ScreenshotEditorSidebarView: View {
                     valueText: "\(Int(viewModel.backgroundCornerRadius)) px",
                     systemImage: "rectangle.roundedtop",
                     value: $viewModel.backgroundCornerRadius,
-                    range: 0...50,
-                    step: 1
+                    range: EditorSizing.cornerRange(for: viewModel.image?.pixelSize ?? .zero, current: viewModel.backgroundCornerRadius),
+                    step: 1, unit: "px"
                 )
             }
         }
@@ -122,8 +123,8 @@ struct ScreenshotEditorSidebarView: View {
                     valueText: "\(Int(viewModel.cornerRadius)) px",
                     systemImage: "capsule",
                     value: $viewModel.cornerRadius,
-                    range: 0...50,
-                    step: 1
+                    range: EditorSizing.cornerRange(for: viewModel.image?.pixelSize ?? .zero, current: viewModel.cornerRadius),
+                    step: 1, unit: "px"
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -136,7 +137,7 @@ struct ScreenshotEditorSidebarView: View {
                 systemImage: "circle.lefthalf.filled",
                 value: $viewModel.shadowIntensity,
                 range: 0...50,
-                step: 1
+                step: 1, unit: "%"
             )
             .disabled(backgroundManager.collections.backgroundType == .none)
         }
@@ -148,16 +149,20 @@ struct ScreenshotEditorSidebarView: View {
             profileManager: profileManager,
             profiles: profileManager.imageProfiles.profiles,
             activeProfile: profileManager.getActiveImageProfile(),
+            isModified: profileManager.getActiveImageProfile().map {
+                !$0.matchesEditorSettings(viewModel, background: backgroundManager)
+            } ?? true,
             profileTypeName: "Image",
             showsHeader: false,
             usesContainer: false,
             onProfileSelected: { profile in
-                profileManager.applyImageProfile(profile, to: viewModel)
+                profileManager.applyImageProfile(profile, to: viewModel, background: backgroundManager)
             },
             onProfileAdded: { name in
                 let newProfile = profileManager.createImageProfileFromCurrentSettings(
                     name: name,
-                    from: viewModel
+                    from: viewModel,
+                    background: backgroundManager
                 )
                 profileManager.setActiveImageProfile(newProfile)
             },
@@ -179,17 +184,7 @@ struct ScreenshotEditorSidebarView: View {
 
     private func updateProfile(_ profile: ImageEditingProfile, newName: String) {
         if newName == profile.name {
-            let updatedProfile = ImageEditingProfile(
-                id: profile.id,
-                name: profile.name,
-                isDefault: profile.isDefault,
-                createdAt: profile.createdAt,
-                modifiedAt: Date(),
-                backgroundAspectRatio: viewModel.selectedAspectRatio,
-                backgroundPadding: viewModel.backgroundPadding,
-                backgroundCornerRadius: viewModel.backgroundCornerRadius,
-                shadowIntensity: viewModel.shadowIntensity
-            )
+            let updatedProfile = profile.updating(from: viewModel, background: backgroundManager)
             profileManager.updateImageProfile(updatedProfile)
         } else {
             var updatedProfile = profile

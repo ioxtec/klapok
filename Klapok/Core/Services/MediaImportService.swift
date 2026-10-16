@@ -10,8 +10,8 @@ enum MediaImportService {
 
         var errorDescription: String? {
             switch self {
-            case .invalidImage: return String(localized: "This file could not be opened as an image.")
-            case .invalidVideo: return String(localized: "This file does not contain a playable video track.")
+            case .invalidImage: return "This file could not be opened as an image.".localized
+            case .invalidVideo: return "This file does not contain a playable video track.".localized
             }
         }
     }

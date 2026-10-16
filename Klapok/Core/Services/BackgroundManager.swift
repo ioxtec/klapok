@@ -27,8 +27,8 @@ class BackgroundManager: ObservableObject {
     }
     
     // Public initializer for previews
-    init(forPreview: Bool) {
-        self.documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+    init(forPreview: Bool, storageDirectory: URL? = nil) {
+        self.documentsPath = storageDirectory ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.backgroundImagesPath = documentsPath.appendingPathComponent("Klapok Background Images")
         
         if forPreview {
@@ -183,8 +183,50 @@ class BackgroundManager: ObservableObject {
     }
     
     // MARK: - Background Type Management
+
+    func profileImageData(for image: BackgroundImage) -> Data? {
+        guard let data = try? Data(contentsOf: backgroundImagesPath.appendingPathComponent(image.fileName)),
+              let bitmap = NSBitmapImageRep(data: data) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    func renderedImage(for image: BackgroundImage) -> NSImage? {
+        BackgroundImageBlur.image(at: backgroundImagesPath.appendingPathComponent(image.fileName), radius: image.blurRadius)
+    }
+
+    func restoreProfileBackground(_ appearance: ImageProfileAppearance) throws {
+        var restored = collections
+        if appearance.backgroundType == .gradient, let gradient = appearance.gradient {
+            restored.customGradients.removeAll { $0.id == gradient.id }
+            restored.customGradients.append(gradient)
+            restored.selectedGradientId = gradient.id
+        }
+        if appearance.backgroundType == .image {
+            guard var image = appearance.backgroundImage,
+                  let data = appearance.backgroundImageData,
+                  let bitmap = NSBitmapImageRep(data: data),
+                  let png = bitmap.representation(using: .png, properties: [:]) else { throw ProfileImportError.invalidBackground }
+            // Never trust a filename carried in an imported profile.
+            image.fileName = "profile-\(image.id.uuidString).png"
+            try FileManager.default.createDirectory(at: backgroundImagesPath, withIntermediateDirectories: true)
+            try png.write(to: backgroundImagesPath.appendingPathComponent(image.fileName), options: .atomic)
+            restored.backgroundImages.removeAll { $0.id == image.id }
+            restored.backgroundImages.append(image)
+            restored.selectedImageId = image.id
+        }
+        restored.backgroundType = appearance.backgroundType
+        collections = restored
+        saveCollections()
+    }
     
     func setBackgroundType(_ type: BackgroundType) {
+        if type == .gradient, collections.selectedGradient == nil {
+            if collections.customGradients.isEmpty { collections.customGradients = Self.createDefaultGradients() }
+            collections.selectedGradientId = collections.customGradients.first?.id
+        }
+        if type == .image, collections.selectedImage == nil {
+            collections.selectedImageId = collections.backgroundImages.first?.id
+        }
         collections.backgroundType = type
     }
     

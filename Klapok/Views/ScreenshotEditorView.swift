@@ -15,6 +15,7 @@ import SwiftUI
         @ObservedObject private var backgroundManager = BackgroundManager.shared
         @StateObject private var languageManager = LanguageManager.shared
         @State private var isCropping = false
+        @State private var hasAppliedInitialProfile = false
 
         var body: some View {
             NavigationSplitView {
@@ -192,6 +193,12 @@ import SwiftUI
                 )
             }
             .frame(minWidth: 1180, minHeight: 720)
+            .onAppear {
+                guard !hasAppliedInitialProfile else { return }
+                hasAppliedInitialProfile = true
+                applyActiveProfile()
+            }
+            .onReceive(profileManager.$imageApplicationRevision.dropFirst()) { _ in applyActiveProfile() }
             .overlay {
                 if isCropping {
                     ZStack {
@@ -211,6 +218,12 @@ import SwiftUI
         }
 
         // Background color options
+        private func applyActiveProfile() {
+            if let profile = profileManager.getActiveImageProfile() {
+                profileManager.applyImageProfile(profile, to: viewModel, background: backgroundManager)
+            }
+        }
+
         private var backgroundColors: [Color] {
             [
                 .clear,
@@ -246,7 +259,7 @@ import SwiftUI
             
         case .image:
             if let selectedImage = backgroundManager.collections.selectedImage,
-               let image = selectedImage.image {
+               let image = backgroundManager.renderedImage(for: selectedImage) {
                 BackgroundImageFillView(
                     image: image,
                     scaleMode: selectedImage.scaleMode,

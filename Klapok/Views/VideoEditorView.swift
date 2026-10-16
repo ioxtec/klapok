@@ -74,8 +74,8 @@ struct VideoEditorView: View {
                 }
             }
         }
-        .id(languageManager.selectedLanguage.rawValue)
         .environment(\.locale, languageManager.selectedLanguage.locale ?? .current)
+        .onDisappear { viewModel.pausePlayback() }
         .onChange(of: viewModel.video?.url) { _, _ in exportManager.resetVideoScalingForNewEditor() }
         .alert("Could not complete the operation".localized, isPresented: Binding(
             get: { viewModel.errorMessage != nil }, set: { if !$0 { viewModel.errorMessage = nil } })) {

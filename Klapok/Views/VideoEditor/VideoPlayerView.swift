@@ -14,16 +14,6 @@ struct VideoPlayerView: NSViewRepresentable {
     let videoURL: URL
     @ObservedObject var viewModel: VideoEditorViewModel
 
-    final class Coordinator {
-        var player: AVPlayer?
-        var videoURL: URL?
-        var statusObservation: NSKeyValueObservation?
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
     func makeNSView(context: Context) -> AVPlayerView {
         let playerView = AVPlayerView()
         playerView.wantsLayer = true
@@ -35,32 +25,16 @@ struct VideoPlayerView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: AVPlayerView, context: Context) {
-        if context.coordinator.player == nil {
-            let player = AVPlayer()
-            player.automaticallyWaitsToMinimizeStalling = true
-            context.coordinator.player = player
-            context.coordinator.videoURL = videoURL
-        }
-
-        guard let player = context.coordinator.player else { return }
-
-        if let item = viewModel.previewItem, player.currentItem !== item {
-            let wasPlaying = player.rate > 0
-            player.replaceCurrentItem(with: item)
-            player.seek(to: CMTime(seconds: viewModel.currentTime, preferredTimescale: 1000),
-                        toleranceBefore: .zero, toleranceAfter: .zero)
-            if wasPlaying { player.play() }
-        }
+        let player = viewModel.synchronizedPreviewPlayer()
 
         if nsView.player !== player {
             nsView.player = player
         }
-
-        viewModel.setPlayer(player)
     }
 
-    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: Coordinator) {
-        coordinator.player?.pause()
+    static func dismantleNSView(_ nsView: AVPlayerView, coordinator: ()) {
+        // A replacement view may already use the same model-owned player.
+        // Detach only this presentation; the editor owns playback lifetime.
         nsView.player = nil
     }
 }

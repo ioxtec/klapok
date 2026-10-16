@@ -14,6 +14,11 @@ import UniformTypeIdentifiers
     import AppKit
     import Carbon.HIToolbox
 
+    final class CaptureControlPanel: NSPanel {
+        override var canBecomeKey: Bool { true }
+        override var canBecomeMain: Bool { false }
+    }
+
     final class AppDelegate: NSObject, NSApplicationDelegate {
         private let hotkeyManager = HotkeyManager()
         @MainActor private let captureManager = CaptureManager.shared
@@ -28,6 +33,8 @@ import UniformTypeIdentifiers
         #endif
 
         func applicationWillTerminate(_ notification: Notification) {
+            if let localEscapeMonitor { NSEvent.removeMonitor(localEscapeMonitor) }
+            localEscapeMonitor = nil
             #if DEBUG
             if let uiTestVideoFolder { try? FileManager.default.removeItem(at: uiTestVideoFolder) }
             #endif
@@ -37,7 +44,6 @@ import UniformTypeIdentifiers
         private var overlayWindow: NSWindow?  // Pre-created overlay window
         private var statusItem: NSStatusItem?
         private var localEscapeMonitor: Any?
-        private var globalEscapeMonitor: Any?
 
         @Published var isPanelPresented = false
 
@@ -221,20 +227,14 @@ import UniformTypeIdentifiers
                 [weak self] event in
                 guard event.keyCode == kVK_Escape else { return event }
 
-                guard self?.isFloatingCaptureFlowPresented == true else { return event }
+                guard let self, self.isFloatingCaptureFlowPresented,
+                      let panel = self.panelWindow, event.window === panel else { return event }
                 Task { @MainActor in
-                    _ = self?.dismissFloatingCaptureFlowFromEscape()
+                    _ = self.dismissFloatingCaptureFlowFromEscape()
                 }
                 return nil
             }
 
-            globalEscapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) {
-                [weak self] event in
-                guard event.keyCode == kVK_Escape else { return }
-                Task { @MainActor in
-                    _ = self?.dismissFloatingCaptureFlowFromEscape()
-                }
-            }
         }
 
         @MainActor
@@ -377,13 +377,13 @@ import UniformTypeIdentifiers
                 existingPanel.collectionBehavior = [
                     .canJoinAllSpaces, .fullScreenAuxiliary, .stationary, .ignoresCycle,
                 ]
-                existingPanel.orderFrontRegardless()
+                existingPanel.makeKeyAndOrderFront(nil)
                 floatingPanelViewModel?.ensurePanelOnTop()
                 return
             }
 
             // Panel: transparent carrier window; the visible glass is drawn by SwiftUI.
-            let panel = NSPanel(
+            let panel = CaptureControlPanel(
                 contentRect: NSRect(x: 0, y: 0, width: 480, height: 104),
                 styleMask: [.nonactivatingPanel, .fullSizeContentView],
                 backing: .buffered,
@@ -443,8 +443,8 @@ import UniformTypeIdentifiers
 
             panel.setFrameOrigin(NSPoint(x: originX, y: clampedY))
 
-            panel.orderFront(nil)
-            // Don't make panel key window - it's just a floating panel
+            panel.becomesKeyOnlyIfNeeded = false
+            panel.makeKeyAndOrderFront(nil)
             panelWindow = panel
             isPanelPresented = true
 
@@ -612,7 +612,7 @@ import UniformTypeIdentifiers
 
         @MainActor
         @objc private func importImageFromMenu() {
-            guard let url = chooseImportFile(types: [.image], title: String(localized: "Import Image…")) else { return }
+            guard let url = chooseImportFile(types: [.image], title: "Import Image…".localized) else { return }
             do {
                 let image = try MediaImportService.loadImage(from: url)
                 hideEditorWindowsForNewCapture()
@@ -623,7 +623,7 @@ import UniformTypeIdentifiers
 
         @MainActor
         @objc private func importVideoFromMenu() {
-            guard let url = chooseImportFile(types: [.movie], title: String(localized: "Import Video…")) else { return }
+            guard let url = chooseImportFile(types: [.movie], title: "Import Video…".localized) else { return }
             Task { @MainActor in
                 do {
                     let directory = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -636,7 +636,7 @@ import UniformTypeIdentifiers
                         styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
                         backing: .buffered, defer: false)
                     window.contentViewController = host
-                    window.title = String(localized: "Klapok Video Editor")
+                    window.title = "Klapok Video Editor".localized
                     window.titleVisibility = .hidden
                     window.titlebarAppearsTransparent = true
                     window.minSize = NSSize(width: 1180, height: 720)
@@ -653,7 +653,7 @@ import UniformTypeIdentifiers
         @MainActor
         private func showImportError(_ error: Error) {
             let alert = NSAlert()
-            alert.messageText = String(localized: "Import Failed")
+            alert.messageText = "Import Failed".localized
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .warning
             alert.runModal()

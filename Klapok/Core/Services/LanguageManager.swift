@@ -13,6 +13,15 @@ enum AppLanguage: String, CaseIterable {
     case system = "system"
     case english = "en"
     case polish = "pl"
+    case german = "de"
+    case french = "fr"
+    case spanish = "es"
+    case italian = "it"
+    case portugueseBrazil = "pt-BR"
+    case japanese = "ja"
+    case korean = "ko"
+    case simplifiedChinese = "zh-Hans"
+    case traditionalChinese = "zh-Hant"
     
     var displayName: String {
         switch self {
@@ -22,6 +31,15 @@ enum AppLanguage: String, CaseIterable {
             return "English"
         case .polish:
             return "Polski"
+        case .german: return "Deutsch"
+        case .french: return "Français"
+        case .spanish: return "Español"
+        case .italian: return "Italiano"
+        case .portugueseBrazil: return "Português (Brasil)"
+        case .japanese: return "日本語"
+        case .korean: return "한국어"
+        case .simplifiedChinese: return "简体中文"
+        case .traditionalChinese: return "繁體中文"
         }
     }
     
@@ -29,10 +47,8 @@ enum AppLanguage: String, CaseIterable {
         switch self {
         case .system:
             return nil // Use system locale
-        case .english:
-            return Locale(identifier: "en")
-        case .polish:
-            return Locale(identifier: "pl")
+        default:
+            return Locale(identifier: rawValue)
         }
     }
 
@@ -71,13 +87,7 @@ class LanguageManager: ObservableObject {
     
     /// Apply the selected language to the app
     private func applyLanguage() {
-        if selectedLanguage == .system {
-            // Reset to system language
-            Bundle.setLanguage(nil)
-        } else {
-            // Apply specific language
-            Bundle.setLanguage(selectedLanguage.rawValue)
-        }
+        Bundle.setLanguage(currentLanguage)
         
         // Swizzle Bundle.main to use our custom localization
         object_setClass(Bundle.main, AnyLanguageBundle.self)
@@ -89,15 +99,8 @@ class LanguageManager: ObservableObject {
     /// Get current effective language (either selected or system)
     var currentLanguage: String {
         if selectedLanguage == .system {
-#if swift(>=5.9)
-            if #available(iOS 16.0, macOS 13.0, tvOS 16.0, watchOS 9.0, *) {
-                return Locale.current.language.languageCode?.identifier ?? "en"
-            } else {
-                return Locale.current.languageCode ?? "en"
-            }
-#else
-            return Locale.current.languageCode ?? "en"
-#endif
+            let supported = AppLanguage.allCases.filter { $0 != .system }.map(\.rawValue)
+            return Bundle.preferredLocalizations(from: supported, forPreferences: Locale.preferredLanguages).first ?? "en"
         }
         return selectedLanguage.rawValue
     }

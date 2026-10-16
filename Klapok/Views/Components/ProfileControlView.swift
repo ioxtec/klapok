@@ -27,6 +27,7 @@ struct ProfileControlView<T: Profile>: View {
     
     let profiles: [T]
     let activeProfile: T?
+    let isModified: Bool
     let profileTypeName: String
     let showsHeader: Bool
     let usesContainer: Bool
@@ -42,6 +43,7 @@ struct ProfileControlView<T: Profile>: View {
         profileManager: ProfileManager,
         profiles: [T],
         activeProfile: T?,
+        isModified: Bool = false,
         profileTypeName: String,
         showsHeader: Bool = true,
         usesContainer: Bool = true,
@@ -56,6 +58,7 @@ struct ProfileControlView<T: Profile>: View {
         self.profileManager = profileManager
         self.profiles = profiles
         self.activeProfile = activeProfile
+        self.isModified = isModified
         self.profileTypeName = profileTypeName
         self.showsHeader = showsHeader
         self.usesContainer = usesContainer
@@ -175,9 +178,13 @@ struct ProfileControlView<T: Profile>: View {
 
                 if let activeProfile = activeProfile {
                     ProfileActionButton(title: "Save", systemImage: "square.and.arrow.down") {
-                        onProfileEdited(activeProfile, activeProfile.name)
+                        if isModified {
+                            showingAddProfile = true
+                        } else {
+                            onProfileEdited(activeProfile, activeProfile.name)
+                        }
                     }
-                    .help("Save changes to current profile")
+                    .help(isModified ? "Save as new profile".localized : "Save changes to current profile".localized)
                 }
 
                 if let activeProfile = activeProfile, !activeProfile.isDefault {
@@ -224,13 +231,16 @@ struct ProfileControlView<T: Profile>: View {
 
     private var profilePicker: some View {
         Picker("", selection: Binding(
-            get: { activeProfile?.id ?? UUID() },
+            get: { isModified ? nil : activeProfile?.id },
             set: { id in
                 if let profile = profiles.first(where: { $0.id == id }) {
                     onProfileSelected(profile)
                 }
             }
         )) {
+            if isModified || activeProfile == nil {
+                Text("Custom *".localized).tag(Optional<UUID>.none)
+            }
             ForEach(profiles, id: \.id) { profile in
                 HStack {
                     Text(profile.name)
@@ -240,7 +250,7 @@ struct ProfileControlView<T: Profile>: View {
                             .font(.caption)
                     }
                 }
-                .tag(profile.id)
+                .tag(Optional(profile.id))
             }
         }
         .pickerStyle(.menu)

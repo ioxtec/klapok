@@ -149,17 +149,17 @@ enum KeyboardShortcutAction: UInt32, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .screenshotFullScreen:
-            return String(localized: "Capture full screen")
+            return "Capture full screen".localized
         case .screenshotArea:
-            return String(localized: "Capture screen area")
+            return "Capture screen area".localized
         case .screenshotWindow:
-            return String(localized: "Capture application window")
+            return "Capture application window".localized
         case .recordingFullScreen:
-            return String(localized: "Record full screen")
+            return "Record full screen".localized
         case .recordingArea:
-            return String(localized: "Record screen area")
+            return "Record screen area".localized
         case .recordingWindow:
-            return String(localized: "Record application window")
+            return "Record application window".localized
         case .importImage:
             return "Import Image…".localized
         case .importVideo:

@@ -33,7 +33,7 @@ struct ArrowGeometry {
         }
         switch style {
         case .open:
-            let openLength = min(headSize, distance * 0.5)
+            let openLength = min(max(headSize, strokeWidth * 3.5), distance * 0.5)
             let openBase = CGPoint(x: end.x - ux * openLength * cos(.pi / 6),
                 y: end.y - uy * openLength * cos(.pi / 6))
             stroke.move(to: start); stroke.addLine(to: end)

@@ -43,6 +43,8 @@ final class SettingsUITests: XCTestCase {
 
         XCTAssertTrue(element("settings.content.general").waitForExistence(timeout: 2))
         XCTAssertEqual(app.buttons["settings.tab.general"].value as? String, "selected")
+        XCTAssertTrue(app.staticTexts["Screen Recording"].exists)
+        XCTAssertFalse(app.staticTexts["Accessibility"].exists)
     }
     
     // MARK: - Image Settings Tests

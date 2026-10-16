@@ -55,6 +55,9 @@ import UniformTypeIdentifiers
         func show(image: NSImage) {
             Logger.s("EditorViewModel: Showing editor with image size: \(image.size), pixel size: \(image.pixelSize)")
             annotationManager.resetForNewImage()
+            let annotationScale = EditorSizing.annotationScale(for: image.pixelSize)
+            annotationManager.defaultFontSize = (18 * annotationScale).rounded()
+            annotationManager.defaultStrokeWidth = (3 * annotationScale).rounded()
             self.image = image
             annotationManager.editedImage = image
             statusMessage = nil
@@ -149,6 +152,13 @@ import UniformTypeIdentifiers
         // Note: Area and window selection are now handled by FloatingPanelViewModel
         // EditorViewModel only handles direct full screen capture and showing images
         
+        /// A user enabling decoration after Original needs a visible frame.
+        func ensureVisibleBackgroundPadding(from oldType: BackgroundType, to newType: BackgroundType) {
+            if oldType == .none, newType != .none, backgroundPadding == 0 {
+                backgroundPadding = 30
+            }
+        }
+
         // MARK: - Background Calculations
         
         /// Calculates the background size based on aspect ratio and padding

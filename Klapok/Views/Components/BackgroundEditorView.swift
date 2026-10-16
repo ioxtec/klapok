@@ -19,6 +19,7 @@ private final class BackgroundEditorViewState: ObservableObject {
 
 struct BackgroundEditorView: View {
     @ObservedObject var backgroundManager: BackgroundManager
+    var onBackgroundTypeSelected: (BackgroundType, BackgroundType) -> Void = { _, _ in }
     @StateObject private var viewState = BackgroundEditorViewState()
     
     enum DeleteItemType {
@@ -72,10 +73,9 @@ struct BackgroundEditorView: View {
                 Picker("Fill", selection: Binding(
                     get: { backgroundManager.collections.backgroundType },
                     set: { newType in
-                        Task { @MainActor in
-                            backgroundManager.setBackgroundType(newType)
-                            backgroundManager.saveCollections()
-                        }
+                        onBackgroundTypeSelected(backgroundManager.collections.backgroundType, newType)
+                        backgroundManager.setBackgroundType(newType)
+                        backgroundManager.saveCollections()
                     }
                 )) {
                     ForEach(BackgroundType.allCases, id: \.id) { type in
@@ -236,7 +236,25 @@ struct BackgroundEditorView: View {
                             }
                         ),
                         range: 0.1...1.0,
-                        step: 0.1
+                        step: 0.1, unit: "%", displayMultiplier: 100
+                    )
+
+                    SidebarDivider()
+
+                    SidebarSliderControl(
+                        title: "Background blur".localized,
+                        valueText: "\(Int(selectedImage.blurRadius)) px",
+                        systemImage: "drop.halffull",
+                        value: Binding(
+                            get: { selectedImage.blurRadius },
+                            set: { radius in
+                                var updatedImage = selectedImage
+                                updatedImage.blurRadius = radius
+                                updatedImage.modifiedAt = Date()
+                                backgroundManager.updateBackgroundImage(updatedImage)
+                            }
+                        ),
+                        range: BackgroundImageBlur.range, step: 1, unit: "px"
                     )
 
                     SidebarDivider()

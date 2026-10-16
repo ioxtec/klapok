@@ -30,7 +30,7 @@ import Foundation
                 defer: false
             )
 
-            panel.title = String(localized: "Select a window to capture")
+            panel.title = "Select a window to capture".localized
             panel.level = .floating
             panel.center()
 
@@ -80,12 +80,12 @@ import Foundation
 
             // Create columns
             let appColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("app"))
-            appColumn.title = String(localized: "Application")
+            appColumn.title = "Application".localized
             appColumn.width = 150
             tableView.addTableColumn(appColumn)
 
             let titleColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("title"))
-            titleColumn.title = String(localized: "Window title")
+            titleColumn.title = "Window title".localized
             titleColumn.width = 300
             tableView.addTableColumn(titleColumn)
 
@@ -101,7 +101,7 @@ import Foundation
             // Add instruction label
             let instructionLabel = NSTextField(
                 labelWithString:
-                    String(localized: "Choose a window and click Select, or double-click it."))
+                    "Choose a window and click Select, or double-click it.".localized)
             instructionLabel.font = NSFont.systemFont(ofSize: 12)
             instructionLabel.textColor = .secondaryLabelColor
             instructionLabel.alignment = .center
@@ -113,9 +113,9 @@ import Foundation
             buttonStack.spacing = 10
 
             let cancelButton = NSButton(
-                title: String(localized: "Cancel"), target: self, action: #selector(cancelClicked))
+                title: "Cancel".localized, target: self, action: #selector(cancelClicked))
             let selectButton = NSButton(
-                title: String(localized: "Select"), target: self, action: #selector(selectClicked))
+                title: "Select".localized, target: self, action: #selector(selectClicked))
             selectButton.keyEquivalent = "\r"
 
             buttonStack.addArrangedSubview(NSView())  // Spacer
@@ -187,9 +187,9 @@ import Foundation
             textField.backgroundColor = .clear
 
             if tableColumn?.identifier.rawValue == "app" {
-                textField.stringValue = window.owningApplication?.applicationName ?? String(localized: "Unknown")
+                textField.stringValue = window.owningApplication?.applicationName ?? "Unknown".localized
             } else if tableColumn?.identifier.rawValue == "title" {
-                textField.stringValue = window.title ?? String(localized: "Untitled")
+                textField.stringValue = window.title ?? "Untitled".localized
             }
 
             cellView.addSubview(textField)

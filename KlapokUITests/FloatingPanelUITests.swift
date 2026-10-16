@@ -43,6 +43,14 @@ final class FloatingPanelUITests: XCTestCase {
     }
     
     // MARK: - Capture Type Selection Tests
+
+    func testEscapeClosesCapturePanel() throws {
+        let capture = app.buttons["floatingPanel.primaryCapture"]
+        XCTAssertTrue(capture.waitForExistence(timeout: 5))
+        app.typeKey(.escape, modifierFlags: [])
+        let disappeared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == false"), object: capture)
+        XCTAssertEqual(XCTWaiter.wait(for: [disappeared], timeout: 3), .completed)
+    }
     
     func testSwitchCaptureTypes() throws {
         XCTAssertTrue(app.buttons["floatingPanel.primaryCapture"].waitForExistence(timeout: 5))

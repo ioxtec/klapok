@@ -35,6 +35,7 @@ struct ImageEditingProfile: Profile {
     var backgroundPadding: Double
     var backgroundCornerRadius: Double
     var shadowIntensity: Double
+    var appearance: ImageProfileAppearance?
     
     // Image quality settings
     var imageFormat: ImageFormat
@@ -61,7 +62,8 @@ struct ImageEditingProfile: Profile {
         showMouseCursor: Bool = false,
         autoOpenEditor: Bool = true,
         copyToClipboard: Bool = false,
-        showNotification: Bool = true
+        showNotification: Bool = true,
+        appearance: ImageProfileAppearance? = nil
     ) {
         self.id = id
         self.name = name
@@ -78,41 +80,49 @@ struct ImageEditingProfile: Profile {
         self.autoOpenEditor = autoOpenEditor
         self.copyToClipboard = copyToClipboard
         self.showNotification = showNotification
+        self.appearance = appearance
     }
     
     // Create default profiles
     static func createDefaultProfiles() -> [ImageEditingProfile] {
+        let appearance = ImageProfileAppearance(gradient: BackgroundManager.createDefaultGradients().first)
         return [
             ImageEditingProfile(
                 name: "Standard",
                 isDefault: true,
                 backgroundAspectRatio: .auto,
                 backgroundPadding: 30.0,
-                shadowIntensity: 25.0
+                shadowIntensity: 25.0,
+                appearance: appearance
             ),
             ImageEditingProfile(
                 name: "Minimal",
                 backgroundAspectRatio: .auto,
                 backgroundPadding: 10.0,
-                shadowIntensity: 10.0
+                shadowIntensity: 10.0,
+                appearance: appearance
             ),
             ImageEditingProfile(
                 name: "Original",
                 backgroundAspectRatio: .auto,
                 backgroundPadding: 0.0,
-                shadowIntensity: 0.0
+                backgroundCornerRadius: 0,
+                shadowIntensity: 0.0,
+                appearance: ImageProfileAppearance(backgroundType: .none)
             ),
             ImageEditingProfile(
                 name: "Social Media",
                 backgroundAspectRatio: .ratio1_1,
                 backgroundPadding: 40.0,
-                shadowIntensity: 30.0
+                shadowIntensity: 30.0,
+                appearance: appearance
             ),
             ImageEditingProfile(
                 name: "Presentation",
                 backgroundAspectRatio: .ratio16_9,
                 backgroundPadding: 50.0,
-                shadowIntensity: 40.0
+                shadowIntensity: 40.0,
+                appearance: appearance
             )
         ]
     }
@@ -357,21 +367,48 @@ struct ProfileCollection<T: Profile>: Codable {
 // MARK: - Profile Extensions
 
 extension ImageEditingProfile {
-    func applyToEditorViewModel(_ viewModel: EditorViewModel) {
+    @discardableResult
+    func applyToEditorViewModel(_ viewModel: EditorViewModel, background: BackgroundManager = .shared) -> Bool {
+        // Older libraries have no appearance snapshot. Preserve their background except for Original.
+        let isLegacyOriginal = appearance == nil && name == "Original" && backgroundPadding == 0 && shadowIntensity == 0
+        do {
+            if let appearance {
+                try appearance.apply(to: viewModel, background: background)
+            } else if isLegacyOriginal {
+                try ImageProfileAppearance(backgroundType: .none).apply(to: viewModel, background: background)
+            }
+        } catch {
+            viewModel.errorMessage = error.localizedDescription
+            return false
+        }
         viewModel.selectedAspectRatio = backgroundAspectRatio
         viewModel.backgroundPadding = backgroundPadding
-        viewModel.backgroundCornerRadius = backgroundCornerRadius
+        viewModel.backgroundCornerRadius = isLegacyOriginal ? 0 : backgroundCornerRadius
         viewModel.shadowIntensity = shadowIntensity
+        return true
     }
     
-    static func fromEditorViewModel(_ viewModel: EditorViewModel, name: String) -> ImageEditingProfile {
+    static func fromEditorViewModel(_ viewModel: EditorViewModel, name: String,
+                                    background: BackgroundManager = .shared) -> ImageEditingProfile {
         return ImageEditingProfile(
             name: name,
             backgroundAspectRatio: viewModel.selectedAspectRatio,
             backgroundPadding: viewModel.backgroundPadding,
             backgroundCornerRadius: viewModel.backgroundCornerRadius,
-            shadowIntensity: viewModel.shadowIntensity
+            shadowIntensity: viewModel.shadowIntensity,
+            appearance: .capture(from: viewModel, background: background)
         )
+    }
+
+    func updating(from viewModel: EditorViewModel, background: BackgroundManager = .shared) -> Self {
+        var updated = self
+        updated.modifiedAt = Date()
+        updated.backgroundAspectRatio = viewModel.selectedAspectRatio
+        updated.backgroundPadding = viewModel.backgroundPadding
+        updated.backgroundCornerRadius = viewModel.backgroundCornerRadius
+        updated.shadowIntensity = viewModel.shadowIntensity
+        updated.appearance = .capture(from: viewModel, background: background)
+        return updated
     }
 }
 

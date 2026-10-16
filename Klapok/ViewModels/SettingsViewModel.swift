@@ -104,7 +104,7 @@ import Combine
             panel.canChooseDirectories = true
             panel.canCreateDirectories = true
             panel.allowsMultipleSelection = false
-            panel.title = String(localized: "Choose a folder for screenshots")
+            panel.title = "Choose a folder for screenshots".localized
             panel.directoryURL = saveDirectory
             WindowPlacement.centerModalPanel(panel)
 

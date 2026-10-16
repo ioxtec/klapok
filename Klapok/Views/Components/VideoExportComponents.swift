@@ -125,7 +125,7 @@ struct VideoExportSettingsView: View {
                             set: { exportManager.updateCustomScaleFactor($0) }
                         ),
                         range: 0.25...3.0,
-                        step: 0.25
+                        step: 0.25, unit: "x"
                     )
                 }
             }
@@ -240,7 +240,7 @@ struct GIFExportSettingsView: View {
                         set: { exportManager.updateGIFFrameRate(Int($0)) }
                     ),
                     range: 5...30,
-                    step: 5
+                    step: 5, unit: "FPS"
                 )
             }
             
@@ -294,7 +294,7 @@ struct GIFExportSettingsView: View {
                         set: { updateGIFWidth(Int($0.rounded())) }
                     ),
                     range: widthRange,
-                    step: 10
+                    step: 10, unit: "px"
                 )
 
                 SidebarDivider()
@@ -308,7 +308,7 @@ struct GIFExportSettingsView: View {
                         set: { updateGIFHeight(Int($0.rounded())) }
                     ),
                     range: heightRange,
-                    step: 10
+                    step: 10, unit: "px"
                 )
             }
             

@@ -182,9 +182,9 @@ struct SelectedAnnotationPropertiesView: View {
     private var strokeWidthOptions: [Int] {
         switch annotation.type {
         case .rectangle:
-            return [0, 1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
+            return [0] + EditorSizing.strokeWidths
         case .text, .arrow, .circle, .line, .highlight, .freeDraw:
-            return [1, 2, 3, 4, 5, 6, 8, 10, 12, 15]
+            return EditorSizing.strokeWidths
         }
     }
 
@@ -195,7 +195,7 @@ struct SelectedAnnotationPropertiesView: View {
                 .foregroundColor(.secondary)
 
             Menu {
-                ForEach([12, 14, 16, 18, 20, 24, 28, 32, 36, 48], id: \.self) { size in
+                ForEach(EditorSizing.fontSizes, id: \.self) { size in
                     Button("\(size)pt") {
                         annotationManager.updateSelectedAnnotationFontSize(CGFloat(size))
                     }
@@ -287,7 +287,7 @@ struct TextToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([12, 14, 16, 18, 20, 24, 28, 32, 36, 48], id: \.self) { size in
+                    ForEach(EditorSizing.fontSizes, id: \.self) { size in
                         Button("\(size)pt") {
                             annotationManager.defaultFontSize = CGFloat(size)
                         }
@@ -356,7 +356,7 @@ struct ArrowToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([1, 2, 3, 4, 5, 6, 8, 10], id: \.self) { width in
+                    ForEach(EditorSizing.strokeWidths, id: \.self) { width in
                         Button("\(width)px") {
                             annotationManager.defaultStrokeWidth = CGFloat(width)
                         }
@@ -422,7 +422,7 @@ struct RectangleToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([0, 1, 2, 3, 4, 5, 6, 8, 10], id: \.self) { width in
+                    ForEach([0] + EditorSizing.strokeWidths, id: \.self) { width in
                         Button("\(width)px") {
                             annotationManager.defaultStrokeWidth = CGFloat(width)
                         }
@@ -522,7 +522,7 @@ struct CircleToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([1, 2, 3, 4, 5, 6, 8, 10], id: \.self) { width in
+                    ForEach(EditorSizing.strokeWidths, id: \.self) { width in
                         Button("\(width)px") {
                             annotationManager.defaultStrokeWidth = CGFloat(width)
                         }
@@ -600,7 +600,7 @@ struct LineToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([1, 2, 3, 4, 5, 6, 8, 10], id: \.self) { width in
+                    ForEach(EditorSizing.strokeWidths, id: \.self) { width in
                         Button("\(width)px") {
                             annotationManager.defaultStrokeWidth = CGFloat(width)
                         }
@@ -691,7 +691,7 @@ struct FreeDrawToolProperties: View {
                     .foregroundColor(.secondary)
                 
                 Menu {
-                    ForEach([1, 2, 3, 4, 5, 6, 8, 10, 12, 15], id: \.self) { width in
+                    ForEach(EditorSizing.strokeWidths, id: \.self) { width in
                         Button("\(width)px") {
                             annotationManager.defaultStrokeWidth = CGFloat(width)
                         }
